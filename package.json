@@ -1,11 +1,20 @@
 {
   "name": "midi-core",
-  "version": "1.0.0",
-  "main": "index.js",
+  "version": "0.1.0",
+  "description": "A small, reusable contract between MIDI hardware and its clients.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "author": "Lech Wojas",
   "license": "ISC",
-  "description": ""
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.7"
+  }
 }
