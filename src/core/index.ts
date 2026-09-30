@@ -18,3 +18,34 @@ export type {
 } from "./types/discovery.js";
 
 export type { MidiConnection } from "./types/connection.js";
+
+export type {
+  Channel,
+  NoteOnMessage,
+  NoteOffMessage,
+  ControlChangeMessage,
+  ProgramChangeMessage,
+  ChannelPressureMessage,
+  PolyPressureMessage,
+  PitchBendMessage,
+  ClockMessage,
+  StartMessage,
+  ContinueMessage,
+  StopMessage,
+  SysExMessage,
+  UnknownMessage,
+  MidiMessage,
+  MidiMessageType,
+} from "./types/message.js";
+export {
+  isChannel,
+  isDataByte,
+  isPitchBendValue,
+  isMidiMessageType,
+  MIDI_MESSAGE_TYPES,
+  PITCH_BEND_MIN,
+  PITCH_BEND_MAX,
+  PITCH_BEND_CENTER,
+} from "./types/message.js";
+
+export { decodeMidiMessage, encodeMidiMessage, MidiEncodeError } from "./message/codec.js";
