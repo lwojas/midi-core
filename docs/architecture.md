@@ -134,3 +134,5 @@ none of them are implemented by this ticket.
   normalized representation above).
 - ECS-39 — Define device profile schema (implements the Device profiles
   extension point above).
+- ECS-32 — Create MIDI Core mock/test device (implements the Mock/test
+  device extension point above).
