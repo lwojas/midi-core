@@ -49,3 +49,6 @@ export {
 } from "./types/message.js";
 
 export { decodeMidiMessage, encodeMidiMessage, MidiEncodeError } from "./message/codec.js";
+
+export type { RawMidiInput, MidiInput } from "./types/input.js";
+export { createMidiInput } from "./input/create-midi-input.js";
