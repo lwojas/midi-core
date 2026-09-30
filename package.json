@@ -3,13 +3,12 @@
   "version": "0.1.0",
   "description": "A small, reusable contract between MIDI hardware and its clients.",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "demo": "npm run build && node demo/serve.mjs"
   },
   "author": "Lech Wojas",
   "license": "ISC",

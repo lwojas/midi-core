@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MIDI Core — bidirectional proof</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #111; }
+    h1 { font-size: 1.25rem; }
+    section { margin-bottom: 1.5rem; }
+    button { font: inherit; padding: 0.4rem 0.8rem; margin-right: 0.5rem; cursor: pointer; }
+    select { font: inherit; padding: 0.3rem; margin-right: 0.5rem; }
+    #log { background: #111; color: #0f0; font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.75rem; height: 260px; overflow-y: auto; border-radius: 4px; white-space: pre-wrap; }
+    .state { font-weight: 600; }
+    .muted { color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>MIDI Core — bidirectional device communication (ECS-31)</h1>
+  <p class="muted">
+    Proves Device → Core → Client and Client → Core → Device against real hardware, using the
+    Web MIDI adapter. No device-specific feedback logic — the "light a pad" button below just
+    sends a plain Note On; any effect on the hardware is the device's own generic response to it.
+  </p>
+
+  <section>
+    <button id="request">Request MIDI access</button>
+    <span id="access-status" class="muted"></span>
+  </section>
+
+  <section>
+    <label for="input-select">Input port:</label>
+    <select id="input-select"></select>
+    <label for="output-select">Output port:</label>
+    <select id="output-select"></select>
+    <button id="connect" disabled>Connect both</button>
+    <button id="disconnect" disabled>Disconnect both</button>
+    <div>Input state: <span id="input-state" class="state">-</span> · Output state: <span id="output-state" class="state">-</span></div>
+  </section>
+
+  <section>
+    <button id="send-note-on" disabled>Send Note On (C4, vel 100)</button>
+    <button id="send-note-off" disabled>Send Note Off (C4)</button>
+    <button id="send-cc" disabled>Send CC 7 = 100</button>
+  </section>
+
+  <section>
+    <div class="muted">Incoming messages (press pads / move controls on the device):</div>
+    <div id="log"></div>
+  </section>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
