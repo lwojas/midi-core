@@ -61,12 +61,12 @@ together.
 directions for a given `(mapping, control)` pair, so it's the one place
 that can tell "this change came from MIDI" apart from any other caller of
 `setValue()` (a UI, automation, another mapping): every resolved incoming
-value is pushed onto a small FIFO queue *before* being pushed into
-`control`; `onChange` is skipped exactly when it reports the value at the
-front of that queue, since that's the control confirming a change this
-function itself made, not a new one to echo. Any other change (a
-different value, or one that doesn't match the oldest pending entry)
-still sends feedback normally.
+value is pushed onto a small queue *before* being pushed into `control`;
+`onChange` is skipped exactly when it reports a value found anywhere in
+that queue, since that's the control confirming a change this function
+itself made (or several — see below), not a new one to echo. A match
+drops everything queued up to and including it; a change whose value
+isn't in the queue at all still sends feedback normally.
 
 This was originally scoped out (ECS-37) on the reasoning that "this runtime
 has no way to tell a MIDI-originated change apart from any other caller" —
@@ -78,21 +78,34 @@ fought itself on every move, because every value it reported back was
 immediately echoed back to it. ECS-57 added the suppression above once
 that was a concrete, observed problem rather than a hypothetical one.
 
-**Why a queue, not a single remembered value.** The first version of this
-suppression remembered only the *one* most recently pushed-in value.
-Against webseq's real `Control` (dispatch now, notify on a later render)
-that leaked real feedback: a fast, continuous fader drag calls `setValue()`
-several times before the *first* call's `onChange` confirmation ever
-fires, each later call overwriting the single remembered value — so when
-that first, now-stale confirmation finally does arrive, it no longer
-matches, and leaks through as feedback for a value the user has already
-moved past (observed as `out:` log lines echoing CC values several steps
-behind the live `in:` stream). Matching strictly in arrival order against
-a queue — not just the most recent entry — is what a channel between two
-different clocks (real-time MIDI input vs. a UI's own render/notify cycle)
-actually requires; see `src/mapping/bind.ts`'s doc comment and the
-"lagging Control" tests in `src/mapping/bind.test.ts` for the exact
-reproduction.
+**Why a queue, searched in full, not a single remembered value or only the
+queue's front.** The first version of this suppression remembered only
+the *one* most recently pushed-in value — against webseq's real `Control`
+(dispatch now, notify on a later render) that leaked feedback: several
+`setValue()` calls can happen before the *first* one's `onChange`
+confirmation fires, each overwriting the single remembered value, so the
+first confirmation no longer matches once it (eventually) arrives.
+
+Moving to a FIFO queue matched only at its front fixed that lag case but
+not a second, worse one: a direct capture of a Launchpad Mini's fader
+(bypassing the browser and webseq entirely, with real timestamps) showed
+it sends CC in **bursts** — roughly 8 messages ~1ms apart, then a
+200–450ms pause — not a steady stream. A UI's render cycle easily catches
+up during the pause but can't keep pace *within* a burst, so several
+`setValue()` calls land before a single render notifies `onChange` once,
+for the burst's *final* value only — the intermediate ones are never
+individually confirmed. Matching only the queue's front left those
+skipped entries stuck at the front forever, so every later confirmation
+(including the next burst's) mismatched against a stale value and leaked
+through as feedback — compounding, since nothing ever drained it.
+Searching the whole queue for a match, and dropping everything up to and
+including it, fixes this: a confirmation for a later value is treated as
+accounting for everything queued before it too, not left waiting for
+individual confirmations that will never come.
+
+See `src/mapping/bind.ts`'s doc comment and the "lagging Control" /
+"coalesced burst" tests in `src/mapping/bind.test.ts` for the exact
+reproductions of both failure modes.
 
 What's still true: this needs no device knowledge, and still doesn't
 compare values for anything other than detecting its own just-made

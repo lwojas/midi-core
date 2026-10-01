@@ -66,6 +66,18 @@ function createDeferredTestControl<D extends ControlDef>(def: D) {
       current = next;
       for (const listener of listeners) listener(current, previous);
     },
+    /** Drops every queued write except the last and fires onChange once for it, as if a UI
+     * framework batched several state updates (from several setValue() calls) into a single
+     * render -- intermediate values are never individually confirmed. No-op if nothing is
+     * queued. */
+    flushCoalesced: () => {
+      if (pendingWrites.length === 0) return;
+      const next = pendingWrites[pendingWrites.length - 1]!;
+      pendingWrites.length = 0;
+      const previous = current;
+      current = next;
+      for (const listener of listeners) listener(current, previous);
+    },
   };
 }
 
@@ -305,6 +317,44 @@ describe("bindControlMapping — echo suppression under a lagging Control (ECS-5
 
     flushOne(); // confirms the UI's 40 -- nothing left in the MIDI queue to match it against
     expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 20, 0]);
+  });
+
+  // Reproduces the real failure mode measured against a Launchpad Mini fader directly (not
+  // through any UI): it sends CC in bursts of several messages ~1ms apart, then pauses
+  // 200-450ms. A render cycle easily keeps up during the pause but not within a burst, so one
+  // render/onChange ends up confirming the *final* value of a whole burst -- not each queued
+  // value individually. Matching only the front of the queue (an earlier, intermediate fix)
+  // left the skipped earlier entries permanently stuck, leaking every later burst's
+  // confirmation through as feedback. Matching anywhere in the queue, and dropping everything
+  // up to the match, is what actually fixes it.
+  it("suppresses a single coalesced confirmation that accounts for a whole burst of messages", () => {
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const { control, flushCoalesced } = createDeferredTestControl(cutoff);
+    const mapping: ControlMapping = {
+      id: "cc74-cutoff",
+      control: cutoff.id,
+      source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+      feedback: { address: { type: "control-change", controller: 20 }, channel: 0 },
+    };
+
+    bindControlMapping(mapping, input, output, control);
+
+    // A burst: several CC messages land before even one render catches up.
+    for (const nativeValue of [100, 102, 104, 105, 107, 109, 110, 112]) {
+      rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, nativeValue));
+    }
+    flushCoalesced(); // one render confirms only the burst's final value (112)
+
+    expect(rawOutput.sentMessages).toHaveLength(0);
+
+    // The next burst (direction reversed, as on a real drag) is still handled correctly --
+    // the queue isn't left corrupted by the previous burst's coalescing.
+    for (const nativeValue of [110, 108, 106, 104]) {
+      rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, nativeValue));
+    }
+    flushCoalesced();
+
+    expect(rawOutput.sentMessages).toHaveLength(0);
   });
 });
 

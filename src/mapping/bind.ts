@@ -36,16 +36,23 @@ import { buildFeedbackMessage, resolveIncomingValue } from "./value.js";
  * like a UI framework's state (dispatch now, notify on a later render) can
  * fall behind a fast, continuous stream of incoming messages -- several
  * more messages may arrive and each call `setValue()` before the *first*
- * one's `onChange` ever fires. A single "last value I set" slot gets
- * overwritten by those later messages before the earlier one is confirmed,
- * so when that earlier, now-stale confirmation finally arrives it no
- * longer matches -- and leaks through as feedback for a value the user has
- * already moved past (observed exactly this way integrating against a
+ * one's `onChange` ever fires, and some of those `setValue()` calls may
+ * never get their own separate `onChange` at all (a UI framework batching
+ * several state updates into one render notifies once, for the final
+ * value, not once per update). A single "last value I set" slot gets
+ * overwritten by later messages before an earlier one is confirmed, so
+ * that earlier, now-stale confirmation no longer matches when it finally
+ * (or never) arrives -- and leaks through as feedback for a value the user
+ * has already moved past (observed exactly this way integrating against a
  * real Launchpad Mini fader: `out:` lines echoing values several steps
- * behind the live `in:` stream). Matching strictly in arrival order against
- * a queue, instead of only the most recent entry, is what a FIFO channel
- * between two different clocks (real-time MIDI input vs. a UI's own
- * render/notify cycle) actually requires.
+ * behind the live `in:` stream, and worsening over time as unmatched
+ * entries piled up). Searching the whole queue for the first match --
+ * rather than only the front, or only the most recent entry -- and
+ * dropping every entry up to and including it, handles both plain lag
+ * (the match is at the front) and batching (one confirmation accounts for
+ * several queued values at once, so everything up to the match is
+ * discarded, not left stuck forever waiting for a confirmation of its own
+ * that will never come).
  *
  * This needs no device knowledge and nothing from the caller beyond what
  * `bindControlMapping` already has — real hardware testing (see
@@ -77,8 +84,11 @@ export function bindControlMapping<D extends ControlDef>(
 
   const unsubscribeFeedback = feedback
     ? control.onChange((value) => {
-        if (pendingFromMidi.length > 0 && pendingFromMidi[0] === value) {
-          pendingFromMidi.shift();
+        const matchIndex = pendingFromMidi.indexOf(value);
+        if (matchIndex !== -1) {
+          // Drop the match and everything queued ahead of it: a confirmation for a later
+          // value means any earlier ones were coalesced into it, not individually confirmed.
+          pendingFromMidi.splice(0, matchIndex + 1);
           return;
         }
 
