@@ -133,7 +133,8 @@ none of them are implemented by this ticket.
 - ECS-28 — Define normalised MIDI message model (implements Input/Output's
   normalized representation above).
 - ECS-39 — Define device profile schema (implements the Device profiles
-  extension point above).
+  extension point above) — see
+  [docs/contracts/device-profile.md](contracts/device-profile.md).
 - ECS-32 — Create MIDI Core mock/test device (implements the Mock/test
   device extension point above).
 - ECS-34 — Define application Control API (implements the Application

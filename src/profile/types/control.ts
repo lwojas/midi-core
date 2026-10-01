@@ -1,0 +1,136 @@
+import type { Channel } from "../../core/types/message.js";
+
+/**
+ * Physical controls — the knobs, pads, buttons, faders, encoders and wheels
+ * a device actually has, and where each one lives on the wire.
+ *
+ * `ControlSurfaceAddress` is deliberately its own type, not a reuse of
+ * `mapping/types/address.ts`'s `MidiAddress`. That type is scoped to the
+ * three message kinds that function as *application* controller surfaces
+ * (control-change, note, pitch-bend) and explicitly leaves out program
+ * change and aftertouch as not controller surfaces "in the same sense" —
+ * a judgment call that belongs to the mapping contract, not to describing
+ * a device. Real hardware does use program change (scene/preset buttons)
+ * and aftertouch (pressure strips, pressure-sensitive pads) as physical
+ * controls, so a profile's address model has to be broader than the one
+ * the mapping layer scoped itself to. Keeping them separate also keeps
+ * this schema's only dependency pointed at Core, not at the mapping layer.
+ *
+ * Unlike `mapping`'s `MidiSource.channel` (which allows `"any"`, because a
+ * mapping is authored once and applied regardless of which channel a
+ * device happens to use), a profile is describing one real device's actual
+ * wiring, so `channel` here is always a concrete `Channel`.
+ */
+
+export interface ControlChangeAddress {
+  readonly type: "control-change";
+  readonly controller: number; // 0-127
+}
+
+export interface NoteAddress {
+  readonly type: "note";
+  readonly note: number; // 0-127
+}
+
+export interface PitchBendAddress {
+  readonly type: "pitch-bend";
+}
+
+export interface ProgramChangeAddress {
+  readonly type: "program-change";
+  readonly program: number; // 0-127
+}
+
+export interface ChannelPressureAddress {
+  readonly type: "channel-pressure";
+}
+
+export interface PolyPressureAddress {
+  readonly type: "poly-pressure";
+  readonly note: number; // 0-127
+}
+
+export type ControlSurfaceAddress =
+  | ControlChangeAddress
+  | NoteAddress
+  | PitchBendAddress
+  | ProgramChangeAddress
+  | ChannelPressureAddress
+  | PolyPressureAddress;
+
+export interface ControlAddress {
+  readonly address: ControlSurfaceAddress;
+  readonly channel: Channel;
+}
+
+/** The kinds of physical control this schema models. Keyboard keybeds are out of scope — see docs/contracts/device-profile.md. */
+export type ControlKind = "button" | "pad" | "knob" | "encoder" | "fader" | "wheel";
+
+export const CONTROL_KINDS: readonly ControlKind[] = ["button", "pad", "knob", "encoder", "fader", "wheel"];
+
+export function isControlKind(value: unknown): value is ControlKind {
+  return typeof value === "string" && (CONTROL_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * How a continuous/incremental control reports its value. "relative" is a
+ * real, common encoder behavior (each turn sends an increment/decrement,
+ * not a position), purely descriptive of the device's wire behavior —
+ * interpreting a relative value into an application control's range is a
+ * mapping-layer concern, not this schema's. Omitted means "absolute",
+ * the far more common case (faders, most knobs, pads' velocity).
+ */
+export type ControlValueMode = "absolute" | "relative";
+
+export const CONTROL_VALUE_MODES: readonly ControlValueMode[] = ["absolute", "relative"];
+
+export function isControlValueMode(value: unknown): value is ControlValueMode {
+  return typeof value === "string" && (CONTROL_VALUE_MODES as readonly string[]).includes(value);
+}
+
+/**
+ * Output/LED feedback a control supports. "motorized" covers physical
+ * position feedback (a motorized fader), named in the same terms
+ * docs/contracts/mapping.md already uses ("a motorized fader, an LED
+ * ring") for the application-level feedback concept this describes the
+ * device side of.
+ */
+export type FeedbackKind = "monochrome-led" | "velocity-color-led" | "rgb-led" | "motorized";
+
+export const FEEDBACK_KINDS: readonly FeedbackKind[] = [
+  "monochrome-led",
+  "velocity-color-led",
+  "rgb-led",
+  "motorized",
+];
+
+export function isFeedbackKind(value: unknown): value is FeedbackKind {
+  return typeof value === "string" && (FEEDBACK_KINDS as readonly string[]).includes(value);
+}
+
+export interface ControlFeedback {
+  readonly kind: FeedbackKind;
+  /** Where an outgoing feedback message for this control is sent — may differ from `PhysicalControl.input`'s address. */
+  readonly address: ControlAddress;
+  /** For "velocity-color-led": the number of distinct palette entries the device's value byte selects from (e.g. 128). Not meaningful for other kinds. */
+  readonly paletteSize?: number;
+}
+
+/**
+ * One physical control on the device. `input` and `feedback` are both
+ * optional and independent: a control can be input-only (most buttons),
+ * feedback-only (a pure indicator LED with no actuation), or both (a pad
+ * whose press also lights its own LED). A profile with neither on some
+ * control isn't a case this schema rules out here — see
+ * docs/contracts/device-profile.md for why that's left to ECS-42.
+ */
+export interface PhysicalControl {
+  readonly id: string;
+  readonly label: string;
+  readonly kind: ControlKind;
+  /** The `DevicePortProfile.id` this control communicates on. */
+  readonly portId: string;
+  readonly input?: ControlAddress;
+  readonly feedback?: ControlFeedback;
+  readonly valueMode?: ControlValueMode;
+}

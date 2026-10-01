@@ -26,6 +26,10 @@
       "types": "./dist/mapping/index.d.ts",
       "import": "./dist/mapping/index.js"
     },
+    "./profile": {
+      "types": "./dist/profile/index.d.ts",
+      "import": "./dist/profile/index.js"
+    },
     "./adapters/web-midi": {
       "types": "./dist/adapters/web-midi/index.d.ts",
       "import": "./dist/adapters/web-midi/index.js"

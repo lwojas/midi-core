@@ -186,6 +186,45 @@ left as a future extension point (curves, conditions, device profiles), and
 `bindControlMapping()` itself — the runtime that wires the contract to a
 live `MidiInput`/`MidiOutput`/`Control`.
 
+## Describing a device: profiles
+
+[`src/profile/`](src/profile) defines the schema for a **device profile** —
+a plain, JSON-serializable description of one device model: its identity,
+the ports it exposes, its physical controls (knobs, pads, faders,
+encoders, wheels) and where each lives on the wire, how those controls are
+laid out into grids, what output/LED or motorized feedback they support,
+and what vendor SysEx or connection handshake it needs:
+
+```ts
+import type { DeviceProfile } from "./src/profile/index.js";
+
+const profile: DeviceProfile = {
+  schemaVersion: "1.0",
+  identity: { id: "acme.example-grid", manufacturer: "Acme", model: "Example Grid" },
+  ports: [
+    { id: "main-in", type: "input", role: "main", required: true, messageTypes: ["note-on", "note-off"] },
+    { id: "main-out", type: "output", role: "main", required: true, messageTypes: ["note-on", "note-off"] },
+  ],
+  controls: [
+    {
+      id: "pad-0-0",
+      label: "Pad 1",
+      kind: "pad",
+      portId: "main-in",
+      input: { address: { type: "note", note: 36 }, channel: 0 },
+      feedback: { kind: "velocity-color-led", address: { address: { type: "note", note: 36 }, channel: 0 } },
+    },
+  ],
+};
+```
+
+A profile describes the device, not application behavior: it has no
+`ControlId`, no `ControlMapping`, and nothing wired to a live
+`MidiInput`/`MidiOutput` — see
+[`docs/contracts/device-profile.md`](docs/contracts/device-profile.md) for
+the full shape and what's deliberately left to later tickets (validation,
+protocol composition, concrete device profiles).
+
 ## Using this as a package
 
 Consumers (e.g. [webseq](https://github.com/lwojas/webseq)) depend on this repo directly —
@@ -196,6 +235,7 @@ of the module boundaries above:
 import { createMidiInput, createMidiOutput } from "midi-core";           // same as "midi-core/core"
 import type { Control, ControlRegistry } from "midi-core/control-api";
 import { bindControlMapping, type ControlMapping } from "midi-core/mapping";
+import type { DeviceProfile } from "midi-core/profile";
 import { requestWebMidiAccess } from "midi-core/adapters/web-midi";
 import { createMockDevice } from "midi-core/adapters/mock";              // for tests
 ```
@@ -228,3 +268,4 @@ npm run demo     # build, then serve demo/ for real Web MIDI hardware
 | Application Control API and control/value model (separate from Core) | [`docs/contracts/control-api.md`](docs/contracts/control-api.md) |
 | MIDI ↔ Control mapping (bridges Core and the Control API) | [`docs/contracts/mapping.md`](docs/contracts/mapping.md) |
 | MIDI ↔ Control mapping runtime (`bindControlMapping()`) | [`docs/contracts/mapping-runtime.md`](docs/contracts/mapping-runtime.md) |
+| Device profile schema | [`docs/contracts/device-profile.md`](docs/contracts/device-profile.md) |
