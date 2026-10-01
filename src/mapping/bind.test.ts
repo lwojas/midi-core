@@ -32,6 +32,43 @@ function createTestControl<D extends ControlDef>(def: D): Control<D> {
   };
 }
 
+/**
+ * A Control whose setValue() does NOT notify onChange() listeners synchronously -- it queues
+ * the write, and a separate test-only flushOne() applies exactly one queued write and fires
+ * onChange for it. Models a Control backed by something like UI framework state (dispatch
+ * now, notify on a later render), the shape that surfaced the real ECS-57 lag bug: several
+ * MIDI messages can each call setValue() before the first one's onChange ever fires.
+ */
+function createDeferredTestControl<D extends ControlDef>(def: D) {
+  let current = def.default as ControlValue<D>;
+  const pendingWrites: ControlValue<D>[] = [];
+  const listeners = new Set<(value: ControlValue<D>, previous: ControlValue<D>) => void>();
+
+  const control: Control<D> = {
+    def,
+    getValue: () => current,
+    setValue: (next) => pendingWrites.push(next),
+    onChange: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+
+  return {
+    control,
+    pendingWriteCount: () => pendingWrites.length,
+    /** Applies exactly one queued setValue() and fires onChange for it, as if one render/
+     * effect cycle just caught up with one pending state update. No-op if nothing is queued. */
+    flushOne: () => {
+      if (pendingWrites.length === 0) return;
+      const next = pendingWrites.shift()!;
+      const previous = current;
+      current = next;
+      for (const listener of listeners) listener(current, previous);
+    },
+  };
+}
+
 const cutoff: NumericControlDef = {
   id: "fx.filter.cutoff",
   label: "Cutoff",
@@ -207,6 +244,67 @@ describe("bindControlMapping — echo suppression (ECS-57)", () => {
     // The first message's suppression was already consumed by the second message's own
     // onChange; this later, unrelated setValue(18000) is not treated as that old echo.
     expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 20, 127]);
+  });
+});
+
+describe("bindControlMapping — echo suppression under a lagging Control (ECS-57 regression)", () => {
+  // Reproduces a bug found integrating against a real Launchpad Mini fader: several CC
+  // messages arrived (each calling setValue()) before the *first* one's onChange ever fired,
+  // because the Control (there, UI framework state) notifies on a later render, not
+  // synchronously. A single "remember the last value" slot gets overwritten by the later
+  // messages before the earlier one is confirmed, so the earlier confirmation no longer
+  // matches when it finally arrives -- and leaks through as feedback for a stale value.
+  it("suppresses every queued message's echo even when confirmations arrive well behind the input stream", () => {
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const { control, flushOne, pendingWriteCount } = createDeferredTestControl(cutoff);
+    const mapping: ControlMapping = {
+      id: "cc74-cutoff",
+      control: cutoff.id,
+      source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+      feedback: { address: { type: "control-change", controller: 20 }, channel: 0 },
+    };
+
+    bindControlMapping(mapping, input, output, control);
+
+    // Four incoming messages arrive back to back, well before any of them is confirmed.
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 100));
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 90));
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 80));
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 70));
+    expect(pendingWriteCount()).toBe(4);
+
+    // Confirmations trickle in one at a time, in the same order -- each must still be
+    // recognized as this mapping's own echo, no matter how far behind it's fallen.
+    flushOne();
+    flushOne();
+    flushOne();
+    flushOne();
+
+    expect(rawOutput.sentMessages).toHaveLength(0);
+  });
+
+  it("still sends feedback for a non-MIDI change queued behind lagging MIDI confirmations", () => {
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const { control, flushOne } = createDeferredTestControl(cutoff);
+    const mapping: ControlMapping = {
+      id: "cc74-cutoff",
+      control: cutoff.id,
+      source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+      feedback: { address: { type: "control-change", controller: 20 }, channel: 0 },
+    };
+
+    bindControlMapping(mapping, input, output, control);
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 100)); // queued, not yet confirmed
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 90)); // queued, not yet confirmed
+    control.setValue(40); // a UI change, called after both MIDI messages but also not yet confirmed
+
+    // Confirmations land in the same order the three setValue() calls above were made.
+    flushOne(); // confirms the first MIDI message (100) -- still correctly suppressed
+    flushOne(); // confirms the second MIDI message (90) -- still correctly suppressed
+    expect(rawOutput.sentMessages).toHaveLength(0);
+
+    flushOne(); // confirms the UI's 40 -- nothing left in the MIDI queue to match it against
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 20, 0]);
   });
 });
 

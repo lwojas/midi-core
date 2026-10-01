@@ -60,12 +60,13 @@ together.
 `bindControlMapping()` is the one piece of code sitting between both
 directions for a given `(mapping, control)` pair, so it's the one place
 that can tell "this change came from MIDI" apart from any other caller of
-`setValue()` (a UI, automation, another mapping): right before pushing a
-resolved value in, it remembers that value; the next `onChange` is skipped
-if it reports exactly that value back — that's the control confirming the
-change this function itself just made, not a new one to echo. A change to
-any other value, or the same value arriving again from somewhere else
-(after that first suppression is consumed), still sends feedback normally.
+`setValue()` (a UI, automation, another mapping): every resolved incoming
+value is pushed onto a small FIFO queue *before* being pushed into
+`control`; `onChange` is skipped exactly when it reports the value at the
+front of that queue, since that's the control confirming a change this
+function itself made, not a new one to echo. Any other change (a
+different value, or one that doesn't match the oldest pending entry)
+still sends feedback normally.
 
 This was originally scoped out (ECS-37) on the reasoning that "this runtime
 has no way to tell a MIDI-originated change apart from any other caller" —
@@ -77,17 +78,36 @@ fought itself on every move, because every value it reported back was
 immediately echoed back to it. ECS-57 added the suppression above once
 that was a concrete, observed problem rather than a hypothetical one.
 
+**Why a queue, not a single remembered value.** The first version of this
+suppression remembered only the *one* most recently pushed-in value.
+Against webseq's real `Control` (dispatch now, notify on a later render)
+that leaked real feedback: a fast, continuous fader drag calls `setValue()`
+several times before the *first* call's `onChange` confirmation ever
+fires, each later call overwriting the single remembered value — so when
+that first, now-stale confirmation finally does arrive, it no longer
+matches, and leaks through as feedback for a value the user has already
+moved past (observed as `out:` log lines echoing CC values several steps
+behind the live `in:` stream). Matching strictly in arrival order against
+a queue — not just the most recent entry — is what a channel between two
+different clocks (real-time MIDI input vs. a UI's own render/notify cycle)
+actually requires; see `src/mapping/bind.ts`'s doc comment and the
+"lagging Control" tests in `src/mapping/bind.test.ts` for the exact
+reproduction.
+
 What's still true: this needs no device knowledge, and still doesn't
-compare values for anything other than detecting its own just-made change
-(no clamping/rounding/dedup beyond that). A `Control` implementation that
-transforms a value before storing/reporting it (so the `onChange` value
-doesn't exactly equal what was pushed in) simply won't get suppression for
-that change — feedback fires as it always did, not a regression. Likewise,
-if `setValue()` is a no-op (the resolved value matches what the control
-already holds, so `onChange` never fires), the pending suppression can be
-consumed by a later, unrelated `onChange` that happens to match the same
-value — a narrow, documented edge case rather than something this runtime
-guards against with session windows or control-reported transaction ids.
+compare values for anything other than detecting its own just-made
+change(s) (no clamping/rounding/dedup beyond that). A `Control`
+implementation that transforms a value before storing/reporting it (so
+the `onChange` value doesn't exactly equal what was pushed in) simply
+won't get suppression for that change — feedback fires as it always did,
+not a regression. Likewise, if a particular `setValue()` call is a no-op
+(its resolved value matches what the control already holds, so no
+`onChange` ever fires for it), that entry never leaves the queue via a
+matching confirmation and can end up matched against a later, unrelated
+`onChange` that happens to carry the same value — a narrow, documented
+edge case rather than something this runtime guards against with
+out-of-order matching, session windows, or control-reported transaction
+ids.
 
 Nothing here knows what a `Control` is backed by, or what kind of device
 `input`/`output` talk to. Proven against the mock device
