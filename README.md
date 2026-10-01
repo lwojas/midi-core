@@ -161,18 +161,18 @@ bend) maps onto a control's declared range (`resolveIncomingValue()`,
 `buildFeedbackMessage()` for the reverse direction):
 
 ```ts
-import { resolveIncomingValue, type ControlMapping } from "./src/mapping/index.js";
+import { bindControlMapping, type ControlMapping } from "./src/mapping/index.js";
 
 const mapping: ControlMapping = {
   id: "cc74-filter-cutoff",
   control: "fx.filter.cutoff",
   source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+  feedback: { address: { type: "control-change", controller: 74 }, channel: 0 }, // optional
 };
 
-input.onMessage((message) => {
-  const value = resolveIncomingValue(message, mapping.source, cutoffDef);
-  if (value !== undefined) cutoffControl.setValue(value);
-});
+// Turning the knob calls cutoffControl.setValue(); cutoffControl changing
+// (from this mapping or anywhere else) sends feedback back out `output`.
+bindControlMapping(mapping, input, output, cutoffControl);
 ```
 
 This is the only layer allowed to depend on both Core and the Control API
@@ -180,7 +180,10 @@ This is the only layer allowed to depend on both Core and the Control API
 messages are assigned application meaning. See
 [`docs/contracts/mapping.md`](docs/contracts/mapping.md) for the full
 source/target/channel/value-range/feedback shape and what's deliberately
-left as a future extension point (curves, conditions, device profiles).
+left as a future extension point (curves, conditions, device profiles), and
+[`docs/contracts/mapping-runtime.md`](docs/contracts/mapping-runtime.md) for
+`bindControlMapping()` itself — the runtime that wires the contract to a
+live `MidiInput`/`MidiOutput`/`Control`.
 
 ## Development
 
@@ -205,3 +208,4 @@ npm run demo     # build, then serve demo/ for real Web MIDI hardware
 | Mock/test device | [`docs/contracts/mock-device.md`](docs/contracts/mock-device.md) |
 | Application Control API and control/value model (separate from Core) | [`docs/contracts/control-api.md`](docs/contracts/control-api.md) |
 | MIDI ↔ Control mapping (bridges Core and the Control API) | [`docs/contracts/mapping.md`](docs/contracts/mapping.md) |
+| MIDI ↔ Control mapping runtime (`bindControlMapping()`) | [`docs/contracts/mapping-runtime.md`](docs/contracts/mapping-runtime.md) |

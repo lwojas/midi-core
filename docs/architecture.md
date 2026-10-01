@@ -150,3 +150,8 @@ none of them are implemented by this ticket.
   `MidiMessage` and a `Control`, the only layer that depends on both Core
   and the Control API) — see
   [docs/contracts/mapping.md](contracts/mapping.md).
+- ECS-37 — Implement basic bidirectional mappings (wires ECS-36's
+  `ControlMapping` contract to a live `MidiInput`/`MidiOutput`/`Control`:
+  an incoming message updates a control, and a control change sends MIDI
+  back) — see
+  [docs/contracts/mapping-runtime.md](contracts/mapping-runtime.md).
