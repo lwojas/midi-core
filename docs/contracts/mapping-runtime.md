@@ -1,7 +1,7 @@
 # MIDI ↔ Control Mapping — Runtime
 
 Status: Draft
-Linear: [ECS-37](https://linear.app/ecs3d/issue/ECS-37/implement-basic-bidirectional-mappings)
+Linear: [ECS-37](https://linear.app/ecs3d/issue/ECS-37/implement-basic-bidirectional-mappings) (initial implementation), [ECS-57](https://linear.app/ecs3d/issue/ECS-57/suppress-midi-feedback-echo-for-values-that-just-arrived-via-the-same) (echo suppression)
 Depends on: [ECS-29](https://linear.app/ecs3d/issue/ECS-29/implement-midi-input) ([docs/contracts/input.md](./input.md)), [ECS-30](https://linear.app/ecs3d/issue/ECS-30/implement-midi-output) ([docs/contracts/output.md](./output.md)), [ECS-36](https://linear.app/ecs3d/issue/ECS-36/define-midi-control-mapping-contract) ([docs/contracts/mapping.md](./mapping.md))
 Source of truth: [`src/mapping/bind.ts`](../../src/mapping/bind.ts)
 
@@ -55,17 +55,39 @@ whichever `Control` a `ControlRegistry` resolves `mapping.control` to; nothing
 here assumes a single input/output pair or forces mappings to be bound
 together.
 
-## No loop prevention, no device knowledge
+## Echo suppression, no device knowledge
 
-`bindControlMapping()` does not compare an incoming-resolved value against
-the control's current value before calling `setValue()`, and does not
-suppress feedback for a change that originated from MIDI in the first
-place — a control's `setValue()` is caller-driven by design (per
-`docs/contracts/control-api.md`), and this runtime has no way to tell "this
-change came from MIDI" apart from any other caller. A real device
-feedback loop (e.g. sending feedback for a value that just arrived from
-that same device) is exactly the kind of device-specific tuning a profile
-layer (ECS-39) would own — not something to guess at generically here.
+`bindControlMapping()` is the one piece of code sitting between both
+directions for a given `(mapping, control)` pair, so it's the one place
+that can tell "this change came from MIDI" apart from any other caller of
+`setValue()` (a UI, automation, another mapping): right before pushing a
+resolved value in, it remembers that value; the next `onChange` is skipped
+if it reports exactly that value back — that's the control confirming the
+change this function itself just made, not a new one to echo. A change to
+any other value, or the same value arriving again from somewhere else
+(after that first suppression is consumed), still sends feedback normally.
+
+This was originally scoped out (ECS-37) on the reasoning that "this runtime
+has no way to tell a MIDI-originated change apart from any other caller" —
+real hardware testing (a Launchpad Mini custom-mode fader bank, surfaced in
+webseq's ECS-38 integration) showed that reasoning was wrong for exactly
+the case that matters most: a continuous control whose device reflects
+incoming values as its own position/LED state (a touch fader, an LED ring)
+fought itself on every move, because every value it reported back was
+immediately echoed back to it. ECS-57 added the suppression above once
+that was a concrete, observed problem rather than a hypothetical one.
+
+What's still true: this needs no device knowledge, and still doesn't
+compare values for anything other than detecting its own just-made change
+(no clamping/rounding/dedup beyond that). A `Control` implementation that
+transforms a value before storing/reporting it (so the `onChange` value
+doesn't exactly equal what was pushed in) simply won't get suppression for
+that change — feedback fires as it always did, not a regression. Likewise,
+if `setValue()` is a no-op (the resolved value matches what the control
+already holds, so `onChange` never fires), the pending suppression can be
+consumed by a later, unrelated `onChange` that happens to match the same
+value — a narrow, documented edge case rather than something this runtime
+guards against with session windows or control-reported transaction ids.
 
 Nothing here knows what a `Control` is backed by, or what kind of device
 `input`/`output` talk to. Proven against the mock device
@@ -84,6 +106,11 @@ the other end.
 - **No device profiles** — nothing here names a collection of
   `ControlMapping`s as "the mapping for a Launchpad," or knows about any
   specific controller. That's ECS-39.
-- **No curves, conditions, or loop suppression** — same extension points
+- **No curves or conditions** — same extension points
   `docs/contracts/mapping.md` already named as deliberately undesigned;
   this ticket implements the contract as defined, not more.
+- **No cross-mapping or session-level echo suppression** — ECS-57's
+  suppression is scoped to one `bindControlMapping()` call's own
+  just-made change; it has no notion of "soft takeover," a time window, or
+  coordinating across multiple mappings/controls. A device-specific
+  takeover behavior is a profile-layer (ECS-39) concern, not this one.

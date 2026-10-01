@@ -154,8 +154,64 @@ describe("bindControlMapping — Control -> MIDI (feedback)", () => {
   });
 });
 
+describe("bindControlMapping — echo suppression (ECS-57)", () => {
+  it("does not echo feedback for the value an incoming message itself just set", () => {
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const control = createTestControl(cutoff);
+    const mapping: ControlMapping = {
+      id: "cc74-cutoff",
+      control: cutoff.id,
+      source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+      feedback: { address: { type: "control-change", controller: 20 }, channel: 0 },
+    };
+
+    bindControlMapping(mapping, input, output, control);
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 127)); // CC 74 -> cutoff = 18000
+
+    expect(control.getValue()).toBe(18000);
+    expect(rawOutput.sentMessages).toHaveLength(0); // no echo back out for the value MIDI just set
+  });
+
+  it("still sends feedback for a change from any other origin (e.g. a UI call to setValue)", () => {
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const control = createTestControl(cutoff);
+    const mapping: ControlMapping = {
+      id: "cc74-cutoff",
+      control: cutoff.id,
+      source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+      feedback: { address: { type: "control-change", controller: 20 }, channel: 0 },
+    };
+
+    bindControlMapping(mapping, input, output, control);
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 127)); // suppressed, per the test above
+    control.setValue(40); // a non-MIDI caller (e.g. a UI) changes the control afterward
+
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 20, 0]); // feedback for the 40 value
+  });
+
+  it("only suppresses the one onChange immediately caused by its own setValue(), not later ones", () => {
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const control = createTestControl(cutoff);
+    const mapping: ControlMapping = {
+      id: "cc74-cutoff",
+      control: cutoff.id,
+      source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+      feedback: { address: { type: "control-change", controller: 20 }, channel: 0 },
+    };
+
+    bindControlMapping(mapping, input, output, control);
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 127)); // suppressed: cutoff -> 18000
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 0)); // a second message, consumes/resets suppression: cutoff -> 40
+    control.setValue(18000); // a non-MIDI caller sets the SAME value the first message used
+
+    // The first message's suppression was already consumed by the second message's own
+    // onChange; this later, unrelated setValue(18000) is not treated as that old echo.
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 20, 127]);
+  });
+});
+
 describe("bindControlMapping — round trip", () => {
-  it("proves a Launchpad-style pad press updates a control, which lights feedback back out", () => {
+  it("a Launchpad-style pad press updates a control without echoing back to the same pad", () => {
     const { rawInput, input, output, rawOutput } = wiredPorts();
     const control = createTestControl(muted);
     const mapping: ControlMapping = {
@@ -166,9 +222,25 @@ describe("bindControlMapping — round trip", () => {
     };
 
     bindControlMapping(mapping, input, output, control);
-    rawInput.emitRawMessage(Uint8Array.of(0x90, 36, 127)); // Note On, channel 0
+    rawInput.emitRawMessage(Uint8Array.of(0x90, 36, 127)); // Note On, channel 0 -- the pad itself
 
     expect(control.getValue()).toBe(true);
-    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0x90, 36, 127]); // note-on feedback
+    expect(rawOutput.sentMessages).toHaveLength(0); // ECS-57: no echo back to the pad that just pressed it
+  });
+
+  it("a mute change from elsewhere still lights/unlights the pad via feedback", () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const control = createTestControl(muted);
+    const mapping: ControlMapping = {
+      id: "note36-mute",
+      control: muted.id,
+      source: { address: { type: "note", note: 36 }, channel: "any" },
+      feedback: { address: { type: "note", note: 36 }, channel: 0 },
+    };
+
+    bindControlMapping(mapping, input, output, control);
+    control.setValue(true); // e.g. a UI mute button, not the pad
+
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0x90, 36, 127]); // note-on lights the pad
   });
 });

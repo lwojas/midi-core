@@ -171,7 +171,8 @@ const mapping: ControlMapping = {
 };
 
 // Turning the knob calls cutoffControl.setValue(); cutoffControl changing
-// (from this mapping or anywhere else) sends feedback back out `output`.
+// for any other reason (a UI, automation, ...) sends feedback back out
+// `output` -- the echo back to the knob that just turned is suppressed.
 bindControlMapping(mapping, input, output, cutoffControl);
 ```
 
