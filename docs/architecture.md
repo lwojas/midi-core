@@ -145,3 +145,8 @@ none of them are implemented by this ticket.
   ECS-34's `ControlDef`/`Control` shapes, since the Control API couldn't be
   designed without first deciding those — see
   [docs/contracts/control-api.md](contracts/control-api.md#controlvalue-model-ecs-35).
+- ECS-36 — Define MIDI ↔ Control mapping contract (implements the Mapping
+  layer extension point above: bidirectional translation between a
+  `MidiMessage` and a `Control`, the only layer that depends on both Core
+  and the Control API) — see
+  [docs/contracts/mapping.md](contracts/mapping.md).

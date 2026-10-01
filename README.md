@@ -151,6 +151,37 @@ something this contract knows about. See
 [`docs/contracts/control-api.md`](docs/contracts/control-api.md) for the
 full shape and the reasoning behind it.
 
+## Bridging the two: MIDI ↔ Control mapping
+
+[`src/mapping/`](src/mapping) defines the bidirectional translation
+between a `MidiMessage` and a `Control` — what MIDI event drives a control
+(`MidiSource`), what control it drives (`ControlMapping.control`), and how
+a message's native value range (`0-127` for a CC, `0-16383` for pitch
+bend) maps onto a control's declared range (`resolveIncomingValue()`,
+`buildFeedbackMessage()` for the reverse direction):
+
+```ts
+import { resolveIncomingValue, type ControlMapping } from "./src/mapping/index.js";
+
+const mapping: ControlMapping = {
+  id: "cc74-filter-cutoff",
+  control: "fx.filter.cutoff",
+  source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+};
+
+input.onMessage((message) => {
+  const value = resolveIncomingValue(message, mapping.source, cutoffDef);
+  if (value !== undefined) cutoffControl.setValue(value);
+});
+```
+
+This is the only layer allowed to depend on both Core and the Control API
+(see [`docs/architecture.md`](docs/architecture.md)) — it's where MIDI
+messages are assigned application meaning. See
+[`docs/contracts/mapping.md`](docs/contracts/mapping.md) for the full
+source/target/channel/value-range/feedback shape and what's deliberately
+left as a future extension point (curves, conditions, device profiles).
+
 ## Development
 
 ```
@@ -173,3 +204,4 @@ npm run demo     # build, then serve demo/ for real Web MIDI hardware
 | Web MIDI adapter and demo | [`docs/contracts/bidirectional.md`](docs/contracts/bidirectional.md) |
 | Mock/test device | [`docs/contracts/mock-device.md`](docs/contracts/mock-device.md) |
 | Application Control API and control/value model (separate from Core) | [`docs/contracts/control-api.md`](docs/contracts/control-api.md) |
+| MIDI ↔ Control mapping (bridges Core and the Control API) | [`docs/contracts/mapping.md`](docs/contracts/mapping.md) |
