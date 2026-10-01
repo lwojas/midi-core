@@ -185,6 +185,24 @@ left as a future extension point (curves, conditions, device profiles), and
 `bindControlMapping()` itself — the runtime that wires the contract to a
 live `MidiInput`/`MidiOutput`/`Control`.
 
+## Using this as a package
+
+Consumers (e.g. [webseq](https://github.com/lwojas/webseq)) depend on this repo directly —
+`"midi-core": "github:lwojas/midi-core"` — and import from its subpaths, each mapping to one
+of the module boundaries above:
+
+```ts
+import { createMidiInput, createMidiOutput } from "midi-core";           // same as "midi-core/core"
+import type { Control, ControlRegistry } from "midi-core/control-api";
+import { bindControlMapping, type ControlMapping } from "midi-core/mapping";
+import { requestWebMidiAccess } from "midi-core/adapters/web-midi";
+import { createMockDevice } from "midi-core/adapters/mock";              // for tests
+```
+
+`npm install` on a git dependency runs this repo's own `prepare` script (`npm run build`),
+so `dist/` — gitignored here, like any build output — is produced automatically on install
+rather than committed. A consumer never needs to run `npm run build` in this repo itself.
+
 ## Development
 
 ```

@@ -3,8 +3,41 @@
   "version": "0.1.0",
   "description": "A small, reusable contract between MIDI hardware and its clients.",
   "type": "module",
+  "main": "dist/core/index.js",
+  "types": "dist/core/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./control-api": {
+      "types": "./dist/control-api/index.d.ts",
+      "import": "./dist/control-api/index.js"
+    },
+    "./mapping": {
+      "types": "./dist/mapping/index.d.ts",
+      "import": "./dist/mapping/index.js"
+    },
+    "./adapters/web-midi": {
+      "types": "./dist/adapters/web-midi/index.d.ts",
+      "import": "./dist/adapters/web-midi/index.js"
+    },
+    "./adapters/mock": {
+      "types": "./dist/adapters/mock/index.d.ts",
+      "import": "./dist/adapters/mock/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
