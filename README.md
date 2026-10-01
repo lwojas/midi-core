@@ -138,6 +138,19 @@ full mock API, including lifecycle/error simulation
 public API — discovery, connect/disconnect, state, and incoming/outgoing
 Note and CC messages — end to end against the mock.
 
+## Beyond MIDI Core: the Application Control API
+
+[`src/control-api/`](src/control-api) defines a separate, independent
+contract for reading, setting and observing abstract application
+controls/state (track volume, filter cutoff, transport status, ...) —
+deliberately with no dependency on `src/core/` or `src/adapters/`. It sits
+above the Device/Profile/Mapping layer in the architecture (see
+[`docs/architecture.md`](docs/architecture.md)): MIDI, UI and automation
+are all just things that might call a control's `setValue()`, not
+something this contract knows about. See
+[`docs/contracts/control-api.md`](docs/contracts/control-api.md) for the
+full shape and the reasoning behind it.
+
 ## Development
 
 ```
@@ -159,3 +172,4 @@ npm run demo     # build, then serve demo/ for real Web MIDI hardware
 | Output implementation | [`docs/contracts/output.md`](docs/contracts/output.md) |
 | Web MIDI adapter and demo | [`docs/contracts/bidirectional.md`](docs/contracts/bidirectional.md) |
 | Mock/test device | [`docs/contracts/mock-device.md`](docs/contracts/mock-device.md) |
+| Application Control API (separate from Core) | [`docs/contracts/control-api.md`](docs/contracts/control-api.md) |

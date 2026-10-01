@@ -136,3 +136,7 @@ none of them are implemented by this ticket.
   extension point above).
 - ECS-32 — Create MIDI Core mock/test device (implements the Mock/test
   device extension point above).
+- ECS-34 — Define application Control API (implements the Application
+  Control API layer above, as an independent contract separate from
+  Core — see
+  [docs/contracts/control-api.md](contracts/control-api.md)).
