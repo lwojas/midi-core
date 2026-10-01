@@ -1,7 +1,8 @@
 # Application Control API — Contract
 
 Status: Draft
-Linear: [ECS-34](https://linear.app/ecs3d/issue/ECS-34/define-application-control-api)
+Linear: [ECS-34](https://linear.app/ecs3d/issue/ECS-34/define-application-control-api),
+[ECS-35](https://linear.app/ecs3d/issue/ECS-35/define-controlvalue-model)
 Related: [docs/architecture.md](../architecture.md) (Application Control API layer)
 Source of truth: [`src/control-api/`](../../src/control-api)
 
@@ -55,6 +56,30 @@ booleans (mute/solo) and named options (playback status) uniformly, and
 does **not** introduce fixed, named fields like `TrackControls.volume` —
 per the ticket, what controls exist and what they're called is for
 whatever constructs them to decide, not for this contract to assume.
+
+## Control/value model (ECS-35)
+
+ECS-35 scoped a separate investigation into control identifiers, value
+types, normalisation, ranges and state-change semantics, depending on the
+Control API design above. Designing `Control`/`ControlDef` for ECS-34
+required settling exactly those questions first — a `Control` can't be
+specified without first deciding what its identifier, value type, and
+range/state-change semantics are — so that work landed as part of this
+contract rather than as a separate pass:
+
+- **Identifiers** — `ControlId` (opaque string, owner-scoped, e.g.
+  `"track.1.volume"`).
+- **Value types** — `ControlValueKind` (`"number" | "boolean" | "enum"`)
+  and the `ControlValue<D>` mapped type.
+- **Normalisation** — one generalized def shape (`NumericControlDef` /
+  `BooleanControlDef` / `EnumControlDef`) applied uniformly to any control,
+  replacing the bespoke per-owner fields (`Track.volume`, `PlaybackStatus`)
+  found in the webseq survey below.
+- **Ranges** — `NumericControlDef.min`/`max`/optional `step`.
+- **State-change semantics** — `Control.onChange(value, previous)` plus
+  `isValidControlValue()` defining what a legal state is.
+
+No further contract work remains open for ECS-35; see the shapes below.
 
 ## Shape: `ControlDef` and `Control`
 

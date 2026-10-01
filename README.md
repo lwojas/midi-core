@@ -172,4 +172,4 @@ npm run demo     # build, then serve demo/ for real Web MIDI hardware
 | Output implementation | [`docs/contracts/output.md`](docs/contracts/output.md) |
 | Web MIDI adapter and demo | [`docs/contracts/bidirectional.md`](docs/contracts/bidirectional.md) |
 | Mock/test device | [`docs/contracts/mock-device.md`](docs/contracts/mock-device.md) |
-| Application Control API (separate from Core) | [`docs/contracts/control-api.md`](docs/contracts/control-api.md) |
+| Application Control API and control/value model (separate from Core) | [`docs/contracts/control-api.md`](docs/contracts/control-api.md) |

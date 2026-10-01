@@ -140,3 +140,8 @@ none of them are implemented by this ticket.
   Control API layer above, as an independent contract separate from
   Core — see
   [docs/contracts/control-api.md](contracts/control-api.md)).
+- ECS-35 — Define control/value model (control identifiers, value types,
+  normalisation, ranges, state-change semantics). Settled as part of
+  ECS-34's `ControlDef`/`Control` shapes, since the Control API couldn't be
+  designed without first deciding those — see
+  [docs/contracts/control-api.md](contracts/control-api.md#controlvalue-model-ecs-35).
