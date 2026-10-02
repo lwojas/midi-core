@@ -261,6 +261,27 @@ protocol (MCU, Clock, MMC, or otherwise) ships here — this is the
 composition mechanism only; see
 [`docs/contracts/protocol-composition.md`](docs/contracts/protocol-composition.md).
 
+### A baseline: the generic MIDI profile
+
+[`src/profile/generic/`](src/profile/generic) ships the first actual
+profile built against the schema and composition model above:
+`GENERIC_MIDI_DEVICE_PROFILE`, describing nothing more than "a compliant
+MIDI device" — every channel-voice message kind, no manufacturer, no
+physical controls:
+
+```ts
+import { GENERIC_MIDI_DEVICE_PROFILE, GENERIC_MIDI_PROTOCOL } from "./src/profile/index.js";
+
+GENERIC_MIDI_DEVICE_PROFILE.identity; // { id: "generic.midi-device", manufacturer: "Generic", model: "Generic MIDI Device" }
+GENERIC_MIDI_DEVICE_PROFILE.ports[0].messageTypes; // note-on, note-off, control-change, program-change, ...
+```
+
+Use it as a placeholder for a connected device with no authored profile
+yet, or as a starting point for a real one: bind `GENERIC_MIDI_PROTOCOL`
+the same way this profile does, and add device-specific `extensions`
+instead of redeclaring the full channel-voice message set per device. See
+[`docs/contracts/generic-midi-profile.md`](docs/contracts/generic-midi-profile.md).
+
 ## Using this as a package
 
 Consumers (e.g. [webseq](https://github.com/lwojas/webseq)) depend on this repo directly —
@@ -306,3 +327,4 @@ npm run demo     # build, then serve demo/ for real Web MIDI hardware
 | MIDI ↔ Control mapping runtime (`bindControlMapping()`) | [`docs/contracts/mapping-runtime.md`](docs/contracts/mapping-runtime.md) |
 | Device profile schema | [`docs/contracts/device-profile.md`](docs/contracts/device-profile.md) |
 | Protocol/profile composition model | [`docs/contracts/protocol-composition.md`](docs/contracts/protocol-composition.md) |
+| Generic MIDI device profile | [`docs/contracts/generic-midi-profile.md`](docs/contracts/generic-midi-profile.md) |

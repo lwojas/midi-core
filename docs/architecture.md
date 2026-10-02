@@ -141,6 +141,11 @@ none of them are implemented by this ticket.
   device-specific extensions, instead of every device hand-authoring its
   full control layout) — see
   [docs/contracts/protocol-composition.md](contracts/protocol-composition.md).
+- ECS-41 — Define generic MIDI device profile (the first concrete profile
+  built against ECS-39/40: every channel-voice message kind, no
+  manufacturer assumptions, no physical controls, usable as a placeholder
+  or as a starting point for a real device profile) — see
+  [docs/contracts/generic-midi-profile.md](contracts/generic-midi-profile.md).
 - ECS-32 — Create MIDI Core mock/test device (implements the Mock/test
   device extension point above).
 - ECS-34 — Define application Control API (implements the Application

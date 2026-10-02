@@ -46,3 +46,12 @@ export {
   composePortMessageTypes,
   composeDeviceProfile,
 } from "./composition/compose.js";
+
+export { GENERIC_MIDI_CHANNEL_VOICE_MESSAGE_TYPES, GENERIC_MIDI_PROTOCOL } from "./generic/protocol.js";
+
+export {
+  GENERIC_MIDI_DEVICE_IDENTITY,
+  GENERIC_MIDI_DEVICE_PORTS,
+  GENERIC_MIDI_DEVICE_PROTOCOL_BINDINGS,
+  GENERIC_MIDI_DEVICE_PROFILE,
+} from "./generic/device-profile.js";
