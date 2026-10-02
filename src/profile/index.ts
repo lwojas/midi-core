@@ -55,3 +55,8 @@ export {
   GENERIC_MIDI_DEVICE_PROTOCOL_BINDINGS,
   GENERIC_MIDI_DEVICE_PROFILE,
 } from "./generic/device-profile.js";
+
+export type { DiagnosticSeverity, ProfileDiagnosticCode, ProfileDiagnostic } from "./validation/types/diagnostic.js";
+
+export { validateDeviceProfile } from "./validation/validate-profile.js";
+export { validateProtocolBindings } from "./validation/validate-bindings.js";

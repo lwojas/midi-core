@@ -282,6 +282,29 @@ the same way this profile does, and add device-specific `extensions`
 instead of redeclaring the full channel-voice message set per device. See
 [`docs/contracts/generic-midi-profile.md`](docs/contracts/generic-midi-profile.md).
 
+### Validating a profile
+
+[`src/profile/validation/`](src/profile/validation) checks a profile
+document (e.g. one loaded as JSON from a separate profiler tool, not
+something TypeScript has already verified) for dangling references,
+unknown enum values, and a `sysex`/`handshake` marked required with
+nothing in it to actually perform — reported as actionable diagnostics,
+never silently guessed or invented:
+
+```ts
+import { validateDeviceProfile, validateProtocolBindings } from "./src/profile/index.js";
+
+const diagnostics = validateDeviceProfile(JSON.parse(profileJson));
+// [{ severity: "error", code: "dangling-port-reference", path: "controls[2].portId", message: "..." }, ...]
+
+// Before composing, validate the composition's own inputs:
+validateProtocolBindings(protocolBindings, protocols, ports);
+```
+
+Both functions only report — never fix, coerce, or guess a default — see
+[`docs/contracts/profile-validation.md`](docs/contracts/profile-validation.md)
+for the full list of checks.
+
 ## Using this as a package
 
 Consumers (e.g. [webseq](https://github.com/lwojas/webseq)) depend on this repo directly —
@@ -328,3 +351,4 @@ npm run demo     # build, then serve demo/ for real Web MIDI hardware
 | Device profile schema | [`docs/contracts/device-profile.md`](docs/contracts/device-profile.md) |
 | Protocol/profile composition model | [`docs/contracts/protocol-composition.md`](docs/contracts/protocol-composition.md) |
 | Generic MIDI device profile | [`docs/contracts/generic-midi-profile.md`](docs/contracts/generic-midi-profile.md) |
+| Profile validation and diagnostics | [`docs/contracts/profile-validation.md`](docs/contracts/profile-validation.md) |

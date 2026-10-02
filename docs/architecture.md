@@ -146,6 +146,11 @@ none of them are implemented by this ticket.
   manufacturer assumptions, no physical controls, usable as a placeholder
   or as a starting point for a real device profile) — see
   [docs/contracts/generic-midi-profile.md](contracts/generic-midi-profile.md).
+- ECS-42 — Define profile validation and diagnostics (actionable findings
+  for a profile document's dangling references, unknown enum values, and
+  a `sysex`/`handshake` marked required with nothing in it to perform —
+  reported, never invented or guessed) — see
+  [docs/contracts/profile-validation.md](contracts/profile-validation.md).
 - ECS-32 — Create MIDI Core mock/test device (implements the Mock/test
   device extension point above).
 - ECS-34 — Define application Control API (implements the Application

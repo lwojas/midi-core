@@ -1,0 +1,53 @@
+/**
+ * A single, actionable finding from validating a device profile or a
+ * composition's inputs. "Actionable" per the ticket: `path` pinpoints
+ * exactly where in the document the problem is (e.g.
+ * `"controls[2].portId"`), and `message` says what's wrong in terms of the
+ * data itself — never a guess at what the author "probably meant."
+ *
+ * `severity` is deliberately just `"error" | "warning"`, not a richer
+ * scale: `"error"` means the document is structurally broken or makes a
+ * claim that can't be resolved (a dangling reference, an unknown enum
+ * value, an unresolved protocol); `"warning"` means the document is valid
+ * but under-specified in a way that would leave a consumer guessing (e.g.
+ * a handshake step with no description). Nothing here *fixes* or
+ * *infers* a correction — per the ticket, unsupported/unknown/unresolved
+ * behavior is reported, not papered over with an invented handshake or a
+ * guessed default.
+ */
+export type DiagnosticSeverity = "error" | "warning";
+
+export type ProfileDiagnosticCode =
+  | "invalid-document"
+  | "invalid-schema-version"
+  | "unsupported-schema-version"
+  | "invalid-identity"
+  | "invalid-port"
+  | "unknown-port-type"
+  | "unknown-message-type"
+  | "duplicate-port-id"
+  | "invalid-control"
+  | "unknown-control-kind"
+  | "unknown-control-value-mode"
+  | "unknown-feedback-kind"
+  | "duplicate-control-id"
+  | "dangling-port-reference"
+  | "invalid-grid"
+  | "duplicate-grid-id"
+  | "dangling-control-reference"
+  | "grid-cell-out-of-bounds"
+  | "duplicate-grid-cell"
+  | "sysex-required-no-manufacturer-id"
+  | "unknown-handshake-direction"
+  | "handshake-required-no-steps"
+  | "handshake-step-missing-description"
+  | "unresolved-protocol-reference"
+  | "duplicate-binding-id";
+
+export interface ProfileDiagnostic {
+  readonly severity: DiagnosticSeverity;
+  readonly code: ProfileDiagnosticCode;
+  /** Where in the document this finding applies, e.g. `"controls[2].portId"`. Empty string means the document as a whole. */
+  readonly path: string;
+  readonly message: string;
+}
