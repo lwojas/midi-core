@@ -35,3 +35,14 @@ export { HANDSHAKE_DIRECTIONS, isHandshakeDirection } from "./types/handshake.js
 
 export type { DeviceProfile } from "./types/profile.js";
 export { DEVICE_PROFILE_SCHEMA_VERSION } from "./types/profile.js";
+
+export type { ProtocolControlTemplate, ProtocolFamily } from "./composition/types/protocol.js";
+
+export type { ProtocolBinding } from "./composition/types/binding.js";
+
+export {
+  composeProtocolControls,
+  composeDeviceControls,
+  composePortMessageTypes,
+  composeDeviceProfile,
+} from "./composition/compose.js";

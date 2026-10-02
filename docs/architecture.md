@@ -135,6 +135,12 @@ none of them are implemented by this ticket.
 - ECS-39 — Define device profile schema (implements the Device profiles
   extension point above) — see
   [docs/contracts/device-profile.md](contracts/device-profile.md).
+- ECS-40 — Define protocol/profile composition model (lets a profile's
+  controls and message-level behavior be composed from reusable protocol
+  families — MCU, MIDI Clock/transport, MMC, vendor protocols — plus
+  device-specific extensions, instead of every device hand-authoring its
+  full control layout) — see
+  [docs/contracts/protocol-composition.md](contracts/protocol-composition.md).
 - ECS-32 — Create MIDI Core mock/test device (implements the Mock/test
   device extension point above).
 - ECS-34 — Define application Control API (implements the Application

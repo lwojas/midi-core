@@ -225,6 +225,42 @@ A profile describes the device, not application behavior: it has no
 the full shape and what's deliberately left to later tickets (validation,
 protocol composition, concrete device profiles).
 
+### Composing profiles from reusable protocols
+
+Many controllers partly implement a reusable protocol (Mackie Control,
+MIDI Clock/transport, MIDI Machine Control, a vendor protocol) rather than
+having a fully bespoke control layout. [`src/profile/composition/`](src/profile/composition)
+lets a profile's `controls`/`messageTypes` be composed from a
+`ProtocolFamily` (a named, reusable control/message-type definition) bound
+to one of the device's ports, plus whatever's actually device-specific:
+
+```ts
+import { composeDeviceProfile, type ProtocolFamily } from "./src/profile/index.js";
+
+const faderBank: ProtocolFamily = {
+  id: "example-fader-bank",
+  name: "Example Fader Bank",
+  controls: [
+    { id: "fader-1", label: "Fader 1", kind: "fader", input: { address: { type: "control-change", controller: 7 }, channel: 0 } },
+  ],
+};
+
+const profile = composeDeviceProfile({
+  identity: { id: "acme.example-grid", manufacturer: "Acme", model: "Example Grid" },
+  ports: [{ id: "main-in", type: "input", role: "main", required: true, messageTypes: [] }],
+  protocols: new Map([[faderBank.id, faderBank]]),
+  protocolBindings: [{ id: "strip", protocolId: faderBank.id, portId: "main-in" }],
+  extensions: [/* device-specific controls not covered by any protocol */],
+});
+```
+
+`composeDeviceProfile()` is built from smaller pure pieces
+(`composeProtocolControls()`, `composeDeviceControls()`,
+`composePortMessageTypes()`) a caller can use directly instead. No real
+protocol (MCU, Clock, MMC, or otherwise) ships here — this is the
+composition mechanism only; see
+[`docs/contracts/protocol-composition.md`](docs/contracts/protocol-composition.md).
+
 ## Using this as a package
 
 Consumers (e.g. [webseq](https://github.com/lwojas/webseq)) depend on this repo directly —
@@ -269,3 +305,4 @@ npm run demo     # build, then serve demo/ for real Web MIDI hardware
 | MIDI ↔ Control mapping (bridges Core and the Control API) | [`docs/contracts/mapping.md`](docs/contracts/mapping.md) |
 | MIDI ↔ Control mapping runtime (`bindControlMapping()`) | [`docs/contracts/mapping-runtime.md`](docs/contracts/mapping-runtime.md) |
 | Device profile schema | [`docs/contracts/device-profile.md`](docs/contracts/device-profile.md) |
+| Protocol/profile composition model | [`docs/contracts/protocol-composition.md`](docs/contracts/protocol-composition.md) |
