@@ -182,3 +182,8 @@ none of them are implemented by this ticket.
   the Mapping layer extension point above pointed to, composing
   `ControlMapping`/`bindControlMapping()` rather than replacing them) — see
   [docs/control-surface-architecture.md](control-surface-architecture.md).
+- ECS-65 — Define application-facing surface contract (extends the
+  Application Control API with `Action`, `Selection`/`SurfaceContext` and
+  `SurfaceEvent`/`SurfaceEventSource`, covering transport, track volumes,
+  parameters, steps and playhead without exposing device protocols) — see
+  [docs/contracts/control-api.md](contracts/control-api.md).
