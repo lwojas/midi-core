@@ -59,11 +59,14 @@ specific thing an earlier contract named as deferred:
   (`unknown-control-kind`), `valueMode` (if present) a real
   `ControlValueMode`, `feedback.kind` (if present) a real `FeedbackKind`;
   `portId` must resolve to a declared port (`dangling-port-reference`,
-  named directly in `device-profile.md`); no two controls share an `id`
-  (`duplicate-control-id` — this is also what catches a composition that
-  produced colliding ids, per `protocol-composition.md`, since by the
-  time controls reach this function their origin, protocol-composed or
-  hand-authored, no longer matters).
+  named directly in `device-profile.md`), and so must `feedbackPortId`
+  when present (same code, ECS-62 — the convention that `portId` names the
+  input-direction port made it possible to name feedback's own port
+  explicitly too); no two controls share an `id` (`duplicate-control-id` —
+  this is also what catches a composition that produced colliding ids, per
+  `protocol-composition.md`, since by the time controls reach this
+  function their origin, protocol-composed or hand-authored, no longer
+  matters).
 - **`grids`** — every cell's `(row, column)` must fall inside the grid's
   declared `rows`/`columns` (`grid-cell-out-of-bounds`), no two cells in
   one grid share a position (`duplicate-grid-cell`), every cell's

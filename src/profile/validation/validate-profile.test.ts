@@ -64,6 +64,24 @@ describe("validateDeviceProfile", () => {
     );
   });
 
+  it("flags a control referencing a nonexistent feedbackPortId", () => {
+    const profile = validProfile();
+    const broken = { ...profile, controls: [{ ...profile.controls[0], feedbackPortId: "ghost-port" }] };
+    expect(validateDeviceProfile(broken)).toContainEqual(
+      expect.objectContaining({ code: "dangling-port-reference", path: "controls[0].feedbackPortId" }),
+    );
+  });
+
+  it("accepts a control whose feedbackPortId resolves to a declared port", () => {
+    const profile = validProfile();
+    const withFeedbackPort = {
+      ...profile,
+      ports: [...profile.ports, { id: "main-out", type: "output", role: "main", required: true, messageTypes: ["note-on"] }],
+      controls: [{ ...profile.controls[0], feedbackPortId: "main-out" }],
+    };
+    expect(validateDeviceProfile(withFeedbackPort)).toEqual([]);
+  });
+
   it("flags an unknown control kind", () => {
     const profile = validProfile();
     const broken = { ...profile, controls: [{ ...profile.controls[0], kind: "lever" }] };

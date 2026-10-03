@@ -162,6 +162,15 @@ function checkControls(value: unknown, portIds: Set<string>, controlIds: Set<str
       });
     }
 
+    if (control.feedbackPortId !== undefined && (typeof control.feedbackPortId !== "string" || !portIds.has(control.feedbackPortId))) {
+      diagnostics.push({
+        severity: "error",
+        code: "dangling-port-reference",
+        path: `${path}.feedbackPortId`,
+        message: `Control "${control.id}" references feedbackPortId ${JSON.stringify(control.feedbackPortId)}, which isn't declared in ports.`,
+      });
+    }
+
     if (control.valueMode !== undefined && !isControlValueMode(control.valueMode)) {
       diagnostics.push({
         severity: "error",

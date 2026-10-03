@@ -43,9 +43,13 @@ aftertouch (pressure strips, pressure-sensitive pads) as physical controls.
 `ControlSurfaceAddress` — a superset covering `control-change`, `note`,
 `pitch-bend`, `program-change`, `channel-pressure` and `poly-pressure` —
 rather than reusing or widening the mapping layer's deliberately narrower
-type. `ControlAddress.channel` is always a concrete `Channel`, the same
-choice `mapping.md` makes for `MidiTarget`: a profile describes one real
-device's actual wiring, not a channel-agnostic rule.
+type. `ControlAddress.channel`, when present, is always a concrete `Channel`,
+the same choice `mapping.md` makes for `MidiTarget`: a profile describes
+one real device's actual wiring, not a channel-agnostic rule. It's
+optional (ECS-62) only to let a profile record a partially resolved fact
+— evidence sometimes documents a control's address without ever stating
+which channel it's reported/driven on — never as a `mapping`-style "any
+channel."
 
 ## Shape
 
@@ -54,7 +58,7 @@ interface DeviceProfile {
   readonly schemaVersion: string;
   readonly identity: DeviceIdentity;
   readonly ports: readonly DevicePortProfile[];
-  readonly controls: readonly PhysicalControl[];
+  readonly controls: readonly PhysicalControl[]; // { id, label, kind, portId, feedbackPortId?, input?, feedback?, valueMode? }
   readonly grids?: readonly ControlGrid[];
   readonly sysex?: DeviceSysExProfile;
   readonly handshake?: DeviceHandshake;
@@ -73,17 +77,32 @@ interface DeviceProfile {
   device port layouts vary too much to close that list; `required` says
   whether the device needs this port connected to function at all (some
   controllers expose an optional second port running a DAW-remote mode).
-- **`controls`** — `PhysicalControl`: `{ id, label, kind, portId, input?,
-  feedback?, valueMode? }`. `kind` is one of `"button" | "pad" | "knob" |
-  "encoder" | "fader" | "wheel"` — deliberately no `"key"`; keybed
-  controllers are a different domain this schema doesn't target.
-  `input`/`feedback` are both optional and independent (a button is
-  usually input-only; a pure indicator LED could be feedback-only; a pad
-  with its own LED is both). `valueMode` (`"absolute" | "relative"`,
-  omitted meaning absolute) describes a real, common encoder behavior —
-  each turn sending an increment/decrement rather than a position —
-  purely as a fact about the device's wire behavior; interpreting a
-  relative value is a mapping-layer concern, not this schema's.
+- **`controls`** — `PhysicalControl`: `{ id, label, kind, portId,
+  feedbackPortId?, input?, feedback?, valueMode? }`. `kind` is one of
+  `"button" | "pad" | "knob" | "encoder" | "fader" | "wheel"` —
+  deliberately no `"key"`; keybed controllers are a different domain this
+  schema doesn't target. `input`/`feedback` are both optional and
+  independent (a button is usually input-only; a pure indicator LED could
+  be feedback-only; a pad with its own LED is both). `valueMode`
+  (`"absolute" | "relative"`, omitted meaning absolute) describes a real,
+  common encoder behavior — each turn sending an increment/decrement
+  rather than a position — purely as a fact about the device's wire
+  behavior; interpreting a relative value is a mapping-layer concern, not
+  this schema's.
+  - **`portId`/`feedbackPortId` convention (ECS-62)** — ports are split by
+    direction (`DevicePortProfile`/`PortType`), so one physical
+    bidirectional control can span two port entries even though it's one
+    physical interface. By convention, `portId` always names the
+    control's *input*-direction port. `feedbackPortId` optionally names
+    `feedback`'s own port, when it's worth stating explicitly and differs
+    from `portId`; omit it when the control has no `feedback`, or when
+    which port backs it hasn't been pinned down by evidence.
+  - **`ControlAddress.channel` is optional (ECS-62)** — see "Why not reuse
+    `mapping`'s `MidiAddress`" above. Omitted means the control's address
+    (a note or CC number) is documented but which channel it's reported on
+    isn't — a partially resolved fact, recorded alongside the rest of
+    `unresolved`, not an all-or-nothing choice between inventing a channel
+    or dropping the whole `input`/`feedback` object.
 - **`grids`** — `ControlGrid`: `{ id, label, rows, columns, cells }`, where
   each `GridCell` is `{ row, column, controlId }` referencing a
   `PhysicalControl` already declared in `controls`. A grid is purely a

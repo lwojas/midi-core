@@ -19,7 +19,15 @@ import type { Channel } from "../../core/types/message.js";
  * Unlike `mapping`'s `MidiSource.channel` (which allows `"any"`, because a
  * mapping is authored once and applied regardless of which channel a
  * device happens to use), a profile is describing one real device's actual
- * wiring, so `channel` here is always a concrete `Channel`.
+ * wiring, so `channel`, when present, is always a concrete `Channel` — never
+ * `"any"`. It's optional only to let a profile record a *partially*
+ * resolved fact (ECS-62): evidence sometimes documents a control's address
+ * — a note or CC number — without ever stating which channel plain
+ * reporting uses. Omitting `channel` lets that address still be recorded
+ * (with the missing channel named in the generation pipeline's own
+ * `unresolved`), rather than forcing a choice between inventing a channel
+ * or discarding the whole `input`/`feedback` object and the address with
+ * it.
  */
 
 export interface ControlChangeAddress {
@@ -60,7 +68,8 @@ export type ControlSurfaceAddress =
 
 export interface ControlAddress {
   readonly address: ControlSurfaceAddress;
-  readonly channel: Channel;
+  /** Omitted means the address is documented but which channel it's reported/driven on isn't resolved yet — see the doc comment above. */
+  readonly channel?: Channel;
 }
 
 /** The kinds of physical control this schema models. Keyboard keybeds are out of scope — see docs/contracts/device-profile.md. */
@@ -123,14 +132,26 @@ export interface ControlFeedback {
  * whose press also lights its own LED). A profile with neither on some
  * control isn't a case this schema rules out here — see
  * docs/contracts/device-profile.md for why that's left to ECS-42.
+ *
+ * `portId` and `feedbackPortId` exist because a device's ports are split
+ * by direction (`DevicePortProfile`/`PortType`), so one physical
+ * bidirectional control can genuinely span two port entries. By
+ * convention (ECS-62), `portId` always names the control's *input*-
+ * direction port; `feedbackPortId` names `feedback`'s own port only when
+ * it's a different port than `portId` and worth stating explicitly. Omit
+ * `feedbackPortId` when the control has no `feedback`, or when which port
+ * backs it hasn't been pinned down — see the profile's own
+ * `fieldProvenance` (midi-profiler) for how that was determined.
  */
 export interface PhysicalControl {
   readonly id: string;
   readonly label: string;
   readonly kind: ControlKind;
-  /** The `DevicePortProfile.id` this control communicates on. */
+  /** The `DevicePortProfile.id` this control's `input` communicates on, by convention always the input-direction port. */
   readonly portId: string;
   readonly input?: ControlAddress;
   readonly feedback?: ControlFeedback;
+  /** The `DevicePortProfile.id` this control's `feedback` is sent on, when worth naming explicitly and different from `portId`. */
+  readonly feedbackPortId?: string;
   readonly valueMode?: ControlValueMode;
 }
