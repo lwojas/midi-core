@@ -96,7 +96,10 @@ for growth elsewhere without changing Core's contract:
 - **Mapping layer** — bidirectional translation between device profiles and the
   Application Control API is a separate, later concern (see project milestone
   sequence). Core's input/output contract is shaped so that a mapping layer can
-  be built on top of it without Core needing to change.
+  be built on top of it without Core needing to change. This layer is now named
+  **Control Surface**; see
+  [docs/control-surface-architecture.md](control-surface-architecture.md)
+  (ECS-64).
 - **Mock/test device** — Core's discovery and lifecycle contracts are designed
   to be implementable by a mock transport, so higher layers and tests do not
   require real hardware. This lands with ECS-27, not this ticket.
@@ -172,3 +175,10 @@ none of them are implemented by this ticket.
   an incoming message updates a control, and a control change sends MIDI
   back) — see
   [docs/contracts/mapping-runtime.md](contracts/mapping-runtime.md).
+- ECS-63 — Audit existing MIDI Core and mapping architecture against the
+  missing Control Surface layer — see
+  [docs/control-surface-audit.md](control-surface-audit.md).
+- ECS-64 — Define Control Surface architecture (names and bounds the layer
+  the Mapping layer extension point above pointed to, composing
+  `ControlMapping`/`bindControlMapping()` rather than replacing them) — see
+  [docs/control-surface-architecture.md](control-surface-architecture.md).
