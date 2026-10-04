@@ -243,8 +243,12 @@ defines:
   two narrow `onEnter`/`onExit`/`resolveBindings` hooks, no scripts or
   state machines) — see
   [docs/contracts/surface-bindings.md](./contracts/surface-bindings.md).
-- ECS-69 — Implement Control Surface runtime (wires 65–68's decisions to
-  this ticket's generation step and `bindControlMapping()`).
+- ECS-69 — Implement Control Surface runtime (`createSurfaceNavigation()`
+  plus `bindSurfaceMode()`/`bindActiveMode()`: the foundation that calls
+  `bindControlMapping()` against an injected generation step, without yet
+  implementing that generation step (ECS-72) or `attach()`/`detach()`
+  itself (ECS-76)) — see
+  [docs/contracts/surface-runtime.md](./contracts/surface-runtime.md).
 - ECS-70 — Implement application context/state interface.
 - ECS-71 — Build generic mock device profile and test harness.
 - ECS-72 — Implement basic control bindings (the profile → `ControlMapping`

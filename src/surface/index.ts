@@ -31,3 +31,10 @@ export type {
   SurfaceBindingTable,
 } from "./types/bindings.js";
 export { resolveControlId } from "./types/bindings.js";
+
+export type { GeneratedBinding, GenerateControlMappings } from "./types/generation.js";
+
+export { createSurfaceNavigation } from "./navigation.js";
+
+export type { SurfacePorts, BindSurfaceModeDeps, SurfaceModeTeardown } from "./bindings.js";
+export { bindSurfaceMode, bindActiveMode } from "./bindings.js";

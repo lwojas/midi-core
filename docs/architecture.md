@@ -203,3 +203,8 @@ none of them are implemented by this ticket.
   plus `onEnter`/`onExit`/`resolveBindings` as the only hooks, rejecting
   state machines and scripts as the mode-binding authoring mechanism) —
   see [docs/contracts/surface-bindings.md](contracts/surface-bindings.md).
+- ECS-69 — Implement Control Surface runtime (`createSurfaceNavigation()`'s
+  concrete modes, and `bindSurfaceMode()`/`bindActiveMode()`'s
+  install/teardown orchestration around an injected generation step and
+  the existing `bindControlMapping()`) — see
+  [docs/contracts/surface-runtime.md](contracts/surface-runtime.md).
