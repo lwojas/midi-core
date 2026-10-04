@@ -260,8 +260,10 @@ defines:
   paired with real mock MIDI ports and a `PhysicalControl`-id-driven
   harness) — see
   [docs/contracts/mock-surface-device.md](./contracts/mock-surface-device.md).
-- ECS-72 — Implement basic control bindings (the profile → `ControlMapping`
-  generation step named above).
+- ECS-72 — Implement basic control bindings (`generateControlMappings()`:
+  the profile → `ControlMapping` generation step named above, filling
+  ECS-69's injected `GenerateControlMappings` seam) — see
+  [docs/contracts/surface-generation.md](./contracts/surface-generation.md).
 - ECS-73/74 — Implement application → surface feedback / surface →
   application control.
 - ECS-75 — Implement basic mode switching.

@@ -221,3 +221,9 @@ none of them are implemented by this ticket.
   `createMockSurfaceHarness()`'s `PhysicalControl`-id-driven press/
   release/turnKnob and feedback inspection) — see
   [docs/contracts/mock-surface-device.md](contracts/mock-surface-device.md).
+- ECS-72 — Implement basic control bindings (`generateControlMappings()`
+  fills ECS-69's injected `GenerateControlMappings` seam: translates a
+  `PhysicalControl`'s declared `input`/`feedback` into a `MidiSource`/
+  `MidiTarget`, resolves its `ControlId` via `resolveControlId()`, and
+  pairs the result with its port id(s)) — see
+  [docs/contracts/surface-generation.md](contracts/surface-generation.md).
