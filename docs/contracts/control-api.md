@@ -215,7 +215,7 @@ export interface SurfaceEvent<P = undefined> {
 }
 
 export interface SurfaceEventSource {
-  onEvent(listener: (event: SurfaceEvent) => void): Unsubscribe;
+  onEvent(listener: (event: SurfaceEvent<unknown>) => void): Unsubscribe;
 }
 ```
 
@@ -223,6 +223,17 @@ An event with nothing useful to say beyond "this happened" carries no
 `payload`; one that does (which step fired) carries it as a plain value —
 the same restraint `EnumControlDef` applies to option values, so no
 engine-specific representation leaks through here either.
+
+**Correction (ECS-70):** `onEvent` originally took the bare `SurfaceEvent`
+(`P` defaulting to `undefined`), which couldn't actually type either
+payload-bearing example in the table below — implementing
+`createSurfaceEventSource()` against this contract surfaced that a step-
+triggered or playhead-tick event's `{ step: 3 }` failed to type-check.
+Widened to `SurfaceEvent<unknown>`: a `SurfaceEventSource` was already
+understood to report more than one kind of event, so a listener narrows
+on `event.id` to know what `payload` actually is, same as always —
+`unknown` only makes that narrowing required instead of (incorrectly)
+optional.
 
 ## Feedback
 

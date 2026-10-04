@@ -249,7 +249,12 @@ defines:
   implementing that generation step (ECS-72) or `attach()`/`detach()`
   itself (ECS-76)) — see
   [docs/contracts/surface-runtime.md](./contracts/surface-runtime.md).
-- ECS-70 — Implement application context/state interface.
+- ECS-70 — Implement application context/state interface
+  (`createControl()`/`createAction()`/`createControlRegistry()`/
+  `createSurfaceContext()`/`createSurfaceEventSource()`: the generic,
+  in-memory reference implementation `docs/contracts/control-api.md`
+  left unbuilt) — see
+  [docs/contracts/control-api-runtime.md](./contracts/control-api-runtime.md).
 - ECS-71 — Build generic mock device profile and test harness.
 - ECS-72 — Implement basic control bindings (the profile → `ControlMapping`
   generation step named above).

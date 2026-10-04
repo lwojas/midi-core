@@ -19,3 +19,16 @@ export type { ActionId, ActionDef, Action } from "./types/action.js";
 export type { Selection, SurfaceContext } from "./types/context.js";
 
 export type { SurfaceEventId, SurfaceEvent, SurfaceEventSource } from "./types/event.js";
+
+export { createControl } from "./control.js";
+
+export { createAction } from "./action.js";
+
+export type { MutableControlRegistry } from "./registry.js";
+export { createControlRegistry } from "./registry.js";
+
+export type { MutableSurfaceContext } from "./context.js";
+export { createSurfaceContext } from "./context.js";
+
+export type { EmittableSurfaceEventSource } from "./event.js";
+export { createSurfaceEventSource } from "./event.js";

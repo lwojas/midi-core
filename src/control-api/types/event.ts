@@ -20,6 +20,15 @@ export interface SurfaceEvent<P = undefined> {
 }
 
 export interface SurfaceEventSource {
-  /** Notifies on every event this source reports, in order, from subscription onward. */
-  onEvent(listener: (event: SurfaceEvent) => void): Unsubscribe;
+  /**
+   * Notifies on every event this source reports, in order, from
+   * subscription onward. Typed `SurfaceEvent<unknown>`, not the bare
+   * (so `P`-defaulted-to-`undefined`) `SurfaceEvent` — ECS-70 found that
+   * the bare form couldn't type this contract's own payload-bearing
+   * examples (a step-triggered/transport-tick event's `{ step: 3 }`); a
+   * listener narrows on `event.id` to know what `payload` actually is,
+   * the same way a `SurfaceEventSource` was already understood to report
+   * more than one kind of event.
+   */
+  onEvent(listener: (event: SurfaceEvent<unknown>) => void): Unsubscribe;
 }

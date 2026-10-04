@@ -208,3 +208,10 @@ none of them are implemented by this ticket.
   install/teardown orchestration around an injected generation step and
   the existing `bindControlMapping()`) — see
   [docs/contracts/surface-runtime.md](contracts/surface-runtime.md).
+- ECS-70 — Implement application context/state interface (the generic,
+  in-memory `Control`/`Action`/`ControlRegistry`/`SurfaceContext`/
+  `SurfaceEventSource` `docs/contracts/control-api.md` left unbuilt;
+  widened `SurfaceEventSource.onEvent` to `SurfaceEvent<unknown>` after
+  finding the bare default couldn't type the contract's own payload
+  examples) — see
+  [docs/contracts/control-api-runtime.md](contracts/control-api-runtime.md).
