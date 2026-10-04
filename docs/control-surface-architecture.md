@@ -239,7 +239,10 @@ defines:
   and who owns navigation) — see
   [docs/contracts/surface-navigation.md](./contracts/surface-navigation.md).
 - ECS-68 — Resolve declarative mapping vs. script/hook architecture (the
-  generation step's "binding table" shape).
+  generation step's "binding table" shape: declarative `ModeBinding`s plus
+  two narrow `onEnter`/`onExit`/`resolveBindings` hooks, no scripts or
+  state machines) — see
+  [docs/contracts/surface-bindings.md](./contracts/surface-bindings.md).
 - ECS-69 — Implement Control Surface runtime (wires 65–68's decisions to
   this ticket's generation step and `bindControlMapping()`).
 - ECS-70 — Implement application context/state interface.

@@ -198,3 +198,8 @@ none of them are implemented by this ticket.
   `SurfaceContext`'s application-owned selection, with context only ever
   influencing a mode by being read, never by writing it) — see
   [docs/contracts/surface-navigation.md](contracts/surface-navigation.md).
+- ECS-68 — Resolve declarative mapping vs. script/hook architecture
+  (`ModeBinding`'s declarative role ↔ `ControlId`/navigation-action pairs,
+  plus `onEnter`/`onExit`/`resolveBindings` as the only hooks, rejecting
+  state machines and scripts as the mode-binding authoring mechanism) —
+  see [docs/contracts/surface-bindings.md](contracts/surface-bindings.md).

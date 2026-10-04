@@ -18,3 +18,16 @@ export type {
   SurfaceNavigationChange,
   SurfaceNavigation,
 } from "./types/navigation.js";
+
+export type {
+  ControlRole,
+  ControlIdResolution,
+  NavigationAction,
+  ControlBinding,
+  NavigationBinding,
+  ModeBinding,
+  SurfaceModeHooks,
+  SurfaceModeDefinition,
+  SurfaceBindingTable,
+} from "./types/bindings.js";
+export { resolveControlId } from "./types/bindings.js";

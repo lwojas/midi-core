@@ -1,0 +1,149 @@
+import type { ControlId } from "../../control-api/types/control.js";
+import type { SurfaceContext } from "../../control-api/types/context.js";
+import type { GridOffset, SurfaceModeId } from "./navigation.js";
+
+/**
+ * Declarative mode bindings (ECS-68): the "binding table" shape
+ * `docs/control-surface-architecture.md`'s generation step
+ * (`(DeviceProfile, binding table) -> ControlMapping[]`) left open. A
+ * binding never carries MIDI address data of its own — only a
+ * `PhysicalControl.id` to look up (`docs/contracts/device-profile.md`
+ * already owns `input`/`feedback`) and a role/resolution pair the
+ * generation step (ECS-72) turns into a `ControlMapping`
+ * (`docs/contracts/mapping.md`). Re-authoring a note or CC number here
+ * would be exactly the duplication the architecture doc already rules
+ * out.
+ */
+
+/**
+ * Owner-defined, like `ControlId`/`Selection.scope` — "pad grid",
+ * "transport play", "track fader". Pure documentation: no resolution
+ * logic reads `role` itself, the same way a `ControlDef.label` carries no
+ * behavior. Kept because the architecture doc already frames the whole
+ * generation step around assigning a role to each `PhysicalControl`.
+ */
+export type ControlRole = string;
+
+/**
+ * How a role's `ControlId` is resolved for the application's current
+ * context — declarative data, never a function:
+ *
+ * - `"static"` — the common case: a role that always means the same
+ *   `ControlId` regardless of selection (e.g. "transport play" ->
+ *   `"transport.play"`).
+ * - `"from-selection"` — a role whose target depends on the
+ *   application's current `Selection` (`docs/contracts/control-api.md`):
+ *   `{ kind: "from-selection", scope: "track", template: "track.{id}.volume" }`
+ *   substitutes the current `Selection(scope: "track").id` for every
+ *   `"{id}"` in `template`.
+ *
+ * One placeholder, no expression language beyond it — a role needing more
+ * than substituting one selection's id, or any actual computation, is
+ * exactly what `SurfaceModeHooks.resolveBindings` below is for, not a
+ * richer template syntax here.
+ */
+export type ControlIdResolution =
+  | { readonly kind: "static"; readonly controlId: ControlId }
+  | { readonly kind: "from-selection"; readonly scope: string; readonly template: string };
+
+/**
+ * A surface-local action a binding triggers directly, instead of
+ * resolving to an application `ControlId` — the hardware "next page"/
+ * "previous page"/mode-select controls that `SurfaceNavigation`
+ * (ECS-67, `docs/contracts/surface-navigation.md`) already owns.
+ * Declarative for the same reason `ControlIdResolution` is: these are the
+ * fixed gestures `pageBy()`/`setMode()` already define, not new behavior,
+ * so no hook is needed for "navigation" at all — one of the ticket's four
+ * named hook categories turns out not to need a hook.
+ */
+export type NavigationAction =
+  | { readonly kind: "set-mode"; readonly mode: SurfaceModeId }
+  | { readonly kind: "page-by"; readonly delta: GridOffset };
+
+interface ModeBindingBase {
+  /** `PhysicalControl.id` (`docs/contracts/device-profile.md`) this binding assigns meaning to. */
+  readonly physicalControlId: string;
+  readonly role: ControlRole;
+}
+
+export interface ControlBinding extends ModeBindingBase {
+  readonly kind: "control";
+  readonly resolve: ControlIdResolution;
+}
+
+export interface NavigationBinding extends ModeBindingBase {
+  readonly kind: "navigate";
+  readonly navigate: NavigationAction;
+}
+
+/** One `PhysicalControl`'s assigned meaning within a mode — either an application control to drive, or a surface-local navigation action. */
+export type ModeBinding = ControlBinding | NavigationBinding;
+
+/**
+ * The two genuine escape valves a declarative `bindings` list can't
+ * express — not a general scripting surface. Both optional; most modes
+ * need neither. Named functions with narrow signatures, not a
+ * string/expression DSL: this is a TypeScript library already consumed
+ * by TypeScript integrations, so "no arbitrary JavaScript required"
+ * means the *default* authoring path is data, not that a hook must avoid
+ * being a function.
+ */
+export interface SurfaceModeHooks {
+  /**
+   * Runs once when entering this mode, before its `bindings` are bound —
+   * for unusual initialization or a protocol quirk no declarative field
+   * covers (e.g. a device-specific mode-select message that isn't part
+   * of `DeviceHandshake` because it happens on every mode switch, not
+   * once at connection time). No `MidiOutput` is passed in: the same
+   * device-specific-knowledge boundary `HandshakeExecutor`
+   * (`docs/contracts/surface-lifecycle.md`) already draws — whoever
+   * supplies this hook supplies its own access to the device.
+   */
+  onEnter?(): Promise<void> | void;
+  /** Runs once when leaving this mode, after its `bindings` are unbound — cleanup for whatever `onEnter` did. */
+  onExit?(): Promise<void> | void;
+  /**
+   * Replaces `bindings` for a mode whose control set can't be fixed at
+   * authoring time (e.g. one pad per currently-existing track). Returns
+   * the same declarative `ModeBinding[]` shape `bindings` would have held
+   * — a dynamic mode still produces data for the generation step (ECS-72)
+   * to consume, not a second, imperative code path.
+   */
+  resolveBindings?(context: SurfaceContext): readonly ModeBinding[];
+}
+
+/**
+ * One mode's complete binding table. Exactly one of `bindings`/
+ * `hooks.resolveBindings` is expected to supply the mode's `ModeBinding`s
+ * for a given attach — `bindings` for the common, fixed case,
+ * `resolveBindings` for a dynamic one. Enforcing that isn't this
+ * contract's job; see "What's deliberately not here" below.
+ */
+export interface SurfaceModeDefinition {
+  readonly mode: SurfaceModeId;
+  readonly bindings?: readonly ModeBinding[];
+  readonly hooks?: SurfaceModeHooks;
+}
+
+/** The full binding table `docs/control-surface-architecture.md`'s generation step consumes: one `SurfaceModeDefinition` per mode a surface supports. */
+export type SurfaceBindingTable = readonly SurfaceModeDefinition[];
+
+/**
+ * Resolves a `ControlIdResolution` against the application's current
+ * `SurfaceContext`. Returns `undefined` rather than throwing when
+ * `"from-selection"` names a `scope` with nothing currently selected —
+ * the same choice `docs/contracts/mapping.md`'s own resolution functions
+ * make for an unsupported pairing: a binding authored (or dynamically
+ * produced) for a selection that hasn't happened yet shouldn't be able to
+ * take down a live mode switch.
+ */
+export function resolveControlId(resolution: ControlIdResolution, context: SurfaceContext): ControlId | undefined {
+  if (resolution.kind === "static") {
+    return resolution.controlId;
+  }
+  const selection = context.getSelection(resolution.scope);
+  if (!selection) {
+    return undefined;
+  }
+  return resolution.template.split("{id}").join(selection.id);
+}
