@@ -30,6 +30,10 @@
       "types": "./dist/profile/index.d.ts",
       "import": "./dist/profile/index.js"
     },
+    "./surface": {
+      "types": "./dist/surface/index.d.ts",
+      "import": "./dist/surface/index.js"
+    },
     "./adapters/web-midi": {
       "types": "./dist/adapters/web-midi/index.d.ts",
       "import": "./dist/adapters/web-midi/index.js"

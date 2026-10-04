@@ -233,7 +233,8 @@ defines:
 - ECS-65 — Define application-facing surface contract (the Application
   Contract box above, extending `docs/contracts/control-api.md`).
 - ECS-66 — Define surface lifecycle and runtime model (Control Surface's
-  attach/detach/cleanup, built on Core's connection lifecycle).
+  attach/detach/cleanup, built on Core's connection lifecycle) — see
+  [docs/contracts/surface-lifecycle.md](./contracts/surface-lifecycle.md).
 - ECS-67 — Define modes/context model (which `ControlMapping` set is active,
   and who owns navigation).
 - ECS-68 — Resolve declarative mapping vs. script/hook architecture (the

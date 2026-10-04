@@ -187,3 +187,9 @@ none of them are implemented by this ticket.
   `SurfaceEvent`/`SurfaceEventSource`, covering transport, track volumes,
   parameters, steps and playhead without exposing device protocols) — see
   [docs/contracts/control-api.md](contracts/control-api.md).
+- ECS-66 — Define surface lifecycle and runtime model (`ControlSurface`'s
+  attach/detach as one aggregate state over Core's own per-port
+  `ConnectionState`, the handshake-execution boundary, and where
+  `ControlMapping` binding hooks into the lifecycle without this ticket
+  deciding what a binding is) — see
+  [docs/contracts/surface-lifecycle.md](contracts/surface-lifecycle.md).
