@@ -273,7 +273,14 @@ defines:
   feedback, since a `"note"` address only ever pairs with a boolean
   control) — see
   [docs/contracts/application-surface-feedback.md](./contracts/application-surface-feedback.md).
-- ECS-74 — Implement surface → application control.
+- ECS-74 — Implement surface → application control
+  (`bindActionTrigger()`: the missing MIDI → `Action` half, symmetric to
+  ECS-73's event-feedback gap — `ControlMapping` only ever drives a
+  `Control`'s value, never a fire-and-forget command; demonstrates
+  volume/step input via the existing path and play/stop/record via the
+  new one, with no raw MIDI vocabulary in application-side assertions)
+  — see
+  [docs/contracts/surface-application-control.md](./contracts/surface-application-control.md).
 - ECS-75 — Implement basic mode switching.
 - ECS-76 — Implement surface lifecycle/error handling.
 - ECS-77 — Validate minimal surface against a generic mock device (proof

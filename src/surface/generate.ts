@@ -37,8 +37,13 @@ function toMidiAddress(address: ControlSurfaceAddress): MidiAddress | undefined 
  * "feedback-only, no source" to fall back to. Unresolved, since no
  * concrete profile has needed one yet; a future `ControlMapping` variant
  * for that case is `mapping.md`'s decision, not invented here.
+ *
+ * Exported (ECS-74) for `src/surface/action-binding.ts`'s demonstration
+ * code, which needs the same `PhysicalControl` -> `MidiSource`
+ * translation to match a button press for an `Action` trigger — reusing
+ * this rather than re-deriving address translation a second time.
  */
-function toMidiSource(control: PhysicalControl): MidiSource | undefined {
+export function toMidiSource(control: PhysicalControl): MidiSource | undefined {
   if (!control.input) return undefined;
   const address = toMidiAddress(control.input.address);
   if (!address) return undefined;

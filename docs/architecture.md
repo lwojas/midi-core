@@ -234,3 +234,10 @@ none of them are implemented by this ticket.
   feedback to the mock device's knobs since a `"note"` target only ever
   pairs with a boolean control) — see
   [docs/contracts/application-surface-feedback.md](contracts/application-surface-feedback.md).
+- ECS-74 — Implement surface → application control
+  (`bindActionTrigger()`'s MIDI → `Action` direction — reusing
+  `resolveIncomingValue()`'s existing press/threshold rules rather than
+  new matching logic — demonstrated alongside the existing MIDI →
+  `Control` direction against volume/step input and play/stop/record)
+  — see
+  [docs/contracts/surface-application-control.md](contracts/surface-application-control.md).
