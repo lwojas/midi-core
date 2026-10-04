@@ -32,9 +32,19 @@ later proof need (ECS-77's own description names exactly these three):
 
 | Group | Count | Address | Feedback | Proof need |
 |---|---|---|---|---|
-| `knob-1`..`knob-8` | 8 | CC 11–18, channel 0 | none | Mixer: 8 controls → 8 track volumes |
+| `knob-1`..`knob-8` | 8 | CC 11–18, channel 0 | CC 11–18, channel 0, `main-out` (ECS-73) | Mixer: 8 controls → 8 track volumes, feedback ← volume |
 | `button-1`..`button-4` | 4 | note 101–104, channel 0 | none | Transport: buttons → play/stop/record(/spare) |
 | `pad-1`..`pad-8` | 8 | note 37–44, channel 0 | note 37–44, channel 0, `main-out` | Step Grid: grid → steps, feedback ← active step/playhead |
+
+**Revised for ECS-73:** knobs originally shipped input-only. A `"note"`
+address can only pair with a boolean control
+(`docs/contracts/mapping.md`'s source/target table), so demonstrating
+*numeric or enum* feedback (track volume, transport status) needed a
+CC-addressed feedback target — nothing on this device had one until
+ECS-73 added it to the knobs, modeling a motorized fader/LED-ring
+encoder that reports position and accepts a position-set on the same
+CC. Buttons remain input-only; nothing in this ticket's proof set needed
+them to have feedback.
 
 The pads are also the ticket's "eight feedback outputs" and the grid's
 cells — one `ControlGrid` (`"step-grid"`, 1 row × 8 columns) laying them

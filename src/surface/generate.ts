@@ -52,8 +52,13 @@ function toMidiSource(control: PhysicalControl): MidiSource | undefined {
  * unresolved (ECS-62's partially-known-evidence case); when it is, this
  * returns `undefined` and the resulting mapping is simply input-only,
  * rather than guessing a channel to make feedback "work."
+ *
+ * Exported (ECS-73) for `src/surface/event-feedback.ts`'s demonstration
+ * code, which needs the same `PhysicalControl` -> `MidiTarget`
+ * translation to build a feedback message for a `SurfaceEvent` — reusing
+ * this rather than re-deriving address translation a second time.
  */
-function toMidiTarget(control: PhysicalControl): MidiTarget | undefined {
+export function toMidiTarget(control: PhysicalControl): MidiTarget | undefined {
   if (!control.feedback) return undefined;
   const channel = control.feedback.address.channel;
   if (channel === undefined) return undefined;

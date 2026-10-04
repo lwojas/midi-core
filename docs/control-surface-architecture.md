@@ -264,8 +264,16 @@ defines:
   the profile → `ControlMapping` generation step named above, filling
   ECS-69's injected `GenerateControlMappings` seam) — see
   [docs/contracts/surface-generation.md](./contracts/surface-generation.md).
-- ECS-73/74 — Implement application → surface feedback / surface →
-  application control.
+- ECS-73 — Implement application → surface feedback
+  (`bindEventFeedback()`: the missing `SurfaceEventSource` → MIDI half
+  `docs/contracts/control-api.md`'s own "Feedback" section already
+  named; demonstrates track volume/transport status/active steps via
+  the existing `bindControlMapping()` path, and playhead via the new
+  one; revised `MOCK_SURFACE_DEVICE_PROFILE`'s knobs to carry CC
+  feedback, since a `"note"` address only ever pairs with a boolean
+  control) — see
+  [docs/contracts/application-surface-feedback.md](./contracts/application-surface-feedback.md).
+- ECS-74 — Implement surface → application control.
 - ECS-75 — Implement basic mode switching.
 - ECS-76 — Implement surface lifecycle/error handling.
 - ECS-77 — Validate minimal surface against a generic mock device (proof

@@ -13,19 +13,30 @@ import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "../types/prof
  * without needing a real controller or Launchpad-specific knowledge.
  *
  * Shape, per the ticket: eight continuous controls (`knob-1`..`knob-8`,
- * CC input only — the "eight controls -> eight track volumes" Mixer
- * proof needs), four buttons (`button-1`..`button-4`, note input only —
- * Transport), and an eight-pad row (`pad-1`..`pad-8`, note input *and*
- * note feedback — the "eight feedback outputs" the ticket names, and the
- * Step Grid's cells). No `sysex`/`handshake`: nothing about this device
- * needs either, and inventing one here would be exactly the kind of
- * profile this ticket's "do not expand into general device profiling"
- * warns against.
+ * CC input *and* CC feedback — the "eight controls -> eight track
+ * volumes" Mixer proof needs a physical target for volume feedback to
+ * reach, same as a real motorized fader or LED-ring encoder reports
+ * position and accepts a position-set on the same CC), four buttons
+ * (`button-1`..`button-4`, note input only — Transport), and an
+ * eight-pad row (`pad-1`..`pad-8`, note input *and* note feedback — the
+ * "eight feedback outputs" the ticket names, and the Step Grid's cells).
+ * No `sysex`/`handshake`: nothing about this device needs either, and
+ * inventing one here would be exactly the kind of profile this ticket's
+ * "do not expand into general device profiling" warns against.
  *
  * Every control resolves a concrete `channel` (`0`) — unlike a profile
  * assembled from partial real-world evidence (ECS-62's `unresolved`
  * case), nothing here is partially known, so there's no reason to leave
  * it unresolved.
+ *
+ * **Revised for ECS-73.** Knobs originally shipped input-only (ECS-71).
+ * `docs/contracts/mapping.md`'s own source/target table only pairs a
+ * `"note"` address with a boolean control — exactly what the pads
+ * already are — so demonstrating *numeric or enum* feedback (track
+ * volume, transport status) needs a CC-addressed feedback target, which
+ * nothing on this device had until this ticket added it to the knobs.
+ * Narrow, concrete-need-driven revision to an already-shipped profile,
+ * the same pattern ECS-62 and ECS-70 already set.
  */
 
 export const MOCK_SURFACE_DEVICE_IDENTITY: DeviceIdentity = {
@@ -37,16 +48,19 @@ export const MOCK_SURFACE_DEVICE_IDENTITY: DeviceIdentity = {
 /** One full-duplex port pair, matching `createMockSurfaceDevice()`'s real mock ports by id. Feedback is a nice-to-have, not required to operate the device, so only the input port is `required`. */
 export const MOCK_SURFACE_DEVICE_PORTS: readonly DevicePortProfile[] = [
   { id: "main-in", type: "input", role: "main", required: true, messageTypes: ["note-on", "note-off", "control-change"] },
-  { id: "main-out", type: "output", role: "main", required: false, messageTypes: ["note-on", "note-off"] },
+  { id: "main-out", type: "output", role: "main", required: false, messageTypes: ["note-on", "note-off", "control-change"] },
 ];
 
 function knobControl(index: number): PhysicalControl {
+  const controller = 10 + index;
   return {
     id: `knob-${index}`,
     label: `Knob ${index}`,
     kind: "knob",
     portId: "main-in",
-    input: { address: { type: "control-change", controller: 10 + index }, channel: 0 },
+    input: { address: { type: "control-change", controller }, channel: 0 },
+    feedback: { kind: "motorized", address: { address: { type: "control-change", controller }, channel: 0 } },
+    feedbackPortId: "main-out",
   };
 }
 
@@ -73,7 +87,7 @@ function padControl(index: number): PhysicalControl {
   };
 }
 
-/** `knob-1`..`knob-8` — CC 11-18, channel 0. Input only. */
+/** `knob-1`..`knob-8` — CC 11-18, channel 0. Input and feedback share the same CC/channel (the same number reports position and accepts a position-set, a real and common motorized-fader/LED-ring-encoder convention), feedback going out on `main-out`. */
 export const MOCK_SURFACE_KNOBS: readonly PhysicalControl[] = Array.from({ length: 8 }, (_, i) => knobControl(i + 1));
 
 /** `button-1`..`button-4` — note 101-104, channel 0. Input only. */

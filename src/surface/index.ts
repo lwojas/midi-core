@@ -39,4 +39,7 @@ export { createSurfaceNavigation } from "./navigation.js";
 export type { SurfacePorts, BindSurfaceModeDeps, SurfaceModeTeardown } from "./bindings.js";
 export { bindSurfaceMode, bindActiveMode } from "./bindings.js";
 
-export { generateControlMappings } from "./generate.js";
+export { generateControlMappings, toMidiTarget } from "./generate.js";
+
+export type { EventFeedbackEncoder } from "./event-feedback.js";
+export { bindEventFeedback } from "./event-feedback.js";

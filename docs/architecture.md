@@ -227,3 +227,10 @@ none of them are implemented by this ticket.
   `MidiTarget`, resolves its `ControlId` via `resolveControlId()`, and
   pairs the result with its port id(s)) — see
   [docs/contracts/surface-generation.md](contracts/surface-generation.md).
+- ECS-73 — Implement application → surface feedback
+  (`bindEventFeedback()`'s `SurfaceEventSource` → MIDI direction,
+  demonstrated alongside the existing `Control` → MIDI direction against
+  track volume/transport status/active steps/playhead; added CC
+  feedback to the mock device's knobs since a `"note"` target only ever
+  pairs with a boolean control) — see
+  [docs/contracts/application-surface-feedback.md](contracts/application-surface-feedback.md).

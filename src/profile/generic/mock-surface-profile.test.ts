@@ -26,10 +26,11 @@ describe("MOCK_SURFACE_DEVICE_PROFILE", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("knobs are CC input-only (no feedback)", () => {
+  it("knobs have both CC input and CC feedback, routed to main-out", () => {
     for (const knob of MOCK_SURFACE_KNOBS) {
       expect(knob.input?.address.type).toBe("control-change");
-      expect(knob.feedback).toBeUndefined();
+      expect(knob.feedback?.address.address.type).toBe("control-change");
+      expect(knob.feedbackPortId).toBe("main-out");
     }
   });
 
