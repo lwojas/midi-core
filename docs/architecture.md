@@ -193,3 +193,8 @@ none of them are implemented by this ticket.
   `ControlMapping` binding hooks into the lifecycle without this ticket
   deciding what a binding is) — see
   [docs/contracts/surface-lifecycle.md](contracts/surface-lifecycle.md).
+- ECS-67 — Define modes/context model (`SurfaceNavigation`'s
+  surface-owned mode/bank/page/grid-offset, kept strictly separate from
+  `SurfaceContext`'s application-owned selection, with context only ever
+  influencing a mode by being read, never by writing it) — see
+  [docs/contracts/surface-navigation.md](contracts/surface-navigation.md).

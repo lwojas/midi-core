@@ -3,6 +3,7 @@ import type { DeviceProfile } from "../../profile/types/profile.js";
 import type { HandshakeStep } from "../../profile/types/handshake.js";
 import type { SurfaceError } from "./errors.js";
 import type { SurfaceLifecycleChange, SurfaceLifecycleState } from "./lifecycle.js";
+import type { SurfaceNavigation } from "./navigation.js";
 
 /**
  * Performs one `HandshakeStep` a device profile declares (`sent`: send
@@ -40,6 +41,11 @@ export interface HandshakeExecutor {
  *   when bindings should be installed, entering `"detaching"` is when
  *   they should be torn down — without deciding how a binding set is
  *   authored or produced (ECS-68) or which mode is active (ECS-67).
+ * - **`navigation`** (`docs/contracts/surface-navigation.md`, ECS-67) is
+ *   the surface's own mode/bank/page state — independent of lifecycle:
+ *   it exists for the `ControlSurface`'s whole lifetime, not reset or
+ *   reinitialized by `attach()`/`detach()`, since a mode switch or a page
+ *   turn is not itself a connection event.
  *
  * `attach()` connects every port `profile.ports` marks `required`, then
  * runs `profile.handshake`'s steps (if `required`) through `executor` —
@@ -59,6 +65,7 @@ export interface HandshakeExecutor {
 export interface ControlSurface {
   readonly profile: DeviceProfile;
   readonly state: SurfaceLifecycleState;
+  readonly navigation: SurfaceNavigation;
 
   attach(): Promise<void>;
   detach(): Promise<void>;

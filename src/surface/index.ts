@@ -10,3 +10,11 @@ export type { SurfaceErrorCode, SurfaceError } from "./types/errors.js";
 export { SURFACE_ERROR_CODES, isSurfaceErrorCode } from "./types/errors.js";
 
 export type { HandshakeExecutor, ControlSurface } from "./types/runtime.js";
+
+export type {
+  SurfaceModeId,
+  GridOffset,
+  SurfaceNavigationState,
+  SurfaceNavigationChange,
+  SurfaceNavigation,
+} from "./types/navigation.js";

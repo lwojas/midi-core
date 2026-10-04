@@ -236,7 +236,8 @@ defines:
   attach/detach/cleanup, built on Core's connection lifecycle) — see
   [docs/contracts/surface-lifecycle.md](./contracts/surface-lifecycle.md).
 - ECS-67 — Define modes/context model (which `ControlMapping` set is active,
-  and who owns navigation).
+  and who owns navigation) — see
+  [docs/contracts/surface-navigation.md](./contracts/surface-navigation.md).
 - ECS-68 — Resolve declarative mapping vs. script/hook architecture (the
   generation step's "binding table" shape).
 - ECS-69 — Implement Control Surface runtime (wires 65–68's decisions to
