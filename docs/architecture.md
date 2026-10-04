@@ -245,3 +245,10 @@ none of them are implemented by this ticket.
   unbind-then-bind sequence, demonstrated across Mixer/Transport/Step
   Grid sharing one profile and one mock device) — see
   [docs/contracts/mode-switching.md](contracts/mode-switching.md).
+- ECS-76 — Implement surface lifecycle/error handling
+  (`createControlSurface()`'s real `attach()`/`detach()`, handshake
+  execution, spontaneous-disconnect detection, and the
+  `navigation.onChange()` subscription — serialized through one queue —
+  that now owns mode switching for the surface's attached lifetime) —
+  see
+  [docs/contracts/surface-lifecycle-runtime.md](contracts/surface-lifecycle-runtime.md).

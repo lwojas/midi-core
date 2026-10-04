@@ -287,7 +287,13 @@ defines:
   Mixer/Transport/Step Grid sharing one profile on the generic mock
   surface device) — see
   [docs/contracts/mode-switching.md](./contracts/mode-switching.md).
-- ECS-76 — Implement surface lifecycle/error handling.
+- ECS-76 — Implement surface lifecycle/error handling
+  (`createControlSurface()`: real `attach()`/`detach()` over live ports
+  and an optional `HandshakeExecutor`, spontaneous-disconnect detection,
+  and the `navigation.onChange()` subscription ECS-75 deferred — "that's
+  `ControlSurface.attach()`" — now owning mode switching for the
+  surface's whole attached lifetime) — see
+  [docs/contracts/surface-lifecycle-runtime.md](./contracts/surface-lifecycle-runtime.md).
 - ECS-77 — Validate minimal surface against a generic mock device (proof
   scope step 2 above).
 - ECS-78 — Integrate the sequencer through the Control Surface contract.

@@ -47,3 +47,6 @@ export { bindEventFeedback } from "./event-feedback.js";
 export { bindActionTrigger } from "./action-binding.js";
 
 export { switchMode } from "./mode-switching.js";
+
+export type { ControlSurfaceDeps } from "./runtime.js";
+export { createControlSurface } from "./runtime.js";
