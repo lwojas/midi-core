@@ -45,3 +45,5 @@ export type { EventFeedbackEncoder } from "./event-feedback.js";
 export { bindEventFeedback } from "./event-feedback.js";
 
 export { bindActionTrigger } from "./action-binding.js";
+
+export { switchMode } from "./mode-switching.js";

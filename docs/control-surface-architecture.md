@@ -281,7 +281,12 @@ defines:
   new one, with no raw MIDI vocabulary in application-side assertions)
   — see
   [docs/contracts/surface-application-control.md](./contracts/surface-application-control.md).
-- ECS-75 — Implement basic mode switching.
+- ECS-75 — Implement basic mode switching (`switchMode()`: the
+  unbind-then-bind sequence this document specified, as one explicit,
+  awaitable step built from `bindActiveMode()`; demonstrated across
+  Mixer/Transport/Step Grid sharing one profile on the generic mock
+  surface device) — see
+  [docs/contracts/mode-switching.md](./contracts/mode-switching.md).
 - ECS-76 — Implement surface lifecycle/error handling.
 - ECS-77 — Validate minimal surface against a generic mock device (proof
   scope step 2 above).

@@ -241,3 +241,7 @@ none of them are implemented by this ticket.
   `Control` direction against volume/step input and play/stop/record)
   — see
   [docs/contracts/surface-application-control.md](contracts/surface-application-control.md).
+- ECS-75 — Implement basic mode switching (`switchMode()`'s explicit
+  unbind-then-bind sequence, demonstrated across Mixer/Transport/Step
+  Grid sharing one profile and one mock device) — see
+  [docs/contracts/mode-switching.md](contracts/mode-switching.md).
