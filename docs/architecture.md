@@ -215,3 +215,9 @@ none of them are implemented by this ticket.
   finding the bare default couldn't type the contract's own payload
   examples) — see
   [docs/contracts/control-api-runtime.md](contracts/control-api-runtime.md).
+- ECS-71 — Build generic mock device profile and test harness
+  (`MOCK_SURFACE_DEVICE_PROFILE`'s 8 knobs/4 buttons/8-pad step grid,
+  paired with real mock MIDI ports via `createMockSurfaceDevice()`, and
+  `createMockSurfaceHarness()`'s `PhysicalControl`-id-driven press/
+  release/turnKnob and feedback inspection) — see
+  [docs/contracts/mock-surface-device.md](contracts/mock-surface-device.md).

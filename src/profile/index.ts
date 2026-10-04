@@ -56,6 +56,17 @@ export {
   GENERIC_MIDI_DEVICE_PROFILE,
 } from "./generic/device-profile.js";
 
+export {
+  MOCK_SURFACE_DEVICE_IDENTITY,
+  MOCK_SURFACE_DEVICE_PORTS,
+  MOCK_SURFACE_KNOBS,
+  MOCK_SURFACE_BUTTONS,
+  MOCK_SURFACE_PADS,
+  MOCK_SURFACE_CONTROLS,
+  MOCK_SURFACE_STEP_GRID,
+  MOCK_SURFACE_DEVICE_PROFILE,
+} from "./generic/mock-surface-profile.js";
+
 export type { DiagnosticSeverity, ProfileDiagnosticCode, ProfileDiagnostic } from "./validation/types/diagnostic.js";
 
 export { validateDeviceProfile } from "./validation/validate-profile.js";

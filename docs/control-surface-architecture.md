@@ -255,7 +255,11 @@ defines:
   in-memory reference implementation `docs/contracts/control-api.md`
   left unbuilt) — see
   [docs/contracts/control-api-runtime.md](./contracts/control-api-runtime.md).
-- ECS-71 — Build generic mock device profile and test harness.
+- ECS-71 — Build generic mock device profile and test harness
+  (`MOCK_SURFACE_DEVICE_PROFILE`: 8 knobs/4 buttons/8 pads + a step grid,
+  paired with real mock MIDI ports and a `PhysicalControl`-id-driven
+  harness) — see
+  [docs/contracts/mock-surface-device.md](./contracts/mock-surface-device.md).
 - ECS-72 — Implement basic control bindings (the profile → `ControlMapping`
   generation step named above).
 - ECS-73/74 — Implement application → surface feedback / surface →

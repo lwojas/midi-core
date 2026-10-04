@@ -41,6 +41,10 @@
     "./adapters/mock": {
       "types": "./dist/adapters/mock/index.d.ts",
       "import": "./dist/adapters/mock/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
     }
   },
   "scripts": {
