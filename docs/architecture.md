@@ -252,3 +252,7 @@ none of them are implemented by this ticket.
   that now owns mode switching for the surface's attached lifetime) —
   see
   [docs/contracts/surface-lifecycle-runtime.md](contracts/surface-lifecycle-runtime.md).
+- ECS-77 — Validate minimal surface against a generic mock device (one
+  real `ControlSurface`, no new production code, cycled through Mixer/
+  Transport/Step Grid against `MOCK_SURFACE_DEVICE_PROFILE`) — see
+  [docs/control-surface-validation.md](control-surface-validation.md).

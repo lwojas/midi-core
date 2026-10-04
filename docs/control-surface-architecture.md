@@ -295,7 +295,10 @@ defines:
   surface's whole attached lifetime) — see
   [docs/contracts/surface-lifecycle-runtime.md](./contracts/surface-lifecycle-runtime.md).
 - ECS-77 — Validate minimal surface against a generic mock device (proof
-  scope step 2 above).
+  scope step 2 above; one real `ControlSurface` cycled through Mixer/
+  Transport/Step Grid, no new production code — found that pad-press
+  feedback is correctly echo-suppressed, not a gap) — see
+  [docs/control-surface-validation.md](./control-surface-validation.md).
 - ECS-78 — Integrate the sequencer through the Control Surface contract.
 - ECS-79 — Select and validate one real device with the surface runtime
   (proof scope step 4 above).
