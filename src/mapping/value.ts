@@ -59,7 +59,9 @@ export function resolveIncomingValue<D extends ControlDef>(
 
   if (source.address.type === "note" && (message.type === "note-on" || message.type === "note-off")) {
     if (def.kind !== "boolean") return undefined;
-    return (message.type === "note-on") as ControlValue<D>;
+    // Many controllers (Launchpad included) send release as Note On velocity 0, so velocity 0 is off here even though Core keeps it a Note On.
+    const on = message.type === "note-on" && message.velocity > 0;
+    return on as ControlValue<D>;
   }
 
   return undefined;

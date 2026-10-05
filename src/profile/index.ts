@@ -67,6 +67,20 @@ export {
   MOCK_SURFACE_DEVICE_PROFILE,
 } from "./generic/mock-surface-profile.js";
 
+export {
+  LAUNCHPAD_MINI_MK3_IDENTITY,
+  LAUNCHPAD_MINI_MK3_PORTS,
+  LAUNCHPAD_MINI_MK3_PADS,
+  LAUNCHPAD_MINI_MK3_TOP_ROW,
+  LAUNCHPAD_MINI_MK3_SIDE_COLUMN,
+  LAUNCHPAD_MINI_MK3_LOGO,
+  LAUNCHPAD_MINI_MK3_CONTROLS,
+  LAUNCHPAD_MINI_MK3_PAD_GRID,
+  LAUNCHPAD_MINI_MK3_SYSEX,
+  LAUNCHPAD_MINI_MK3_HANDSHAKE,
+  LAUNCHPAD_MINI_MK3_PROFILE,
+} from "./devices/launchpad-mini-mk3.js";
+
 export type { DiagnosticSeverity, ProfileDiagnosticCode, ProfileDiagnostic } from "./validation/types/diagnostic.js";
 
 export { validateDeviceProfile } from "./validation/validate-profile.js";

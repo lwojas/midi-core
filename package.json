@@ -53,11 +53,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "demo": "npm run build && node demo/serve.mjs"
+    "demo": "npm run build && node demo/serve.mjs",
+    "launchpad:live": "node scripts/launchpad-live.mjs"
   },
   "author": "Lech Wojas",
   "license": "ISC",
   "devDependencies": {
+    "@julusian/midi": "^3.8.1",
     "typescript": "^5.6.3",
     "vitest": "^3.2.7"
   }

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MIDI Core — Launchpad Mini MK3 surface validation</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #111; }
+    h1 { font-size: 1.25rem; }
+    section { margin-bottom: 1.5rem; }
+    button { font: inherit; padding: 0.4rem 0.8rem; margin-right: 0.5rem; margin-bottom: 0.4rem; cursor: pointer; }
+    button.active { background: #111; color: #fff; }
+    select { font: inherit; padding: 0.3rem; margin-right: 0.5rem; }
+    #log { background: #111; color: #0f0; font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.75rem; height: 260px; overflow-y: auto; border-radius: 4px; white-space: pre-wrap; }
+    .muted { color: #666; font-size: 0.9rem; }
+    .state { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Control Surface — Launchpad Mini MK3 (ECS-79)</h1>
+  <p class="muted">
+    Drives midi-core's real <code>ControlSurface</code> against the real device profile
+    (<code>LAUNCHPAD_MINI_MK3_PROFILE</code>). Application state lives in plain in-memory
+    Controls and Actions here, not in any real sequencer.
+  </p>
+
+  <section>
+    <button id="request">Request MIDI access</button>
+    <span id="access-status" class="muted"></span>
+  </section>
+
+  <section>
+    <label for="input-select">Input:</label>
+    <select id="input-select"></select>
+    <label for="output-select">Output:</label>
+    <select id="output-select"></select>
+    <button id="attach" disabled>Attach surface</button>
+    <button id="detach" disabled>Detach surface</button>
+    <span class="muted">state: <span id="lifecycle" class="state">detached</span></span>
+  </section>
+
+  <section>
+    <button id="enter-programmer" disabled>Send Programmer-mode SysEx</button>
+    <span class="muted">Needed once per device power-up; the profile's handshake is <code>required: false</code>, so attach() does not send it.</span>
+  </section>
+
+  <section>
+    <div class="muted">Mode (SurfaceNavigation.setMode):</div>
+    <button class="mode" data-mode="pads">pads</button>
+    <button class="mode" data-mode="transport">transport</button>
+    <span class="muted">current: <span id="mode" class="state">-</span></span>
+  </section>
+
+  <section>
+    <div class="muted">Application state (changed by the surface, or by the buttons below):</div>
+    <div>Transport: <span id="transport-status" class="state">-</span></div>
+    <div>Lit pads (app Controls): <span id="pads-on" class="state">0</span> / 64</div>
+    <button id="light-all" disabled>Set all pads on (app-side change)</button>
+    <button id="clear-all" disabled>Set all pads off (app-side change)</button>
+  </section>
+
+  <section>
+    <div class="muted">Log: raw incoming messages, outgoing feedback, and surface errors/state changes.</div>
+    <div id="log"></div>
+  </section>
+
+  <script type="module" src="./launchpad.js"></script>
+</body>
+</html>

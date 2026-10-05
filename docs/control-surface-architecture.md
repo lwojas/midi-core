@@ -305,5 +305,7 @@ defines:
   no new production code needed here) — see
   [docs/sequencer-integration.md](./sequencer-integration.md).
 - ECS-79 — Select and validate one real device with the surface runtime
-  (proof scope step 4 above).
+  (proof scope step 4 above): Novation Launchpad Mini MK3 — see
+  [docs/hardware-validation.md](./hardware-validation.md) and
+  [docs/contracts/launchpad-mini-mk3-profile.md](./contracts/launchpad-mini-mk3-profile.md).
 - ECS-80 — Document future MIDI Profiler → surface integration.

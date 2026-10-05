@@ -104,6 +104,11 @@ describe("resolveIncomingValue — note", () => {
     expect(resolveIncomingValue(off, source, muted)).toBe(false);
   });
 
+  it("resolves note-on with velocity 0 to false (a release, as Launchpad-style devices send it)", () => {
+    const releaseAsNoteOn: MidiMessage = { type: "note-on", channel: 0, note: 36, velocity: 0 };
+    expect(resolveIncomingValue(releaseAsNoteOn, source, muted)).toBe(false);
+  });
+
   it("returns undefined for a non-boolean control", () => {
     const on: MidiMessage = { type: "note-on", channel: 0, note: 36, velocity: 127 };
     expect(resolveIncomingValue(on, source, cutoff)).toBeUndefined();

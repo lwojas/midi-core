@@ -1,0 +1,115 @@
+# Hardware Validation: Novation Launchpad Mini [MK3] with the Surface Runtime
+
+Status: Final (validation report; two architecture decisions open, see "Open decisions")
+Linear: [ECS-79](https://linear.app/ecs3d/issue/ECS-79/select-and-validate-one-real-device-with-the-surface-runtime)
+Depends on: ECS-69–78
+Profile: [docs/contracts/launchpad-mini-mk3-profile.md](./contracts/launchpad-mini-mk3-profile.md)
+Source of truth: [`src/profile/devices/launchpad-mini-mk3.ts`](../src/profile/devices/launchpad-mini-mk3.ts),
+[`demo/launchpad-surface.js`](../demo/launchpad-surface.js),
+[`scripts/launchpad-live.mjs`](../scripts/launchpad-live.mjs),
+[`scripts/node-midi-transport.mjs`](../scripts/node-midi-transport.mjs)
+
+## Purpose
+
+Proof-scope step 4 of [docs/control-surface-architecture.md](./control-surface-architecture.md):
+replace ECS-77's mock device with one real device and check the surface's
+input, feedback, context/modes and lifecycle against it. Device protocol
+knowledge stays in the profile and in one demo/script layer, never in the
+surface runtime or the sequencer.
+
+## How it was run
+
+- **Browser (Web MIDI, `demo/launchpad.html`)**: first attempt. Works, but
+  needs a person to grant the permission prompt and to report back, so it
+  was not used for the validation runs. Its findings are below.
+- **Node (`npm run launchpad:live -- <seconds> <pads|transport>`)**:
+  `@julusian/midi` (CoreMIDI) behind midi-core's own `RawMidiInput`/
+  `RawMidiOutput` seam (`scripts/node-midi-transport.mjs`). No browser, no
+  permission prompt. This is the route used for the validation runs.
+
+The same `createLaunchpadSurface()` (`demo/launchpad-surface.js`) runs on
+both transports, so the surface code under test is identical.
+
+## Results
+
+| Area | Result | Evidence |
+|---|---|---|
+| Lifecycle | Pass | attach → attached, detach → detached, both ports closed cleanly |
+| Programmer mode | Pass (manual) | Device echoed the switch SysEx (`f0 00 20 29 02 0d 0e 01 f7`) |
+| Input, pads | Pass | Each press/release on note 11–88 reached the app as the expected pad state |
+| Input, CC buttons | Pass | Top row CC 91–98 and side column decoded on channel 0 as profiled |
+| Feedback, app → device | Pass | App-side set-all-on/off lit and cleared all 64 pads; press light-while-held works |
+| Context/modes, pads mode | Pass | Pads drive their 64 Controls; top row ignored |
+| Context/modes, transport mode | Pass | Top row 91–94 → play/stop/record/clear; 95–98 ignored; pad presses don't change app state (`pads lit now=0`) |
+| Release handling | Pass after fix | Release as Note On velocity 0 now resolves to off (see F1) |
+
+## Findings
+
+**F1: release sent as Note On velocity 0 was read as press (fixed).**
+`resolveIncomingValue()` mapped every `note-on` to `true`, so each pad stayed
+on after one press. Fixed in `src/mapping/value.ts`, with a test. Reproduced
+before the fix and confirmed after.
+
+**F2: profiler evidence omits `feedbackPortId` (corrected on import; upstream gap).**
+Every feedback-bearing control in the midi-profiler evidence lacks
+`feedbackPortId`, though feedback and input use different physical ports.
+Without it, `generateControlMappings()` defaults the feedback port to the
+input port, and `bindSurfaceMode()` silently drops the whole mapping (input
+included). `validateDeviceProfile()` does not catch this. Corrected in
+`src/profile/devices/launchpad-mini-mk3.ts`; confirmed live (feedback goes
+out on `midi-out`). The upstream fix belongs in midi-profiler's generation
+pipeline, which is outside this ticket.
+
+**F3: `handshake.required: false` means `attach()` never sends Programmer mode (open).**
+`ControlSurface.attach()` runs handshake steps only when `handshake.required`
+is true, whatever executor is supplied. A fresh device starts in Live mode, so
+the mode switch is effectively mandatory here. The demo and script send it
+themselves. Design gap in the `required` gate (`docs/contracts/surface-lifecycle.md`),
+not a profile authoring choice. Needs a decision (see below).
+
+**F4: pads do not self-light on press (by design; app policy added).**
+Echo suppression (ECS-57) withholds feedback for a value that arrived from the
+device, and Programmer-mode pads don't light themselves. The surface has no
+first-class "reflect input as feedback" mapping. The demo/script add a
+press-lights-pad policy through `bindEventFeedback()`, the existing
+event-feedback path, not a raw send.
+
+**F5: feedback follows the active mode, and the press-LED ignores it (open).**
+- Feedback is bound only for the active mode's controls. In transport mode an
+  app-side change to a pad Control sends nothing, and LEDs left lit by the
+  previous mode are not cleared on mode exit. This is what the first
+  transport-mode run showed: the LED sweep ran after the switch and lit nothing
+  (a script-ordering mistake, since fixed; the surface behaved as specified).
+- The press-LED policy is app-side and mode-independent, so pads still light
+  on press while in transport mode, even though the same pads aren't active
+  there. Inconsistent with the bullet above.
+Both need a policy decision (see below). The surface currently has no
+"repaint on mode change" responsibility.
+
+**F6: the Launchpad's top and side buttons are CC, not note (expected).**
+The profile records this (Programmer mode, CC 91–98, 89…19, 99). The surface
+routes them correctly. Earlier "buttons send CCs" reports were the profile
+working as designed.
+
+**F7: browser Web MIDI needs a human in the loop (tooling).**
+Chrome's MIDI permission prompt and the observation loop both need a person,
+which made the browser route unsuitable for repeatable hardware checks. The
+Node transport removes the browser and the prompt. A person still presses the
+pads, but the run is repeatable from the terminal.
+
+## Open decisions
+
+1. **F3**: should a `required: false` handshake still run when a `HandshakeExecutor`
+   is supplied, or should the gate change? Current options: (a) mark this
+   profile's handshake `required: true`, which is a profile-level correction;
+   (b) change `attach()` to run steps when an executor is present, which is a
+   runtime contract change for `docs/contracts/surface-lifecycle.md`.
+2. **F5**: on mode change, should the surface repaint the outgoing mode's LEDs
+   (clear them) and paint the incoming mode's? Should the press-LED policy be
+   mode-scoped?
+
+## Traceability
+
+- ECS-77 — mock validation this device validation builds on.
+- ECS-78 — the sequencer integration; the same ControlSurface pattern, now on hardware.
+- ECS-80 — MIDI Profiler → surface integration. F2 is an input to it.
