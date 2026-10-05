@@ -12,11 +12,11 @@ const log = (line) => {
 const app = createLaunchpadApp({
   onChange: (what, value) => {
     if (what === "transport") $("transport-status").textContent = value;
-    if (what === "pads") $("pads-on").textContent = String(value);
+    if (what === "steps") $("steps-on").textContent = String(value);
   },
 });
 $("transport-status").textContent = app.transport.status;
-$("pads-on").textContent = String(app.litPadCount());
+$("steps-on").textContent = String(app.litSteps());
 
 let access;
 let input;
@@ -121,5 +121,5 @@ for (const button of document.querySelectorAll("button.mode")) {
   button.addEventListener("click", () => session?.surface.navigation.setMode(button.dataset.mode));
 }
 
-$("light-all").addEventListener("click", () => app.setAllPads(true));
-$("clear-all").addEventListener("click", () => app.setAllPads(false));
+$("light-all").addEventListener("click", () => app.setAllSteps(true));
+$("clear-all").addEventListener("click", () => app.setAllSteps(false));

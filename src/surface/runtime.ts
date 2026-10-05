@@ -8,6 +8,7 @@ import { bindActiveMode, type SurfacePorts } from "./bindings.js";
 import type { SurfaceModeTeardown } from "./bindings.js";
 import type { GenerateControlMappings } from "./types/generation.js";
 import { switchMode } from "./mode-switching.js";
+import { bindSelectionModePolicy } from "./selection-policy.js";
 import { createSurfaceNavigation } from "./navigation.js";
 import type { SurfaceError } from "./types/errors.js";
 import { isValidSurfaceTransition, type SurfaceLifecycleChange, type SurfaceLifecycleState } from "./types/lifecycle.js";
@@ -44,6 +45,7 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
 
   let currentModeTeardown: SurfaceModeTeardown | undefined;
   let unsubscribeNavigation: Unsubscribe | undefined;
+  let unsubscribeSelectionPolicy: Unsubscribe | undefined;
   const connectionWatchers: Unsubscribe[] = [];
   const connectedPortIds = new Set<string>();
   let detachRequested = false;
@@ -143,6 +145,8 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
 
     await installInitialMode();
 
+    unsubscribeSelectionPolicy = bindSelectionModePolicy(deps.bindingTable, deps.context, navigation);
+
     unsubscribeNavigation = navigation.onChange((change) => {
       if (change.from.mode === change.to.mode) return;
       enqueueModeSwitch(async () => {
@@ -165,6 +169,8 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
     detachRequested = true;
     unsubscribeNavigation?.();
     unsubscribeNavigation = undefined;
+    unsubscribeSelectionPolicy?.();
+    unsubscribeSelectionPolicy = undefined;
     await modeSwitchQueue;
     clearConnectionWatchers();
     await teardownCurrentMode();

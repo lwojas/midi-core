@@ -76,8 +76,24 @@ export interface NavigationBinding extends ModeBindingBase {
   readonly navigate: NavigationAction;
 }
 
-/** One `PhysicalControl`'s assigned meaning within a mode — either an application control to drive, or a surface-local navigation action. */
-export type ModeBinding = ControlBinding | NavigationBinding;
+/**
+ * A physical grid (`ControlGrid`, by id) mapped onto a window of application controls
+ * (ECS-89). Each physical cell drives the application control at its position in the
+ * window the surface's current page offset selects. `template` names those application
+ * controls with `{row}` and `{column}` placeholders, filled with the virtual coordinates
+ * (page offset plus the cell's own position). Pages are turned by a navigation binding, so
+ * the binding is installed once per mode and never rebuilt on a page turn.
+ *
+ * Drives boolean controls (pads, buttons). A window over numeric controls is not modeled.
+ */
+export interface WindowedControlBinding extends ModeBindingBase {
+  readonly kind: "window";
+  readonly gridId: string;
+  readonly template: string;
+}
+
+/** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, or a window onto a grid of controls. */
+export type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding;
 
 /**
  * The two genuine escape valves a declarative `bindings` list can't
@@ -122,6 +138,12 @@ export interface SurfaceModeDefinition {
   readonly mode: SurfaceModeId;
   readonly bindings?: readonly ModeBinding[];
   readonly hooks?: SurfaceModeHooks;
+  /**
+   * Selecting something in the application with this scope switches the surface to this mode
+   * (ECS-89): e.g. `{ scope: "track" }` puts the surface into mixer mode when a track is selected.
+   * Only changes after attach() count. A surface's initial selection does not switch modes.
+   */
+  readonly activateOn?: { readonly scope: string };
 }
 
 /** The full binding table `docs/control-surface-architecture.md`'s generation step consumes: one `SurfaceModeDefinition` per mode a surface supports. */

@@ -1,11 +1,11 @@
 // ECS-79 live run: drives a real Launchpad Mini MK3 through midi-core's ControlSurface from the terminal.
-// No browser, no permission prompt. Usage: node scripts/launchpad-live.mjs [seconds=30] [pads|transport]
+// No browser, no permission prompt. Usage: node scripts/launchpad-live.mjs [seconds=30] [steps|mixer|transport]
 import { createMidiInput, createMidiOutput } from "../dist/core/index.js";
 import { createLaunchpadApp, createLaunchpadSurface } from "../demo/launchpad-surface.js";
 import { createNodeInputTransport, createNodeOutputTransport, findPort } from "./node-midi-transport.mjs";
 
 const seconds = Number(process.argv[2] ?? 30);
-const startMode = process.argv[3] ?? "pads";
+const startMode = process.argv[3] ?? "steps";
 const stamp = () => new Date().toLocaleTimeString();
 const log = (line) => console.log(`[${stamp()}] ${line}`);
 const describe = (m) => {
@@ -56,14 +56,16 @@ log(`surface attached, mode=${session.surface.navigation.state.mode}`);
 
 
 log("LED sweep: lighting each pad in turn");
-const pads = [...app.pads.keys()];
-for (const id of pads) {
-  app.pads.get(id).setValue(true);
-  await new Promise((r) => setTimeout(r, 40));
+// The first page of the step grid, row by row, so the LEDs visible on the first page light up in turn.
+for (let row = 0; row < 8; row++) {
+  for (let column = 0; column < 8; column++) {
+    app.steps.get(`step.${row}.${column}`).setValue(true);
+  }
+  await new Promise((r) => setTimeout(r, 120));
 }
 await new Promise((r) => setTimeout(r, 800));
-log("LED sweep: clearing all pads");
-app.setAllPads(false);
+log("LED sweep: clearing all steps");
+app.setAllSteps(false);
 await new Promise((r) => setTimeout(r, 800));
 
 if (startMode !== session.surface.navigation.state.mode) session.surface.navigation.setMode(startMode);
@@ -71,8 +73,8 @@ await new Promise((r) => setTimeout(r, 100));
 log(`press window: ${seconds}s in ${startMode} mode`);
 await new Promise((r) => setTimeout(r, seconds * 1000));
 
-const litAtEnd = app.litPadCount();
-log(`press window over. presses=${counts.presses} releases=${counts.releases} pads lit now=${litAtEnd}`);
+const litAtEnd = app.litSteps();
+log(`press window over. presses=${counts.presses} releases=${counts.releases} steps lit now=${litAtEnd}`);
 
 stopCounting();
 await session.detach();

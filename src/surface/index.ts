@@ -25,6 +25,7 @@ export type {
   NavigationAction,
   ControlBinding,
   NavigationBinding,
+  WindowedControlBinding,
   ModeBinding,
   SurfaceModeHooks,
   SurfaceModeDefinition,
@@ -38,6 +39,11 @@ export { createSurfaceNavigation } from "./navigation.js";
 
 export type { SurfacePorts, BindSurfaceModeDeps, SurfaceModeTeardown } from "./bindings.js";
 export { bindSurfaceMode, bindActiveMode } from "./bindings.js";
+
+export { bindSelectionModePolicy } from "./selection-policy.js";
+
+export type { WindowedControl } from "./windowed-control.js";
+export { createWindowedControl } from "./windowed-control.js";
 
 export { generateControlMappings, toMidiTarget, toMidiSource } from "./generate.js";
 

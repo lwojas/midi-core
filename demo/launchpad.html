@@ -40,7 +40,8 @@
 
   <section>
     <div class="muted">Mode (SurfaceNavigation.setMode):</div>
-    <button class="mode" data-mode="pads">pads</button>
+    <button class="mode" data-mode="steps">steps</button>
+    <button class="mode" data-mode="mixer">mixer</button>
     <button class="mode" data-mode="transport">transport</button>
     <span class="muted">current: <span id="mode" class="state">-</span></span>
   </section>
@@ -48,9 +49,9 @@
   <section>
     <div class="muted">Application state (changed by the surface, or by the buttons below):</div>
     <div>Transport: <span id="transport-status" class="state">-</span></div>
-    <div>Lit pads (app Controls): <span id="pads-on" class="state">0</span> / 64</div>
-    <button id="light-all" disabled>Set all pads on (app-side change)</button>
-    <button id="clear-all" disabled>Set all pads off (app-side change)</button>
+    <div>Lit steps on the visible page of the pattern (app Controls): <span id="steps-on" class="state">0</span></div>
+    <button id="light-all" disabled>Set all steps on (app-side change)</button>
+    <button id="clear-all" disabled>Set all steps off (app-side change)</button>
   </section>
 
   <section>

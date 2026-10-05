@@ -251,7 +251,9 @@ describe("bindSurfaceMode", () => {
     await bindSurfaceMode({ mode: "mixer", bindings: [controlBinding] }, deps);
     control.setValue(true);
 
-    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0x90, 36, 127]);
+    // Binding paints the current value first (off), then the change goes out.
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0x80, 36, 0]);
+    expect(Array.from(rawOutput.sentMessages[1]!)).toEqual([0x90, 36, 127]);
   });
 
   it("returns a no-op teardown when there is no mode definition", async () => {
