@@ -46,7 +46,12 @@ const stopCounting = input.onMessage((m) => {
   if (m.type === "note-off" || (m.type === "note-on" && m.velocity === 0)) counts.releases++;
 });
 
-await session.attach();
+try {
+  await session.attach();
+} catch (err) {
+  console.error(`attach failed [${err.code}]: ${err.message}`);
+  process.exit(1);
+}
 log(`surface attached, mode=${session.surface.navigation.state.mode}`);
 
 

@@ -77,7 +77,7 @@ function awaitReply(step: DeviceSetupStep, timeoutMs: number, setPending: (waiti
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       setPending(undefined);
-      reject({ code: "setup-timeout", message: `Setup step "${step.id}" got no matching reply within ${timeoutMs} ms.` } satisfies SurfaceError);
+      reject({ code: "setup-timeout", message: `Setup step "${step.id}" got no reply matching the expected bytes within ${timeoutMs} ms.` } satisfies SurfaceError);
     }, timeoutMs);
     setPending({
       pattern: step.expect!,

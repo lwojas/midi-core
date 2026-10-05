@@ -160,8 +160,8 @@ export const LAUNCHPAD_MINI_MK3_SYSEX: DeviceSysExProfile = {
  * Programmer mode is the one thing this device needs before its note/CC addressing
  * applies: a fresh device starts in Live/Session mode. Setup runs on every connect
  * (`docs/contracts/device-setup.md`). The Device Inquiry reply is checked against
- * the Novation id and Launchpad Mini [MK3] family code; byte 12 is the firmware
- * version and is a wildcard. Bootloader mode replies differently and will fail this
+ * the Novation id and Launchpad Mini [MK3] family code; the four revision bytes
+ * are a wildcard. Bootloader mode replies differently and will fail this
  * step, which is reported rather than skipped.
  */
 export const LAUNCHPAD_MINI_MK3_SETUP: DeviceSetup = {
@@ -175,8 +175,8 @@ export const LAUNCHPAD_MINI_MK3_SETUP: DeviceSetup = {
     },
     {
       id: "device-inquiry-reply",
-      description: "Device Inquiry reply: Novation id 00 20 29, Launchpad Mini [MK3] family 13 01. Byte 12 is the app version.",
-      expect: [0xf0, 0x7e, 0x00, 0x06, 0x02, 0x00, 0x20, 0x29, 0x13, 0x01, 0x00, 0x00, null, 0xf7],
+      description: "Device Inquiry reply: Novation id 00 20 29, Launchpad Mini [MK3] family 13 01. The four revision bytes after the family member are wildcards.",
+      expect: [0xf0, 0x7e, 0x00, 0x06, 0x02, 0x00, 0x20, 0x29, 0x13, 0x01, 0x00, 0x00, null, null, null, null, 0xf7],
     },
     {
       id: "enter-programmer-mode",
