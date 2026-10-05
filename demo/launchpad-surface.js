@@ -2,15 +2,14 @@
 // Node live-run script (scripts/launchpad-live.mjs). Transport-agnostic: it only ever sees MidiInput/MidiOutput.
 // The binding table is surface configuration, not sequencer code: the application here exposes plain Controls
 // and Actions, and this module decides which device control means what in each mode (ECS-89).
-import { createAction, createControl, createControlRegistry, createSurfaceContext, createSurfaceEventSource } from "../dist/control-api/index.js";
+import { createAction, createControl, createControlRegistry, createSurfaceContext } from "../dist/control-api/index.js";
 import { LAUNCHPAD_MINI_MK3_PADS, LAUNCHPAD_MINI_MK3_PROFILE } from "../dist/profile/index.js";
-import { bindActionTrigger, bindEventFeedback, createControlSurface, generateControlMappings, toMidiSource } from "../dist/surface/index.js";
+import { bindActionTrigger, createControlSurface, generateControlMappings, toMidiSource } from "../dist/surface/index.js";
 
 export const STEP_ROWS = 8;
 export const STEP_COLUMNS = 32; // four pages of eight
 const PAGE_COLUMNS = 8;
 
-const padNotes = new Set(LAUNCHPAD_MINI_MK3_PADS.map((pad) => pad.input.address.note));
 const padRowColumn = (note) => ({ row: 8 - Math.floor(note / 10), column: (note % 10) - 1 }); // row 1..8 from bottom, col 1..8
 const topButton = (controller) => toMidiSource(LAUNCHPAD_MINI_MK3_PROFILE.controls.find((c) => c.id === `top-${controller}`));
 const sideButtonId = (controller) => `side-${controller}`;
@@ -73,7 +72,7 @@ function stepBindings() {
   return [
     ...LAUNCHPAD_MINI_MK3_PADS.map((pad) => {
       const { row, column } = padRowColumn(pad.input.address.note);
-      return { kind: "window", physicalControlId: pad.id, role: `step ${row},${column}`, gridId: "pads", template: "step.{row}.{column}" };
+      return { kind: "window", physicalControlId: pad.id, role: `step ${row},${column}`, gridId: "pads", template: "step.{row}.{column}", press: "toggle" };
     }),
     { kind: "navigate", physicalControlId: "top-95", role: "page left", navigate: { kind: "page-by", delta: { row: 0, column: -PAGE_COLUMNS } } },
     { kind: "navigate", physicalControlId: "top-96", role: "page right", navigate: { kind: "page-by", delta: { row: 0, column: PAGE_COLUMNS } } },
@@ -85,7 +84,7 @@ function mixerBindings() {
   return LAUNCHPAD_MINI_MK3_PADS.filter((pad) => padRowColumn(pad.input.address.note).row === 8)
     .map((pad) => {
       const { column } = padRowColumn(pad.input.address.note);
-      return { kind: "control", physicalControlId: pad.id, role: `mute ${column + 1}`, resolve: { kind: "static", controlId: `mute.${column + 1}` } };
+      return { kind: "control", physicalControlId: pad.id, role: `mute ${column + 1}`, resolve: { kind: "static", controlId: `mute.${column + 1}` }, press: "toggle" };
     });
 }
 
@@ -96,34 +95,6 @@ function mixerBindings() {
 export function createLaunchpadSurface({ input, output, app, log = () => {} }) {
   const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values()]);
   let transportUnbinds = [];
-  const pressEvents = createSurfaceEventSource();
-  let pressUnbinds = [];
-
-  // Press-light policy for the pad-driven modes: the surface withholds feedback for values it just received
-  // (echo suppression) and Programmer-mode pads don't self-light, so the app lights a pressed pad and restores
-  // it on release. Release restores from the control the pad drives in the current mode.
-  function lightStateOf(note) {
-    const mode = surface.navigation.state.mode;
-    const { row, column } = padRowColumn(note);
-    if (mode === "steps") {
-      const offset = surface.navigation.state.gridOffset ?? { row: 0, column: 0 };
-      return app.steps.get(`step.${row + offset.row}.${column + offset.column}`)?.getValue() ?? false;
-    }
-    if (mode === "mixer" && row === 8) return app.mutes.get(`mute.${column + 1}`)?.getValue() ?? false;
-    return false;
-  }
-
-  function encodeLed(event) {
-    const note = event.payload.note;
-    if (event.id === "pad.press") return { type: "note-on", channel: 0, note, velocity: 127 };
-    if (event.id === "pad.release") {
-      return lightStateOf(note)
-        ? { type: "note-on", channel: 0, note, velocity: 127 }
-        : { type: "note-off", channel: 0, note, velocity: 0 };
-    }
-    return undefined;
-  }
-
   const surface = createControlSurface({
     profile: LAUNCHPAD_MINI_MK3_PROFILE,
     ports: { inputs: { "midi-in": input }, outputs: { "midi-out": output } },
@@ -169,26 +140,7 @@ export function createLaunchpadSurface({ input, output, app, log = () => {} }) {
 
   return {
     surface,
-    async attach() {
-      await surface.attach();
-      // Registered after attach() so the surface's own pad mapping has already updated the Control on release.
-      pressUnbinds = [
-        bindEventFeedback(pressEvents, encodeLed, output),
-        input.onMessage((message) => {
-          const padMode = surface.navigation.state.mode === "steps" || surface.navigation.state.mode === "mixer";
-          if (!padMode) return;
-          if (message.type === "note-on" && message.velocity > 0 && padNotes.has(message.note)) {
-            pressEvents.emit({ id: "pad.press", payload: { note: message.note } });
-          } else if ((message.type === "note-off" || message.type === "note-on") && padNotes.has(message.note)) {
-            pressEvents.emit({ id: "pad.release", payload: { note: message.note } });
-          }
-        }),
-      ];
-    },
-    async detach() {
-      for (const unbind of pressUnbinds) unbind();
-      pressUnbinds = [];
-      await surface.detach();
-    },
+    attach: () => surface.attach(),
+    detach: () => surface.detach(),
   };
 }

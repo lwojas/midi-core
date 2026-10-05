@@ -5,15 +5,17 @@ import type { ControlRegistry } from "../control-api/types/registry.js";
 import type { Unsubscribe } from "../core/types/discovery.js";
 import type { MidiInput } from "../core/types/input.js";
 import type { MidiOutput } from "../core/types/output.js";
-import type { MidiTarget } from "../mapping/types/address.js";
+import type { MidiSource, MidiTarget } from "../mapping/types/address.js";
 import type { ControlMapping } from "../mapping/types/mapping.js";
 import { bindControlMapping } from "../mapping/bind.js";
 import { buildFeedbackMessage } from "../mapping/value.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActionTrigger } from "./action-binding.js";
 import { toMidiSource, toMidiTarget } from "./generate.js";
+import { resolveControlId } from "./types/bindings.js";
 import type {
   ControlBinding,
+  ControlPress,
   ModeBinding,
   NavigationBinding,
   SurfaceBindingTable,
@@ -80,6 +82,40 @@ const NULL_OUTPUT: MidiOutput = {
     );
   },
 };
+
+/**
+ * A toggle: each press flips `control`, and release is ignored. The control's own changes drive the
+ * feedback, so the LED shows the value the press produced. Its initial value is painted on bind, and it
+ * is cleared on unbind unless it's motorized (ECS-89).
+ */
+function bindToggle(
+  input: MidiInput,
+  source: MidiSource,
+  control: Control<BooleanControlDef>,
+  feedback: { target: MidiTarget; output: MidiOutput; kind: string | undefined } | undefined,
+): { unsubscribe: Unsubscribe; painter?: FeedbackPainter } {
+  const action = createAction({ id: `toggle.${control.def.id}`, label: control.def.label }, () => control.setValue(!control.getValue()));
+  const unbindTrigger = bindActionTrigger(input, source, action);
+  if (!feedback) return { unsubscribe: unbindTrigger };
+
+  const send = (value: boolean) => {
+    const message = buildFeedbackMessage(feedback.target, control.def, value);
+    if (message !== undefined) feedback.output.send(message);
+  };
+  const unbindFeedback = control.onChange((value) => send(value));
+  return {
+    unsubscribe: () => {
+      unbindTrigger();
+      unbindFeedback();
+    },
+    painter: {
+      paint: () => send(control.getValue()),
+      clear: () => {
+        if (feedback.kind !== "motorized") send(false);
+      },
+    },
+  };
+}
 
 /** A feedback-bearing binding's LED or motor, painted from current state on enter and (for LEDs) cleared on exit. */
 interface FeedbackPainter {
@@ -149,7 +185,7 @@ export async function bindSurfaceMode(
   const unsubscribes: Unsubscribe[] = [];
   const painters: FeedbackPainter[] = [];
 
-  const controlBindings = bindings.filter(isControlBinding);
+  const controlBindings = bindings.filter((binding): binding is ControlBinding => isControlBinding(binding) && binding.press !== "toggle");
   const generated = deps.generate(deps.profile, controlBindings, deps.context);
   for (const { mapping, inputPortId, outputPortId } of generated) {
     const control = deps.registry.getControl(mapping.control);
@@ -163,6 +199,21 @@ export async function bindSurfaceMode(
     if (mapping.feedback && output) {
       painters.push(painterFor(mapping.feedback, control, output, feedbackKindOf(deps.profile, mapping.id)));
     }
+  }
+
+  for (const binding of bindings.filter((candidate): candidate is ControlBinding => isControlBinding(candidate) && candidate.press === "toggle")) {
+    const physical = deps.profile.controls.find((candidate) => candidate.id === binding.physicalControlId);
+    const source = physical && toMidiSource(physical);
+    const input = physical && deps.ports.inputs[physical.portId];
+    const controlId = resolveControlId(binding.resolve, deps.context);
+    const control = controlId !== undefined ? deps.registry.getControl(controlId) : undefined;
+    if (!physical || !source || !input || !control || control.def.kind !== "boolean") continue;
+    const target = toMidiTarget(physical);
+    const output = target ? deps.ports.outputs[physical.feedbackPortId ?? physical.portId] : undefined;
+    if (target && !output) continue;
+    const handle = bindToggle(input, source, control as Control<BooleanControlDef>, target && output ? { target, output, kind: physical.feedback?.kind } : undefined);
+    unsubscribes.push(handle.unsubscribe);
+    if (handle.painter) painters.push(handle.painter);
   }
 
   const navigation = deps.navigation;
@@ -208,6 +259,13 @@ export async function bindSurfaceMode(
     const output = target ? deps.ports.outputs[outputPortId] : undefined;
     if (target && !output) {
       windowed.dispose();
+      continue;
+    }
+
+    if (binding.press === "toggle") {
+      const handle = bindToggle(input, source, windowed, target && output ? { target, output, kind: physical.feedback?.kind } : undefined);
+      unsubscribes.push(() => windowed.dispose(), handle.unsubscribe);
+      if (handle.painter) painters.push(handle.painter);
       continue;
     }
 

@@ -66,9 +66,16 @@ interface ModeBindingBase {
   readonly role: ControlRole;
 }
 
+/**
+ * What a press does: "hold" (the default) drives the control from the pad's own on/off, so it's on while held.
+ * "toggle" flips the control on each press and ignores release (ECS-89), for a step or a mute.
+ */
+export type ControlPress = "hold" | "toggle";
+
 export interface ControlBinding extends ModeBindingBase {
   readonly kind: "control";
   readonly resolve: ControlIdResolution;
+  readonly press?: ControlPress;
 }
 
 export interface NavigationBinding extends ModeBindingBase {
@@ -90,6 +97,7 @@ export interface WindowedControlBinding extends ModeBindingBase {
   readonly kind: "window";
   readonly gridId: string;
   readonly template: string;
+  readonly press?: ControlPress;
 }
 
 /** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, or a window onto a grid of controls. */

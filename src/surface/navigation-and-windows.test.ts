@@ -19,7 +19,7 @@ function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function build() {
+function build(press: "hold" | "toggle" = "hold") {
   const device = createMockSurfaceDevice();
   const harness = createMockSurfaceHarness(device);
   const input = createMidiInput(device.input);
@@ -37,14 +37,14 @@ function build() {
     {
       mode: "steps",
       bindings: [
-        { kind: "window", physicalControlId: "pad-1", role: "step", gridId: "step-grid", template: "step.{row}.{column}" },
-        { kind: "window", physicalControlId: "pad-2", role: "step", gridId: "step-grid", template: "step.{row}.{column}" },
-        { kind: "window", physicalControlId: "pad-3", role: "step", gridId: "step-grid", template: "step.{row}.{column}" },
-        { kind: "window", physicalControlId: "pad-4", role: "step", gridId: "step-grid", template: "step.{row}.{column}" },
-        { kind: "window", physicalControlId: "pad-5", role: "step", gridId: "step-grid", template: "step.{row}.{column}" },
-        { kind: "window", physicalControlId: "pad-6", role: "step", gridId: "step-grid", template: "step.{row}.{column}" },
-        { kind: "window", physicalControlId: "pad-7", role: "step", gridId: "step-grid", template: "step.{row}.{column}" },
-        { kind: "window", physicalControlId: "pad-8", role: "step", gridId: "step-grid", template: "step.{row}.{column}" },
+        { kind: "window", physicalControlId: "pad-1", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
+        { kind: "window", physicalControlId: "pad-2", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
+        { kind: "window", physicalControlId: "pad-3", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
+        { kind: "window", physicalControlId: "pad-4", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
+        { kind: "window", physicalControlId: "pad-5", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
+        { kind: "window", physicalControlId: "pad-6", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
+        { kind: "window", physicalControlId: "pad-7", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
+        { kind: "window", physicalControlId: "pad-8", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
         { kind: "navigate", physicalControlId: "button-1", role: "page right", navigate: { kind: "page-by", delta: { row: 0, column: 1 } } },
         { kind: "navigate", physicalControlId: "button-2", role: "page left", navigate: { kind: "page-by", delta: { row: 0, column: -1 } } },
         { kind: "navigate", physicalControlId: "button-4", role: "to mixer", navigate: { kind: "set-mode", mode: "mixer" } },
@@ -54,7 +54,7 @@ function build() {
       mode: "mixer",
       activateOn: { scope: "track" },
       bindings: [
-        { kind: "control", physicalControlId: "pad-1", role: "mute", resolve: { kind: "static", controlId: "mute.0" } },
+        { kind: "control", physicalControlId: "pad-1", role: "mute", resolve: { kind: "static", controlId: "mute.0" }, press },
         { kind: "control", physicalControlId: "knob-1", role: "track-fader", resolve: { kind: "static", controlId: "track.1.volume" } },
         { kind: "navigate", physicalControlId: "button-4", role: "to steps", navigate: { kind: "set-mode", mode: "steps" } },
       ],
@@ -169,5 +169,36 @@ describe("ECS-89: selection-driven mode", () => {
 
     context.setSelection({ scope: "track", id: "track-1" });
     expect(surface.navigation.state.mode).toBe("steps");
+  });
+});
+
+describe("ECS-89: toggle press", () => {
+  it("a press flips the step under the pad and its LED follows, and release does nothing", async () => {
+    const { harness, surface, steps } = build("toggle");
+    await surface.attach();
+
+    harness.press("pad-3"); // step 2
+    expect(steps[2]!.getValue()).toBe(true);
+    expect(harness.lastFeedbackFor("pad-3")).toMatchObject({ type: "note-on" });
+
+    harness.release("pad-3");
+    expect(steps[2]!.getValue()).toBe(true);
+
+    harness.press("pad-3");
+    expect(steps[2]!.getValue()).toBe(false);
+    expect(harness.lastFeedbackFor("pad-3")).toMatchObject({ type: "note-off" });
+    await surface.detach();
+  });
+
+  it("a press flips a mute in the mixer, and the LED follows", async () => {
+    const { harness, surface, mute } = build("toggle");
+    await surface.attach();
+    harness.press("button-4");
+    await flush();
+
+    harness.press("pad-1");
+    expect(mute.getValue()).toBe(true);
+    expect(harness.lastFeedbackFor("pad-1")).toMatchObject({ type: "note-on" });
+    await surface.detach();
   });
 });
