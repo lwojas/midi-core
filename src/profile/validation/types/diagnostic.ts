@@ -30,6 +30,7 @@ export type ProfileDiagnosticCode =
   | "unknown-control-kind"
   | "unknown-control-value-mode"
   | "unknown-feedback-kind"
+  | "invalid-rgb-prefix"
   | "duplicate-control-id"
   | "dangling-port-reference"
   | "invalid-grid"

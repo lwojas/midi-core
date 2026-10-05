@@ -123,6 +123,11 @@ export interface ControlFeedback {
   readonly address: ControlAddress;
   /** For "velocity-color-led": the number of distinct palette entries the device's value byte selects from (e.g. 128). Not meaningful for other kinds. */
   readonly paletteSize?: number;
+  /**
+   * For "rgb-led" (ECS-95): the SysEx bytes before the LED index, without the leading F0. The device's LED message is
+   * F0, these bytes, the LED index (the control's note or controller), red, green, blue, F7.
+   */
+  readonly rgbSysExPrefix?: readonly number[];
 }
 
 /**

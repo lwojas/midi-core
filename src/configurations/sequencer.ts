@@ -6,7 +6,7 @@ import type { ControlGrid } from "../profile/types/grid.js";
 import { bindActionTrigger } from "../surface/action-binding.js";
 import { toMidiSource } from "../surface/generate.js";
 import type { ModeBinding, SurfaceBindingTable } from "../surface/types/bindings.js";
-import type { MidiSource } from "../mapping/types/address.js";
+import type { MidiSource, RgbColour } from "../mapping/types/address.js";
 
 /**
  * The application contract a sequencer exposes to a device (ECS-89). A sequencer names its controls and
@@ -34,6 +34,10 @@ export interface SequencerBindings {
 
 const TRANSPORT_NAMES = ["play", "stop", "record", "clear"] as const;
 
+/** The colour a lit step and a muted track show on an RGB pad (ECS-95). A usage default, like the layout. */
+const STEP_COLOUR: RgbColour = { red: 0, green: 0, blue: 127 };
+const MUTE_COLOUR: RgbColour = { red: 127, green: 0, blue: 0 };
+
 /**
  * Builds the binding table for a sequencer on a device: three modes (steps, mixer, transport) with the device's
  * mode buttons available in each. Steps and mutes toggle on press. The steps grid is a window onto the sequence,
@@ -41,7 +45,7 @@ const TRANSPORT_NAMES = ["play", "stop", "record", "clear"] as const;
  * `layout` (ECS-90). `input` is the connected device input, which transport triggers need.
  *
  * Rows are tracks (ECS-95). Up and down page through tracks in both steps and mixer mode; left and right page
- * through time in steps mode only. The mixer shows one track per grid row, with its mute in the grid's first column.
+ * through time in steps mode only. The mixer shows one track per column of the grid's top row, with its mute there.
  */
 export function createSequencerBindings(input: MidiInput, profile: DeviceProfile, contract: SequencerContract): SequencerBindings {
   const unresolved: string[] = [];
@@ -95,21 +99,25 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         press: "toggle",
         columnCountControl: contract.lengthControl,
         rowCountControl: contract.trackCountControl,
+        colour: STEP_COLOUR,
       }))
     : [];
 
-  // Each row is a track; the first column of the grid mutes it. The window follows the page, so the mixer pages through tracks.
+  // The mixer lays tracks across the grid's top row, one per column, as its UI does. The window is horizontal, so the
+  // page's tracks run across the columns, and paging up and down moves the page by tracks.
   const muteBindings: ModeBinding[] = grid
     ? cells
-        .filter((cell) => cell.column === 0)
+        .filter((cell) => cell.row === 0)
         .map((cell) => ({
           kind: "window",
           physicalControlId: cell.controlId,
-          role: `mute row ${cell.row}`,
+          role: `mute ${cell.column + 1}`,
           gridId: grid.id,
           template: contract.muteTemplate,
           press: "toggle",
+          orientation: "horizontal",
           rowCountControl: contract.trackCountControl,
+          colour: MUTE_COLOUR,
         }))
     : [];
 

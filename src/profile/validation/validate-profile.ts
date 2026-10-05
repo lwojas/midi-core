@@ -187,6 +187,20 @@ function checkControls(value: unknown, portIds: Set<string>, controlIds: Set<str
         message: `Unknown feedback kind ${JSON.stringify(control.feedback.kind)}.`,
       });
     }
+
+    // An RGB LED is driven by a SysEx message built from this prefix (ECS-95), so a missing or malformed one would silently send nothing.
+    if (isRecord(control.feedback) && control.feedback.kind === "rgb-led") {
+      const prefix = control.feedback.rgbSysExPrefix;
+      const valid = Array.isArray(prefix) && prefix.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 0x7f);
+      if (!valid) {
+        diagnostics.push({
+          severity: "error",
+          code: "invalid-rgb-prefix",
+          path: `${path}.feedback.rgbSysExPrefix`,
+          message: "An rgb-led feedback needs rgbSysExPrefix: the SysEx bytes before the LED index, each 0-127.",
+        });
+      }
+    }
   });
 
   return diagnostics;

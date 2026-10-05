@@ -133,19 +133,21 @@ pads, but the run is repeatable from the terminal.
 
 ## Sequencer surface UI (ECS-95)
 
-Not yet run on hardware. The changes are covered by unit and end-to-end tests
-(`src/configurations/launchpad-paging.test.ts`) driving the real profile through
-the surface runtime with raw Note/CC messages.
+Covered by unit and end-to-end tests (`src/configurations/launchpad-paging.test.ts`)
+driving the real profile through the surface runtime with raw Note/CC messages.
 
 - **Arrows** (top row CC 91-94) page tracks (up/down, eight at a time) and time
-  (left/right) in steps mode. Up/down also pages the mixer. Source: the user
-  guide's arrow buttons. The order (up, down, left, right, left to right) is an
-  assumption, so confirm the arrow order on the device first.
+  (left/right) in steps mode. Up/down also pages the mixer. **Passed on hardware**,
+  including the arrow order (up, down, left, right, left to right).
 - **Transport** moved from top-row CC 91-94 to the side column (CC 59/49/39/29),
-  because the arrows take 91-94. The ECS-79/94 transport checks predate this move
-  and need repeating.
-- **Mixer** mutes one track per row, from the grid's first column (previously the
-  top row), so the mixer can page through all 16 tracks.
+  because the arrows take 91-94. Not yet checked on hardware since the move; the
+  ECS-79/94 transport checks predate it.
+- **Mixer mutes** lie across the top row, one track per column, laid out
+  horizontally as the mixer UI is. Paging up and down moves that row through the
+  tracks. Not yet checked on hardware.
+- **RGB feedback**: pads and buttons are lit by RGB SysEx rather than velocity.
+  Steps are blue and track mutes red (a usage default in `sequencer.ts`). Not yet
+  checked on hardware; confirm the colours and that off really goes black.
 
 **Mixer faders (investigated, not implemented).** The manual's Programmer/DAW
 reference (`midi-profiler/research/novation-launchpad-mini-mk3/programmers-reference-manual.pdf`)

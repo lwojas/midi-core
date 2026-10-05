@@ -188,3 +188,42 @@ describe("buildFeedbackMessage — note", () => {
     expect(buildFeedbackMessage(target, cutoff, 100)).toBeUndefined();
   });
 });
+
+describe("buildFeedbackMessage — rgb-led (ECS-95)", () => {
+  const lamp: BooleanControlDef = { id: "lamp", label: "Lamp", kind: "boolean", default: false };
+  const target: MidiTarget = {
+    address: { type: "note", note: 51 },
+    channel: 0,
+    rgbPrefix: [0x00, 0x20, 0x29, 0x02, 0x0d, 0x03, 0x03],
+  };
+
+  it("sends a device SysEx with the LED index and the lit colour when on", () => {
+    expect(buildFeedbackMessage(target, lamp, true, { red: 0, green: 0, blue: 127 })).toEqual({
+      type: "sysex",
+      raw: Uint8Array.of(0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x03, 0x03, 51, 0, 0, 127, 0xf7),
+    });
+  });
+
+  it("sends black when off, whatever colour the control was lit with", () => {
+    expect(buildFeedbackMessage(target, lamp, false, { red: 127, green: 0, blue: 0 })).toEqual({
+      type: "sysex",
+      raw: Uint8Array.of(0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x03, 0x03, 51, 0, 0, 0, 0xf7),
+    });
+  });
+
+  it("lights white when on with no colour of its own", () => {
+    const message = buildFeedbackMessage(target, lamp, true);
+    expect(message && message.type === "sysex" ? Array.from(message.raw) : undefined).toEqual([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x03, 0x03, 51, 127, 127, 127, 0xf7]);
+  });
+
+  it("uses a control-change LED index for a controller button", () => {
+    const button: MidiTarget = { address: { type: "control-change", controller: 91 }, channel: 0, rgbPrefix: [0x00, 0x20, 0x29, 0x02, 0x0d, 0x03, 0x03] };
+    const raw = buildFeedbackMessage(button, lamp, true, { red: 0, green: 127, blue: 0 });
+    expect(raw && raw.type === "sysex" ? Array.from(raw.raw).slice(8, 12) : undefined).toEqual([91, 0, 127, 0]);
+  });
+
+  it("has no RGB form for a non-boolean control, so a number sends nothing", () => {
+    const level: NumericControlDef = { id: "level", label: "Level", kind: "number", min: 0, max: 127, default: 0 };
+    expect(buildFeedbackMessage(target, level, 50)).toBeUndefined();
+  });
+});

@@ -73,7 +73,7 @@ function build() {
     rawInput.emitRawMessage(kind === "pad" ? noteOn(Number(number)) : ccOn(Number(number)));
     await flush();
   };
-  return { surface, unresolved, steps, mutes, played, press };
+  return { surface, unresolved, steps, mutes, played, press, sent: () => rawOutput.sentMessages.map((bytes) => Array.from(bytes)) };
 }
 
 describe("the Launchpad sequencer, driven through the surface", () => {
@@ -143,6 +143,35 @@ describe("the Launchpad sequencer, driven through the surface", () => {
     await press("side-59"); // play
     await press("top-91"); // an arrow does nothing in transport mode
     expect(played).toEqual(["play"]);
+    await surface.detach();
+  });
+
+  it("lays the mixer's mutes across the top row, so paging moves the same row to the next eight tracks", async () => {
+    const { surface, mutes, press } = build();
+    await surface.attach();
+    await press("side-79"); // mixer
+    await press("pad-83"); // the third track across the top row: track 3
+    expect(mutes[2]?.getValue()).toBe(true);
+
+    await press("top-92"); // page down: tracks 9-16
+    await press("pad-83"); // the same position now shows track 11
+    expect(mutes[10]?.getValue()).toBe(true);
+    expect(mutes[2]?.getValue()).toBe(true);
+    await surface.detach();
+  });
+
+  it("lights a lit step blue and a muted track red, as RGB SysEx to the device", async () => {
+    const { surface, sent, press } = build();
+    await surface.attach();
+
+    await press("pad-37"); // grid row 5, column 6: step 5,6
+    expect(sent().slice(-1)[0]).toEqual([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x03, 0x03, 37, 0, 0, 127, 0xf7]);
+    await press("pad-37"); // toggled off: black
+    expect(sent().slice(-1)[0]).toEqual([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x03, 0x03, 37, 0, 0, 0, 0xf7]);
+
+    await press("side-79"); // mixer
+    await press("pad-81"); // track 1 muted
+    expect(sent().slice(-1)[0]).toEqual([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x03, 0x03, 81, 127, 0, 0, 0xf7]);
     await surface.detach();
   });
 });

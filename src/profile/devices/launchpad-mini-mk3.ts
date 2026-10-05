@@ -67,6 +67,13 @@ export const LAUNCHPAD_MINI_MK3_PORTS: readonly DevicePortProfile[] = [
   { id: "daw-out", type: "output", role: "daw-control", required: false, messageTypes: ["note-on", "note-off", "control-change"] },
 ];
 
+/**
+ * ECS-95: the device's RGB LED message, without its leading F0 (manufacturer 00 20 29, device 02, LED lighting 0D 03,
+ * RGB colourspec 03). A feedback is F0, this prefix, the LED index (the note or controller), red, green, blue, F7, with
+ * each colour 0-127 (manual, LED lighting SysEx). Used on every lit control so a mode can show its own colour.
+ */
+export const LAUNCHPAD_RGB_SYSEX_PREFIX: readonly number[] = [0x00, 0x20, 0x29, 0x02, 0x0d, 0x03, 0x03];
+
 /** Programmer-mode pad addressing: note = (8 - row) * 10 + (column + 1), row/column both 0-based top-left-origin — row 0 is notes 81-88, row 7 is notes 11-18, matching the device's own row-major note numbering (manual p.10). */
 function padControl(row: number, column: number): PhysicalControl {
   const note = (8 - row) * 10 + (column + 1);
@@ -76,7 +83,7 @@ function padControl(row: number, column: number): PhysicalControl {
     kind: "pad",
     portId: "midi-in",
     input: { address: { type: "note", note }, channel: 0 },
-    feedback: { kind: "velocity-color-led", address: { address: { type: "note", note }, channel: 0 }, paletteSize: 128 },
+    feedback: { kind: "rgb-led", address: { address: { type: "note", note }, channel: 0 }, rgbSysExPrefix: LAUNCHPAD_RGB_SYSEX_PREFIX },
     feedbackPortId: "midi-out",
   };
 }
@@ -94,7 +101,7 @@ function topRowButton(index: number): PhysicalControl {
     kind: "button",
     portId: "midi-in",
     input: { address: { type: "control-change", controller }, channel: 0 },
-    feedback: { kind: "velocity-color-led", address: { address: { type: "control-change", controller }, channel: 0 }, paletteSize: 128 },
+    feedback: { kind: "rgb-led", address: { address: { type: "control-change", controller }, channel: 0 }, rgbSysExPrefix: LAUNCHPAD_RGB_SYSEX_PREFIX },
     feedbackPortId: "midi-out",
   };
 }
@@ -110,7 +117,7 @@ function sideColumnButton(index: number): PhysicalControl {
     kind: "button",
     portId: "midi-in",
     input: { address: { type: "control-change", controller }, channel: 0 },
-    feedback: { kind: "velocity-color-led", address: { address: { type: "control-change", controller }, channel: 0 }, paletteSize: 128 },
+    feedback: { kind: "rgb-led", address: { address: { type: "control-change", controller }, channel: 0 }, rgbSysExPrefix: LAUNCHPAD_RGB_SYSEX_PREFIX },
     feedbackPortId: "midi-out",
   };
 }
@@ -124,7 +131,7 @@ export const LAUNCHPAD_MINI_MK3_LOGO: PhysicalControl = {
   kind: "button",
   portId: "midi-in",
   input: { address: { type: "control-change", controller: 99 }, channel: 0 },
-  feedback: { kind: "velocity-color-led", address: { address: { type: "control-change", controller: 99 }, channel: 0 }, paletteSize: 128 },
+  feedback: { kind: "rgb-led", address: { address: { type: "control-change", controller: 99 }, channel: 0 }, rgbSysExPrefix: LAUNCHPAD_RGB_SYSEX_PREFIX },
   feedbackPortId: "midi-out",
 };
 

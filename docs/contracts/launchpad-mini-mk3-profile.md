@@ -27,7 +27,11 @@ feasibility, not as the selection itself.
   - 8 top-row buttons, `kind: "button"`, CC 91-98 left to right.
   - 8 side-column buttons, `kind: "button"`, CC 89, 79, ... 19 top to bottom.
   - 1 logo button, `kind: "button"`, CC 99.
-- Pads and buttons carry `velocity-color-led` feedback on `midi-out`.
+- Pads and buttons carry `rgb-led` feedback on `midi-out` (ECS-95). Each LED is
+  lit by a device SysEx, `F0 00 20 29 02 0D 03 03 <LED> <red> <green> <blue> F7`,
+  with the prefix in `rgbSysExPrefix` and each colour 0-127. The LED index is the
+  pad's note or the button's CC. Colour is chosen by the binding, so the same
+  pad can be a blue step in one mode and a red mute in another.
 - **One grid**: `pads`, 8x8, cells mapping row/column to `pad-<note>`.
 - **SysEx**: manufacturer id `00 20 29`, `required: false`.
 - **Setup** (`docs/contracts/device-setup.md`): Device Inquiry request, Device
@@ -59,7 +63,9 @@ The first four top-row buttons are the arrows, per the device's user guide.
 Their order (up, down, left, right, from the left) is an assumption, not yet
 confirmed on hardware. Transport moved to the side column because the arrows
 take CC 91-94. Paging up and down moves by eight tracks, and the window stops
-at the track count the application provides.
+at the track count the application provides. The mixer lays its eight tracks
+across the top row, as its UI does, and paging moves that row to the next
+eight tracks.
 
 ## Deliberately not modeled
 

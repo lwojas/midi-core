@@ -1,6 +1,6 @@
 import type { ControlDef, ControlValue, NumericControlDef } from "../control-api/types/control.js";
 import { PITCH_BEND_MAX, PITCH_BEND_MIN, type MidiMessage } from "../core/types/message.js";
-import { matchesSource, type MidiSource, type MidiTarget } from "./types/address.js";
+import { matchesSource, type MidiSource, type MidiTarget, type RgbColour } from "./types/address.js";
 
 /**
  * Value normalisation between a MIDI message's native range and a
@@ -76,7 +76,9 @@ export function buildFeedbackMessage<D extends ControlDef>(
   target: MidiTarget,
   def: D,
   value: ControlValue<D>,
+  lit?: RgbColour,
 ): MidiMessage | undefined {
+  if (target.rgbPrefix !== undefined) return buildRgbFeedbackMessage(target, def, value, lit);
   switch (target.address.type) {
     case "control-change": {
       const native = denormalizeRanged(value, def, 0, 127);
@@ -100,6 +102,24 @@ export function buildFeedbackMessage<D extends ControlDef>(
       };
     }
   }
+}
+
+/** An RGB LED with no colour of its own is lit white. Off is black. */
+const RGB_DEFAULT_LIT: RgbColour = { red: 127, green: 127, blue: 127 };
+const RGB_OFF: RgbColour = { red: 0, green: 0, blue: 0 };
+
+/**
+ * A boolean control on an RGB LED (ECS-95), as a device SysEx message: on shows `lit` (or white), off is black. The
+ * LED index is the note or controller the control's address names, which is how the device numbers its LEDs in
+ * Programmer mode. Anything else has no RGB form.
+ */
+function buildRgbFeedbackMessage<D extends ControlDef>(target: MidiTarget, def: D, value: ControlValue<D>, lit: RgbColour | undefined): MidiMessage | undefined {
+  if (def.kind !== "boolean" || target.rgbPrefix === undefined) return undefined;
+  const led = target.address.type === "note" ? target.address.note : target.address.type === "control-change" ? target.address.controller : undefined;
+  if (led === undefined) return undefined;
+  const on = value as unknown as boolean;
+  const { red, green, blue } = on ? (lit ?? RGB_DEFAULT_LIT) : RGB_OFF;
+  return { type: "sysex", raw: Uint8Array.of(0xf0, ...target.rgbPrefix, led, red, green, blue, 0xf7) };
 }
 
 function normalizeRanged<D extends ControlDef>(

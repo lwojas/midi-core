@@ -50,4 +50,9 @@ describe("sequenceClamp", () => {
     const clamp = sequenceClamp(table({}), LAUNCHPAD_MINI_MK3_PROFILE, registry({}));
     expect(clamp({ row: 99, column: 0 })).toEqual({ row: 99, column: 0 });
   });
+
+  it("bounds a horizontal window's tracks by the grid's columns, not its rows", () => {
+    const clamp = sequenceClamp(table({ orientation: "horizontal", rowCountControl: "tracks.count" }), LAUNCHPAD_MINI_MK3_PROFILE, registry({ "tracks.count": 16 }));
+    expect(clamp({ row: 99, column: 0 })).toEqual({ row: 8, column: 0 });
+  });
 });

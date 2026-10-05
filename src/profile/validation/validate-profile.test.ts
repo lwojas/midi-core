@@ -200,6 +200,27 @@ describe("validateDeviceProfile", () => {
     );
   });
 
+  describe("rgb-led feedback (ECS-95)", () => {
+    const withFeedback = (feedback: unknown): unknown => {
+      const profile = validProfile();
+      return { ...profile, controls: profile.controls.map((control) => ({ ...control, feedback })) };
+    };
+
+    it("accepts an rgb-led control with a SysEx prefix of byte values", () => {
+      expect(validateDeviceProfile(withFeedback({ kind: "rgb-led", address: { address: { type: "note", note: 36 }, channel: 0 }, rgbSysExPrefix: [0x00, 0x20, 0x29] }))).toEqual([]);
+    });
+
+    it("reports an rgb-led control with no prefix, or one with a byte out of range", () => {
+      const address = { address: { type: "note", note: 36 }, channel: 0 };
+      expect(validateDeviceProfile(withFeedback({ kind: "rgb-led", address }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-rgb-prefix", path: "controls[0].feedback.rgbSysExPrefix", severity: "error" }),
+      );
+      expect(validateDeviceProfile(withFeedback({ kind: "rgb-led", address, rgbSysExPrefix: [0x00, 0x80] }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-rgb-prefix" }),
+      );
+    });
+  });
+
   describe("layout (ECS-90)", () => {
     const withLayout = (layout: unknown): unknown => ({ ...validProfile(), layout });
 

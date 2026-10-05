@@ -5,7 +5,7 @@ import type { ControlRegistry } from "../control-api/types/registry.js";
 import type { Unsubscribe } from "../core/types/discovery.js";
 import type { MidiInput } from "../core/types/input.js";
 import type { MidiOutput } from "../core/types/output.js";
-import type { MidiSource, MidiTarget } from "../mapping/types/address.js";
+import type { MidiSource, MidiTarget, RgbColour } from "../mapping/types/address.js";
 import type { ControlMapping } from "../mapping/types/mapping.js";
 import { bindControlMapping } from "../mapping/bind.js";
 import { buildFeedbackMessage } from "../mapping/value.js";
@@ -23,7 +23,7 @@ import type {
   WindowedControlBinding,
 } from "./types/bindings.js";
 import type { GenerateControlMappings } from "./types/generation.js";
-import type { SurfaceNavigation } from "./types/navigation.js";
+import type { GridOffset, SurfaceNavigation } from "./types/navigation.js";
 import { createWindowedControl } from "./windowed-control.js";
 
 /**
@@ -92,14 +92,14 @@ function bindToggle(
   input: MidiInput,
   source: MidiSource,
   control: Control<BooleanControlDef>,
-  feedback: { target: MidiTarget; output: MidiOutput; kind: string | undefined } | undefined,
+  feedback: { target: MidiTarget; output: MidiOutput; kind: string | undefined; lit?: RgbColour } | undefined,
 ): { unsubscribe: Unsubscribe; painter?: FeedbackPainter } {
   const action = createAction({ id: `toggle.${control.def.id}`, label: control.def.label }, () => control.setValue(!control.getValue()));
   const unbindTrigger = bindActionTrigger(input, source, action);
   if (!feedback) return { unsubscribe: unbindTrigger };
 
   const send = (value: boolean) => {
-    const message = buildFeedbackMessage(feedback.target, control.def, value);
+    const message = buildFeedbackMessage(feedback.target, control.def, value, feedback.lit);
     if (message !== undefined) feedback.output.send(message);
   };
   const unbindFeedback = control.onChange((value) => send(value));
@@ -128,6 +128,16 @@ function restValue(def: ControlDef): ControlValue<ControlDef> | undefined {
   if (def.kind === "boolean") return false as ControlValue<ControlDef>;
   if (def.kind === "number") return def.min as ControlValue<ControlDef>;
   return undefined;
+}
+
+/**
+ * The virtual row and column of a window's cell: its grid position plus the page offset. A horizontal window swaps the
+ * grid's axes, so its tracks run across the columns (ECS-95).
+ */
+function windowPosition(binding: WindowedControlBinding, cell: { row: number; column: number }, offset: GridOffset): [number, number] {
+  return binding.orientation === "horizontal"
+    ? [offset.row + cell.column, offset.column + cell.row]
+    : [offset.row + cell.row, offset.column + cell.column];
 }
 
 function fillTemplate(template: string, row: number, column: number): string {
@@ -217,7 +227,12 @@ export async function bindSurfaceMode(
     const target = toMidiTarget(physical);
     const output = target ? deps.ports.outputs[physical.feedbackPortId ?? physical.portId] : undefined;
     if (target && !output) continue;
-    const handle = bindToggle(input, source, control as Control<BooleanControlDef>, target && output ? { target, output, kind: physical.feedback?.kind } : undefined);
+    const handle = bindToggle(
+      input,
+      source,
+      control as Control<BooleanControlDef>,
+      target && output ? { target, output, kind: physical.feedback?.kind, lit: binding.colour } : undefined,
+    );
     unsubscribes.push(handle.unsubscribe);
     if (handle.painter) painters.push(handle.painter);
   }
@@ -257,7 +272,7 @@ export async function bindSurfaceMode(
       def,
       () => {
         const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
-        const control = deps.registry.getControl(fillTemplate(binding.template, cell.row + offset.row, cell.column + offset.column));
+        const control = deps.registry.getControl(fillTemplate(binding.template, ...windowPosition(binding, cell, offset)));
         return control?.def.kind === "boolean" ? (control as Control<BooleanControlDef>) : undefined;
       },
       navigation,
@@ -272,7 +287,12 @@ export async function bindSurfaceMode(
     }
 
     if (binding.press === "toggle") {
-      const handle = bindToggle(input, source, windowed, target && output ? { target, output, kind: physical.feedback?.kind } : undefined);
+      const handle = bindToggle(
+        input,
+        source,
+        windowed,
+        target && output ? { target, output, kind: physical.feedback?.kind, lit: binding.colour } : undefined,
+      );
       unsubscribes.push(() => windowed.dispose(), handle.unsubscribe);
       if (handle.painter) painters.push(handle.painter);
       continue;

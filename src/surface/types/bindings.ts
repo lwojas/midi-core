@@ -1,6 +1,7 @@
 import type { ControlId } from "../../control-api/types/control.js";
 import type { SurfaceContext } from "../../control-api/types/context.js";
 import type { GridOffset, SurfaceModeId } from "./navigation.js";
+import type { RgbColour } from "../../mapping/types/address.js";
 
 /**
  * Declarative mode bindings (ECS-68): the "binding table" shape
@@ -80,6 +81,8 @@ export interface ControlBinding extends ModeBindingBase {
   readonly kind: "control";
   readonly resolve: ControlIdResolution;
   readonly press?: ControlPress;
+  /** The colour the LED shows while the control is on, on an RGB LED (ECS-95). Omitted means white. */
+  readonly colour?: RgbColour;
 }
 
 export interface NavigationBinding extends ModeBindingBase {
@@ -103,6 +106,14 @@ export interface WindowedControlBinding extends ModeBindingBase {
   readonly gridId: string;
   readonly template: string;
   readonly press?: ControlPress;
+  /**
+   * Which way the window's tracks run (ECS-95). "vertical" (the default): a cell's position is its row and column
+   * offset by the page. "horizontal": the window's rows and columns trade places, so the page's tracks run across the
+   * grid's columns and the page offset still moves by tracks, the way a mixer lays tracks out across the top.
+   */
+  readonly orientation?: "vertical" | "horizontal";
+  /** The colour the LED shows while the cell is on, on an RGB LED (ECS-95). Omitted means white. */
+  readonly colour?: RgbColour;
   /**
    * An application control holding how many columns the sequence has (ECS-89). Paging stops at the first
    * column and at the last window that still shows the end of the sequence. Omitted means no upper bound.

@@ -54,6 +54,7 @@ describe("createSequencerBindings on the Launchpad", () => {
         press: "toggle",
         columnCountControl: "steps.length",
         rowCountControl: "tracks.count",
+        colour: { red: 0, green: 0, blue: 127 },
       });
     }
   });
@@ -73,11 +74,19 @@ describe("createSequencerBindings on the Launchpad", () => {
     expect(pages.map((binding) => binding.physicalControlId)).toEqual(["top-91", "top-92"]);
   });
 
-  it("mixer mutes one track per grid row, from the first column, and follows the page so it reaches every track", () => {
+  it("mixer mutes one track per column of the top row, laid out horizontally, and pages through tracks", () => {
     const mutes = bindingsOf(table, "mixer").filter((binding) => binding.kind === "window");
-    expect(mutes.map((binding) => binding.physicalControlId)).toEqual(["pad-81", "pad-71", "pad-61", "pad-51", "pad-41", "pad-31", "pad-21", "pad-11"]);
+    expect(mutes.map((binding) => binding.physicalControlId)).toEqual(["pad-81", "pad-82", "pad-83", "pad-84", "pad-85", "pad-86", "pad-87", "pad-88"]);
     for (const mute of mutes) {
-      expect(mute).toMatchObject({ kind: "window", gridId: "pads", template: "mute.{track}", press: "toggle", rowCountControl: "tracks.count" });
+      expect(mute).toMatchObject({
+        kind: "window",
+        gridId: "pads",
+        template: "mute.{track}",
+        press: "toggle",
+        orientation: "horizontal",
+        rowCountControl: "tracks.count",
+        colour: { red: 127, green: 0, blue: 0 },
+      });
     }
   });
 
@@ -102,13 +111,13 @@ describe("createSequencerBindings on the example grid", () => {
     expect(modeButtons.map((binding) => binding.physicalControlId)).toEqual(["button-mode-a", "button-mode-b", "button-mode-c"]);
   });
 
-  it("windows its own 8x8 grid, paged by its own paging, and mutes from its first column", () => {
+  it("windows its own 8x8 grid, paged by its own paging, and mutes from its top row", () => {
     const windows = bindingsOf(table, "steps").filter((binding) => binding.kind === "window");
     expect(windows).toHaveLength(64);
     expect(new Set(windows.map((binding) => binding.physicalControlId)).size).toBe(64);
     expect(windows.every((binding) => binding.kind === "window" && binding.gridId === "grid")).toBe(true);
     const mutes = bindingsOf(table, "mixer").filter((binding) => binding.kind === "window");
-    expect(mutes.map((binding) => binding.physicalControlId)).toEqual(["pad-0-0", "pad-1-0", "pad-2-0", "pad-3-0", "pad-4-0", "pad-5-0", "pad-6-0", "pad-7-0"]);
+    expect(mutes.map((binding) => binding.physicalControlId)).toEqual(["pad-0-0", "pad-0-1", "pad-0-2", "pad-0-3", "pad-0-4", "pad-0-5", "pad-0-6", "pad-0-7"]);
   });
 
   it("binds its page buttons to the grid's paging", () => {

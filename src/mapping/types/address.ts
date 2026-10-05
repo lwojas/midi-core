@@ -60,6 +60,18 @@ export interface MidiSource {
 export interface MidiTarget {
   readonly address: MidiAddress;
   readonly channel: Channel;
+  /**
+   * For an RGB LED (ECS-95): the SysEx bytes that come before the LED index, without the leading F0. The feedback
+   * message is then F0, these bytes, the LED index (the note or controller), red, green, blue, F7.
+   */
+  readonly rgbPrefix?: readonly number[];
+}
+
+/** An RGB LED colour, each channel 0-127 (ECS-95). */
+export interface RgbColour {
+  readonly red: number;
+  readonly green: number;
+  readonly blue: number;
 }
 
 /** Whether `message` is the kind of event `source` listens for, on a matching channel. */

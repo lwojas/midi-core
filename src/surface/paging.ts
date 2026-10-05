@@ -13,16 +13,22 @@ export function sequenceClamp(table: SurfaceBindingTable, profile: DeviceProfile
   const columnWindow = windows.find((binding) => binding.columnCountControl !== undefined);
   const rowWindow = windows.find((binding) => binding.rowCountControl !== undefined);
 
-  const gridOf = (binding: WindowedControlBinding | undefined) => profile.grids?.find((grid) => grid.id === binding?.gridId);
-  const lastOffset = (countControl: string | undefined, cells: number | undefined): number => {
+  // How many cells the window spans along one of its virtual axes: a horizontal window swaps the grid's axes (ECS-95).
+  const span = (binding: WindowedControlBinding | undefined, axis: "row" | "column"): number => {
+    const grid = profile.grids?.find((candidate) => candidate.id === binding?.gridId);
+    if (!grid) return 0;
+    const alongRows = (axis === "row") !== (binding?.orientation === "horizontal");
+    return alongRows ? grid.rows : grid.columns;
+  };
+  const lastOffset = (countControl: string | undefined, cells: number): number => {
     if (countControl === undefined) return Number.POSITIVE_INFINITY;
     const count = registry.getControl(countControl)?.getValue();
-    return typeof count === "number" ? Math.max(0, count - (cells ?? 0)) : Number.POSITIVE_INFINITY;
+    return typeof count === "number" ? Math.max(0, count - cells) : Number.POSITIVE_INFINITY;
   };
 
   return (offset) => {
-    const lastRow = lastOffset(rowWindow?.rowCountControl, gridOf(rowWindow)?.rows);
-    const lastColumn = lastOffset(columnWindow?.columnCountControl, gridOf(columnWindow)?.columns);
+    const lastRow = lastOffset(rowWindow?.rowCountControl, span(rowWindow, "row"));
+    const lastColumn = lastOffset(columnWindow?.columnCountControl, span(columnWindow, "column"));
     return {
       row: Math.min(lastRow, Math.max(0, offset.row)),
       column: Math.min(lastColumn, Math.max(0, offset.column)),
