@@ -43,6 +43,39 @@ both transports, so the surface code under test is identical.
 | Context/modes, transport mode | Pass | Top row 91–94 → play/stop/record/clear; 95–98 ignored; pad presses don't change app state (`pads lit now=0`) |
 | Release handling | Pass after fix | Release as Note On velocity 0 now resolves to off (see F1) |
 
+## Browser validation in webseq (ECS-94)
+
+Run against the real sequencer app in a browser, on the same Launchpad Mini
+MK3, using webseq's MIDI panel (device picker, Connect, Disconnect). Webseq
+commit: `cbc7584` (the fixes below are in it). Firmware version, browser and
+browser version were not recorded for this run.
+
+| Check | Result | Notes |
+|---|---|---|
+| 1. Connection and selection | Pass | Launchpad listed; matched name and help text shown; unrelated input refused |
+| 2. Setup on connect | Pass | Device Inquiry accepted; Programmer mode entered; no setup errors in the log |
+| 3. Steps mode | Pass | Pads toggle steps; rows = tracks 1–8, columns = beats; paging 95/96 stops at sequence length; pad colours match step state |
+| 4. Mixer mode | Pass | Side button 79 switches; top pad row mutes tracks 1–8; lights follow mute |
+| 5. Transport mode | Pass | Side button 69 switches; 91/92 play/stop; 93/94 record/clear |
+| 6. Mode switching | Pass | 89/79/69 switch in each direction; surface mode matches the UI |
+| 7. Changes from the UI | Pass | Mouse mute and step edits update pad lights while connected |
+| 8. Disconnect and reconnect | Pass | Disconnect releases the device; reconnect restores Programmer mode and steps view with UI state preserved |
+| 9. Unplug during a session | Pass after fix | See W2 |
+
+**W1: SysEx access not requested (fixed in webseq).** The first connect failed
+with `System exclusive message is not allowed at index 0 (240)`. webseq called
+`requestWebMidiAccess()` without options, so the browser granted access without
+SysEx permission and rejected the Programmer-mode setup. Fixed by requesting
+`{ sysex: true }`. A browser-only issue: the Node transport has no such
+permission, which is why the Node runs did not catch it.
+
+**W2: unplug left the UI showing "connected" (fixed in webseq).** midi-core
+moved the surface to `"error"` when the cable was pulled, but webseq did not
+observe the surface's state. Fixed by releasing the surface on `"error"` and
+showing the device as disconnected, so Connect is offered again. Re-verified on
+hardware: after replugging and reconnecting, the device entered Programmer mode
+with the steps and mutes restored.
+
 ## Findings
 
 **F1: release sent as Note On velocity 0 was read as press (fixed).**
