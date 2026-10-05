@@ -73,6 +73,12 @@ specific thing an earlier contract named as deferred:
   `controlId` must resolve to a declared control
   (`dangling-control-reference`, the other reference `device-profile.md`
   named), and no two grids share an `id` (`duplicate-grid-id`).
+- **`layout`** (ECS-90) — when present, must be an object (`invalid-layout`),
+  `modeButtons` must be an array of objects with a string `mode` and a `controlId`
+  (`invalid-layout`), and every control id named by `modeButtons`, `pageLeft`,
+  `pageRight` or `transport` must be a declared control (`dangling-control-reference`).
+  The validator doesn't check whether a mode name means anything: the surface decides
+  that, and the configuration reports any role it cannot bind.
 - **`sysex`** — `required: true` with an empty/missing `manufacturerId`
   is flagged (`sysex-required-no-manufacturer-id`): a profile claiming
   vendor SysEx is required but not saying which vendor is exactly the

@@ -62,6 +62,7 @@ interface DeviceProfile {
   readonly grids?: readonly ControlGrid[];
   readonly sysex?: DeviceSysExProfile;
   readonly setup?: DeviceSetup;
+  readonly layout?: DeviceLayout;
 }
 ```
 
@@ -118,6 +119,16 @@ interface DeviceProfile {
   `expect` is a reply pattern (`null` matches any byte). Declared setup is run
   by the surface on connect; see [device-setup.md](./device-setup.md). Replaces
   the earlier `DeviceHandshake`, which described steps without bytes.
+- **`layout`** — `DeviceLayout` (ECS-90): which controls play which
+  sequencer roles, as the profile's default. `modeButtons` is an ordered list of
+  `{ controlId, mode }`; `pageLeft`/`pageRight` and `transport`
+  (`{ play?, stop?, record?, clear? }`) are control ids. Every id names a
+  `PhysicalControl` on this profile. The step grid is not named here: it is the
+  grid with `paging`, and track mutes are its top row. A profile with no layout
+  is valid; the sequencer configuration reports that and builds what it can.
+  The layout is a usage default, not a fact about the hardware, so an app may
+  override it, but overrides belong outside the profile document: a profile is
+  generated offline, and regenerating it would discard them.
 
 `schemaVersion` (currently `DEVICE_PROFILE_SCHEMA_VERSION = "1.0"`) is this
 document shape's own version, not the device's firmware version. Profiles

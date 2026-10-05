@@ -7,7 +7,8 @@ import { LAUNCHPAD_SEQUENCER_BINDINGS_JSON } from "./fixtures/launchpad-sequence
 import { EXAMPLE_GRID_8X8_PROFILE } from "../profile/devices/example-grid-8x8.js";
 import { validateDeviceProfile } from "../profile/validation/validate-profile.js";
 import type { ModeBinding, SurfaceBindingTable } from "../surface/types/bindings.js";
-import { createSequencerBindings, type SequencerContract, type SequencerDevice } from "./sequencer.js";
+import type { DeviceLayout } from "../profile/types/layout.js";
+import { createSequencerBindings, type SequencerContract } from "./sequencer.js";
 
 const action = () => createAction({ id: "a", label: "a" }, () => {});
 const input = createMidiInput(new MockMidiInput({ id: "in", type: "input", name: "in", manufacturer: null }));
@@ -20,13 +21,14 @@ const contract = (): SequencerContract => ({
 
 const launchpad = findDevice({ name: "Launchpad Mini MK3 MIDI" }) as DeviceEntry;
 const example = DEVICE_REGISTRY.find((entry) => entry.id === EXAMPLE_GRID_8X8_PROFILE.identity.id) as DeviceEntry;
+const launchpadLayout = launchpad.profile.layout as DeviceLayout;
 
 function bindingsOf(table: SurfaceBindingTable, mode: string): readonly ModeBinding[] {
   return table.find((definition) => definition.mode === mode)?.bindings ?? [];
 }
 
 describe("createSequencerBindings on the Launchpad", () => {
-  const { bindings: table, unresolved } = createSequencerBindings(input, launchpad, contract());
+  const { bindings: table, unresolved } = createSequencerBindings(input, launchpad.profile, contract());
 
   it("resolves every role", () => {
     expect(unresolved).toEqual([]);
@@ -64,7 +66,7 @@ describe("createSequencerBindings on the Launchpad", () => {
 });
 
 describe("createSequencerBindings on the example grid", () => {
-  const { bindings: table, unresolved } = createSequencerBindings(input, example, contract());
+  const { bindings: table, unresolved } = createSequencerBindings(input, example.profile, contract());
 
   it("validates its profile, and resolves every role through the same code path", () => {
     expect(validateDeviceProfile(EXAMPLE_GRID_8X8_PROFILE)).toEqual([]);
@@ -93,13 +95,13 @@ describe("createSequencerBindings on the example grid", () => {
 });
 
 describe("createSequencerBindings when a role cannot be found", () => {
-  const withLayout = (layout: SequencerDevice["layout"], profile: SequencerDevice["profile"] = launchpad.profile) =>
-    createSequencerBindings(input, { profile, layout }, contract());
+  const withLayout = (layout: DeviceLayout | undefined, profile = launchpad.profile) =>
+    createSequencerBindings(input, { ...profile, layout }, contract());
 
   it("reports a mode button whose control the profile lacks, and omits only that binding", () => {
     const { bindings, unresolved } = withLayout({
-      ...launchpad.layout,
-      modeButtons: [...launchpad.layout.modeButtons, { controlId: "side-1", mode: "extra" }],
+      ...launchpadLayout,
+      modeButtons: [...(launchpadLayout.modeButtons ?? []), { controlId: "side-1", mode: "extra" }],
     });
     expect(unresolved).toEqual(["mode: extra (control side-1)"]);
     expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode")).toHaveLength(3);
@@ -107,17 +109,16 @@ describe("createSequencerBindings when a role cannot be found", () => {
 
   it("reports a page button and a transport button the profile lacks, and keeps the rest", () => {
     const { bindings, unresolved } = withLayout({
-      ...launchpad.layout,
+      ...launchpadLayout,
       pageLeft: "top-0",
-      transport: { ...launchpad.layout.transport, play: "top-0" },
+      transport: { ...launchpadLayout.transport, play: "top-0" },
     });
     expect(unresolved).toEqual(["page left (control top-0)", "transport: play (control top-0)"]);
     expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page")).toHaveLength(1);
   });
 
   it("reports the step grid, and builds the modes without its windows, mutes or pages, when the profile has no grid with paging", () => {
-    const { profile } = launchpad;
-    const { bindings, unresolved } = withLayout(launchpad.layout, { ...profile, grids: [] });
+    const { bindings, unresolved } = createSequencerBindings(input, { ...launchpad.profile, grids: [] }, contract());
     expect(unresolved).toEqual(["step grid (a grid with paging)"]);
     expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "window")).toHaveLength(0);
     expect(bindingsOf(bindings, "mixer").filter((binding) => binding.kind === "control")).toHaveLength(0);
@@ -125,9 +126,16 @@ describe("createSequencerBindings when a role cannot be found", () => {
   });
 
   it("builds transport without a button the layout does not name, and does not report it", () => {
-    const { bindings, unresolved } = withLayout({ ...launchpad.layout, transport: { play: "top-91" } });
+    const { bindings, unresolved } = withLayout({ ...launchpadLayout, transport: { play: "top-91" } });
     expect(unresolved).toEqual([]);
     expect(bindings.find((definition) => definition.mode === "transport")?.hooks).toBeDefined();
+  });
+
+  it("reports a profile with no layout, and still builds the step grid and its paging-free windows", () => {
+    const { bindings, unresolved } = withLayout(undefined);
+    expect(unresolved).toEqual(["layout (the profile declares none)"]);
+    expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "window")).toHaveLength(64);
+    expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate")).toHaveLength(0);
   });
 });
 

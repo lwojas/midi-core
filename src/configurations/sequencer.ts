@@ -1,6 +1,7 @@
 import type { Action } from "../control-api/types/action.js";
 import type { MidiInput } from "../core/types/input.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
+import type { DeviceLayout } from "../profile/types/layout.js";
 import type { ControlGrid } from "../profile/types/grid.js";
 import { bindActionTrigger } from "../surface/action-binding.js";
 import { toMidiSource } from "../surface/generate.js";
@@ -23,29 +24,6 @@ export interface SequencerContract {
   readonly actions: { readonly play?: Action; readonly stop?: Action; readonly record?: Action; readonly clear?: Action };
 }
 
-/**
- * Which device control plays each sequencer role (ECS-90). A profile says what a device has; a layout says
- * which of those controls the sequencer uses for what. The configuration resolves these ids against the
- * profile, and reports any it cannot find rather than guessing.
- *
- * The step grid is not named here: it is the profile's grid with `paging`, and the track mutes are its top row.
- */
-export interface SequencerLayout {
-  /** Mode buttons, in order. Each switches the surface to the named mode, and is available in every mode. */
-  readonly modeButtons: readonly { readonly controlId: string; readonly mode: string }[];
-  /** Page buttons, one each side. A side left out has no page binding. */
-  readonly pageLeft?: string;
-  readonly pageRight?: string;
-  /** Transport buttons. A button left out has no binding. */
-  readonly transport?: { readonly play?: string; readonly stop?: string; readonly record?: string; readonly clear?: string };
-}
-
-/** A device the sequencer can drive: its profile, and the layout of the controls the sequencer uses. */
-export interface SequencerDevice {
-  readonly profile: DeviceProfile;
-  readonly layout: SequencerLayout;
-}
-
 export interface SequencerBindings {
   readonly bindings: SurfaceBindingTable;
   /** Roles the profile could not resolve, one line each. Their bindings are omitted, and the rest still work. */
@@ -61,19 +39,21 @@ function fill(template: string, values: Record<string, number>): string {
 /**
  * Builds the binding table for a sequencer on a device: three modes (steps, mixer, transport) with the device's
  * mode buttons available in each. Steps and mutes toggle on press. The steps grid is a window onto the sequence,
- * paged by the page size the profile's grid declares. `input` is the connected device input, which transport
- * triggers need.
+ * paged by the page size the profile's grid declares. Which controls play which role comes from the profile's
+ * `layout` (ECS-90). `input` is the connected device input, which transport triggers need.
  */
-export function createSequencerBindings(input: MidiInput, device: SequencerDevice, contract: SequencerContract): SequencerBindings {
-  const { profile, layout } = device;
+export function createSequencerBindings(input: MidiInput, profile: DeviceProfile, contract: SequencerContract): SequencerBindings {
   const unresolved: string[] = [];
   const hasControl = (controlId: string) => profile.controls.some((control) => control.id === controlId);
+
+  const layout: DeviceLayout = profile.layout ?? {};
+  if (!profile.layout) unresolved.push("layout (the profile declares none)");
 
   const grid: ControlGrid | undefined = profile.grids?.find((candidate) => candidate.paging);
   if (!grid) unresolved.push("step grid (a grid with paging)");
 
   const modeBindings: ModeBinding[] = [];
-  for (const { controlId, mode } of layout.modeButtons) {
+  for (const { controlId, mode } of layout.modeButtons ?? []) {
     if (!hasControl(controlId)) {
       unresolved.push(`mode: ${mode} (control ${controlId})`);
       continue;

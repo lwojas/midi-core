@@ -1,6 +1,7 @@
 import type { PhysicalControl } from "../types/control.js";
 import type { ControlGrid } from "../types/grid.js";
 import type { DeviceIdentity } from "../types/identity.js";
+import type { DeviceLayout } from "../types/layout.js";
 import type { DevicePortProfile } from "../types/port.js";
 import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "../types/profile.js";
 
@@ -72,10 +73,23 @@ export const EXAMPLE_GRID_8X8_PAD_GRID: ControlGrid = {
   paging: { rows: 8, columns: 8 },
 };
 
+/** ECS-90: the sequencer's roles on this device, as its own usage defines them. */
+export const EXAMPLE_GRID_8X8_LAYOUT: DeviceLayout = {
+  modeButtons: [
+    { controlId: "button-mode-a", mode: "steps" },
+    { controlId: "button-mode-b", mode: "mixer" },
+    { controlId: "button-mode-c", mode: "transport" },
+  ],
+  pageLeft: "button-page-left",
+  pageRight: "button-page-right",
+  transport: { play: "button-play", stop: "button-stop", record: "button-record", clear: "button-clear" },
+};
+
 export const EXAMPLE_GRID_8X8_PROFILE: DeviceProfile = {
   schemaVersion: DEVICE_PROFILE_SCHEMA_VERSION,
   identity: EXAMPLE_GRID_8X8_IDENTITY,
   ports: EXAMPLE_GRID_8X8_PORTS,
   controls: EXAMPLE_GRID_8X8_CONTROLS,
   grids: [EXAMPLE_GRID_8X8_PAD_GRID],
+  layout: EXAMPLE_GRID_8X8_LAYOUT,
 };

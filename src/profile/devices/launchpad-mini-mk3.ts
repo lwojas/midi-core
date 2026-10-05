@@ -1,6 +1,7 @@
 import type { PhysicalControl } from "../types/control.js";
 import type { ControlGrid } from "../types/grid.js";
 import type { DeviceIdentity } from "../types/identity.js";
+import type { DeviceLayout } from "../types/layout.js";
 import type { DevicePortProfile } from "../types/port.js";
 import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "../types/profile.js";
 import type { DeviceSetup } from "../types/setup.js";
@@ -187,6 +188,22 @@ export const LAUNCHPAD_MINI_MK3_SETUP: DeviceSetup = {
   ],
 };
 
+/**
+ * ECS-90: the sequencer's roles on this device. Side buttons switch steps / mixer / transport, top buttons 95/96 page
+ * the step grid, and top buttons 91-94 are transport. This is the Launchpad's usage, not a fact about the hardware,
+ * which is why it lives in the profile as a default and can be overridden in the app.
+ */
+export const LAUNCHPAD_MINI_MK3_LAYOUT: DeviceLayout = {
+  modeButtons: [
+    { controlId: "side-89", mode: "steps" },
+    { controlId: "side-79", mode: "mixer" },
+    { controlId: "side-69", mode: "transport" },
+  ],
+  pageLeft: "top-95",
+  pageRight: "top-96",
+  transport: { play: "top-91", stop: "top-92", record: "top-93", clear: "top-94" },
+};
+
 export const LAUNCHPAD_MINI_MK3_PROFILE: DeviceProfile = {
   schemaVersion: DEVICE_PROFILE_SCHEMA_VERSION,
   identity: LAUNCHPAD_MINI_MK3_IDENTITY,
@@ -195,4 +212,5 @@ export const LAUNCHPAD_MINI_MK3_PROFILE: DeviceProfile = {
   grids: [LAUNCHPAD_MINI_MK3_PAD_GRID],
   sysex: LAUNCHPAD_MINI_MK3_SYSEX,
   setup: LAUNCHPAD_MINI_MK3_SETUP,
+  layout: LAUNCHPAD_MINI_MK3_LAYOUT,
 };

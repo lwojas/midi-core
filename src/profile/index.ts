@@ -32,6 +32,8 @@ export type { DeviceSysExProfile } from "./types/sysex.js";
 
 export type { DeviceSetupStep, DeviceSetup } from "./types/setup.js";
 
+export type { ModeButtonRole, TransportRoles, DeviceLayout } from "./types/layout.js";
+
 export type { DeviceProfile } from "./types/profile.js";
 export { DEVICE_PROFILE_SCHEMA_VERSION } from "./types/profile.js";
 
@@ -73,6 +75,7 @@ export {
   EXAMPLE_GRID_8X8_BUTTONS,
   EXAMPLE_GRID_8X8_CONTROLS,
   EXAMPLE_GRID_8X8_PAD_GRID,
+  EXAMPLE_GRID_8X8_LAYOUT,
   EXAMPLE_GRID_8X8_PROFILE,
 } from "./devices/example-grid-8x8.js";
 
@@ -87,6 +90,7 @@ export {
   LAUNCHPAD_MINI_MK3_PAD_GRID,
   LAUNCHPAD_MINI_MK3_SYSEX,
   LAUNCHPAD_MINI_MK3_SETUP,
+  LAUNCHPAD_MINI_MK3_LAYOUT,
   LAUNCHPAD_MINI_MK3_PROFILE,
 } from "./devices/launchpad-mini-mk3.js";
 

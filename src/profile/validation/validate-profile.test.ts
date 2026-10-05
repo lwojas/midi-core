@@ -199,4 +199,35 @@ describe("validateDeviceProfile", () => {
       expect.objectContaining({ code: "setup-step-missing-description", severity: "warning" }),
     );
   });
+
+  describe("layout (ECS-90)", () => {
+    const withLayout = (layout: unknown): unknown => ({ ...validProfile(), layout });
+
+    it("accepts a profile with no layout, and a layout whose control ids all resolve", () => {
+      expect(validateDeviceProfile(validProfile())).toEqual([]);
+      expect(validateDeviceProfile(withLayout({ modeButtons: [{ controlId: "pad-1", mode: "steps" }], pageLeft: "pad-1", transport: { play: "pad-1" } }))).toEqual([]);
+    });
+
+    it("reports a layout control id the profile does not declare, at the path that names it", () => {
+      expect(validateDeviceProfile(withLayout({ modeButtons: [{ controlId: "side-89", mode: "steps" }] }))).toContainEqual(
+        expect.objectContaining({ code: "dangling-control-reference", path: "layout.modeButtons[0].controlId" }),
+      );
+      expect(validateDeviceProfile(withLayout({ pageRight: "top-96" }))).toContainEqual(
+        expect.objectContaining({ code: "dangling-control-reference", path: "layout.pageRight" }),
+      );
+      expect(validateDeviceProfile(withLayout({ transport: { clear: "top-94" } }))).toContainEqual(
+        expect.objectContaining({ code: "dangling-control-reference", path: "layout.transport.clear" }),
+      );
+    });
+
+    it("reports a layout that is not an object, or whose mode buttons are malformed", () => {
+      expect(validateDeviceProfile(withLayout("steps"))).toContainEqual(expect.objectContaining({ code: "invalid-layout", path: "layout" }));
+      expect(validateDeviceProfile(withLayout({ modeButtons: "pad-1" }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-layout", path: "layout.modeButtons" }),
+      );
+      expect(validateDeviceProfile(withLayout({ modeButtons: [{ controlId: "pad-1" }] }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-layout", path: "layout.modeButtons[0]" }),
+      );
+    });
+  });
 });

@@ -33,6 +33,7 @@ export type ProfileDiagnosticCode =
   | "duplicate-control-id"
   | "dangling-port-reference"
   | "invalid-grid"
+  | "invalid-layout"
   | "duplicate-grid-id"
   | "dangling-control-reference"
   | "grid-cell-out-of-bounds"

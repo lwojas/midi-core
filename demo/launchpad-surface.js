@@ -60,7 +60,7 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
 export function createLaunchpadSurface({ input, output, app, log = () => {} }) {
   const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values(), app.length]);
   const device = DEVICE_REGISTRY.find((entry) => entry.id === "novation.launchpad-mini-mk3");
-  const sequencer = createSequencerBindings(input, device, { ...CONTRACT, actions: app.actions });
+  const sequencer = createSequencerBindings(input, device.profile, { ...CONTRACT, actions: app.actions });
   for (const role of sequencer.unresolved) log(`unresolved: ${role}`);
   const surface = createControlSurface({
     profile: device.profile,

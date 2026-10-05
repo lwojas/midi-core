@@ -43,6 +43,7 @@ export function validateDeviceProfile(profile: unknown): readonly ProfileDiagnos
   diagnostics.push(...checkControls(profile.controls, portIds, controlIds));
 
   diagnostics.push(...checkGrids(profile.grids, controlIds));
+  diagnostics.push(...checkLayout(profile.layout, controlIds));
   diagnostics.push(...checkSysEx(profile.sysex));
   diagnostics.push(...checkSetup(profile.setup, profile.ports));
 
@@ -187,6 +188,61 @@ function checkControls(value: unknown, portIds: Set<string>, controlIds: Set<str
       });
     }
   });
+
+  return diagnostics;
+}
+
+/**
+ * ECS-90: a layout's control ids must name controls on this profile. An unknown mode, page or transport name is
+ * not checked here: the surface decides what a mode is, and the configuration reports any role it cannot bind.
+ */
+function checkLayout(value: unknown, controlIds: Set<string>): ProfileDiagnostic[] {
+  if (value === undefined) return [];
+  if (!isRecord(value)) {
+    return [{ severity: "error", code: "invalid-layout", path: "layout", message: "layout must be an object when present." }];
+  }
+
+  const diagnostics: ProfileDiagnostic[] = [];
+
+  const checkReference = (controlId: unknown, path: string) => {
+    if (controlId === undefined) return;
+    if (typeof controlId !== "string") {
+      diagnostics.push({ severity: "error", code: "invalid-layout", path, message: "A layout control id must be a string." });
+    } else if (!controlIds.has(controlId)) {
+      diagnostics.push({
+        severity: "error",
+        code: "dangling-control-reference",
+        path,
+        message: `Layout references control "${controlId}", which isn't declared in controls.`,
+      });
+    }
+  };
+
+  if (value.modeButtons !== undefined) {
+    if (!Array.isArray(value.modeButtons)) {
+      diagnostics.push({ severity: "error", code: "invalid-layout", path: "layout.modeButtons", message: "layout.modeButtons must be an array." });
+    } else {
+      value.modeButtons.forEach((button, index) => {
+        const path = `layout.modeButtons[${index}]`;
+        if (!isRecord(button) || typeof button.mode !== "string") {
+          diagnostics.push({ severity: "error", code: "invalid-layout", path, message: "A mode button needs a string controlId and mode." });
+          return;
+        }
+        checkReference(button.controlId, `${path}.controlId`);
+      });
+    }
+  }
+
+  checkReference(value.pageLeft, "layout.pageLeft");
+  checkReference(value.pageRight, "layout.pageRight");
+
+  if (value.transport !== undefined) {
+    if (!isRecord(value.transport)) {
+      diagnostics.push({ severity: "error", code: "invalid-layout", path: "layout.transport", message: "layout.transport must be an object." });
+    } else {
+      for (const name of ["play", "stop", "record", "clear"] as const) checkReference(value.transport[name], `layout.transport.${name}`);
+    }
+  }
 
   return diagnostics;
 }
