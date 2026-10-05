@@ -73,6 +73,7 @@ export function createLaunchpadSurface({ input, output, app, log = () => {} }) {
   surface.onError((e) => log(`surface error [${e.code}]: ${e.message}`));
   surface.navigation.onChange((change) => {
     if (change.from.mode !== change.to.mode) log(`mode: ${change.from.mode} -> ${change.to.mode}`);
+    else if (change.from.gridOffset?.column !== change.to.gridOffset?.column) log(`page: first step ${change.to.gridOffset?.column ?? 0}`);
   });
 
   return {
