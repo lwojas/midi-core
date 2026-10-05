@@ -299,7 +299,11 @@ defines:
   Transport/Step Grid, no new production code — found that pad-press
   feedback is correctly echo-suppressed, not a gap) — see
   [docs/control-surface-validation.md](./control-surface-validation.md).
-- ECS-78 — Integrate the sequencer through the Control Surface contract.
+- ECS-78 — Integrate the sequencer through the Control Surface contract
+  (replaces ECS-38's direct `bindControlMapping()` call in `webseq` with a
+  `DeviceProfile`/`SurfaceBindingTable` driving `createControlSurface()`;
+  no new production code needed here) — see
+  [docs/sequencer-integration.md](./sequencer-integration.md).
 - ECS-79 — Select and validate one real device with the surface runtime
   (proof scope step 4 above).
 - ECS-80 — Document future MIDI Profiler → surface integration.
