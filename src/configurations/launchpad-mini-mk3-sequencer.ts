@@ -18,7 +18,8 @@ export interface SequencerContract {
   readonly lengthControl: string;
   /** Application control for a track's mute, with `{track}` (1-based) filled in. */
   readonly muteTemplate: string;
-  readonly actions: { readonly play: Action; readonly stop: Action; readonly record: Action; readonly clear: Action };
+  /** Transport actions the application supports. An action left out has no binding, and its device button does nothing. */
+  readonly actions: { readonly play?: Action; readonly stop?: Action; readonly record?: Action; readonly clear?: Action };
 }
 
 const MODE_BUTTONS: readonly { readonly controller: number; readonly mode: string }[] = [
@@ -100,12 +101,10 @@ export function createLaunchpadSequencerBindings(input: MidiInput, contract: Seq
       bindings: modeButtons(),
       hooks: {
         onEnter: () => {
-          transportUnbinds = [
-            bindActionTrigger(input, topButtonSource(TRANSPORT.play), contract.actions.play),
-            bindActionTrigger(input, topButtonSource(TRANSPORT.stop), contract.actions.stop),
-            bindActionTrigger(input, topButtonSource(TRANSPORT.record), contract.actions.record),
-            bindActionTrigger(input, topButtonSource(TRANSPORT.clear), contract.actions.clear),
-          ];
+          transportUnbinds = (Object.keys(TRANSPORT) as Array<keyof typeof TRANSPORT>).flatMap((name) => {
+            const action = contract.actions[name];
+            return action ? [bindActionTrigger(input, topButtonSource(TRANSPORT[name]), action)] : [];
+          });
         },
         onExit: () => {
           for (const unbind of transportUnbinds) unbind();
