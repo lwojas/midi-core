@@ -8,7 +8,7 @@ import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "./profile.js"
  * concrete device profiles (Launchpad/APC/Push or otherwise). It exists to
  * prove the schema can actually describe a device with every facet named
  * in the ticket: identity, ports, controls, a grid, LED/motorized
- * feedback, SysEx, and a handshake.
+ * feedback, SysEx, and setup.
  */
 
 const padControls: PhysicalControl[] = [
@@ -98,22 +98,23 @@ const fixture: DeviceProfile = {
     required: false,
     notes: "Used only for the optional palette-customization extras.",
   },
-  handshake: {
-    required: true,
+  setup: {
+    inputPortId: "main-in",
+    outputPortId: "main-out",
     steps: [
-      { id: "enter-programmer-mode", description: "Send mode-switch SysEx to enable LED/pad control.", direction: "send" },
-      { id: "mode-ack", description: "Device echoes the mode byte back once switched.", direction: "expect" },
+      { id: "enter-programmer-mode", description: "Send mode-switch SysEx to enable LED/pad control.", send: [0xf0, 0x00, 0x21, 0x3f, 0x0e, 0x01, 0xf7] },
+      { id: "mode-ack", description: "Device echoes the mode byte back once switched.", expect: [0xf0, 0x00, 0x21, 0x3f, null, 0xf7] },
     ],
   },
 };
 
 describe("DeviceProfile shape", () => {
-  it("can describe identity, ports, controls, grids, feedback, sysex and handshake together", () => {
+  it("can describe identity, ports, controls, grids, feedback, sysex and setup together", () => {
     expect(fixture.identity.id).toBe("test.fixture-grid-controller");
     expect(fixture.ports).toHaveLength(2);
     expect(fixture.controls).toHaveLength(3 + padControls.length);
     expect(fixture.grids?.[0]?.cells).toHaveLength(4);
     expect(fixture.sysex?.required).toBe(false);
-    expect(fixture.handshake?.steps.map((step) => step.direction)).toEqual(["send", "expect"]);
+    expect(fixture.setup?.steps.map((step) => (step.send ? "send" : "expect"))).toEqual(["send", "expect"]);
   });
 });

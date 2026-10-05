@@ -117,7 +117,7 @@ export async function bindSurfaceMode(
  * moments `docs/contracts/surface-lifecycle.md` already names — entering
  * `"attached"` to install, entering `"detaching"` to tear down (by
  * awaiting the returned teardown) — without this function knowing
- * anything about ports connecting or a handshake running. A navigation
+ * anything about ports connecting or device setup running. A navigation
  * mode with no matching table entry binds nothing, rather than treating a
  * surface with an unconfigured mode as an error.
  */

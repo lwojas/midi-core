@@ -4,7 +4,7 @@ import type { DevicePortProfile } from "../types/port.js";
 import type { PhysicalControl } from "../types/control.js";
 import type { ControlGrid } from "../types/grid.js";
 import type { DeviceSysExProfile } from "../types/sysex.js";
-import type { DeviceHandshake } from "../types/handshake.js";
+import type { DeviceSetup } from "../types/setup.js";
 import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "../types/profile.js";
 import type { ProtocolBinding } from "./types/binding.js";
 import type { ProtocolFamily } from "./types/protocol.js";
@@ -63,7 +63,7 @@ export function composePortMessageTypes(
 
 /**
  * Assembles a complete `DeviceProfile` from a device's own identity/ports/
- * grids/sysex/handshake plus `protocolBindings` (resolved against
+ * grids/sysex/setup plus `protocolBindings` (resolved against
  * `protocols`) and `extensions` — the composition this ticket exists to
  * define, built entirely from the smaller pieces above. Still produces
  * only a `DeviceProfile`; it doesn't validate one (ECS-42) or ship any
@@ -78,9 +78,9 @@ export function composeDeviceProfile(args: {
   readonly extensions?: readonly PhysicalControl[];
   readonly grids?: readonly ControlGrid[];
   readonly sysex?: DeviceSysExProfile;
-  readonly handshake?: DeviceHandshake;
+  readonly setup?: DeviceSetup;
 }): DeviceProfile {
-  const { identity, ports, protocols, protocolBindings, extensions = [], grids, sysex, handshake } = args;
+  const { identity, ports, protocols, protocolBindings, extensions = [], grids, sysex, setup } = args;
 
   return {
     schemaVersion: DEVICE_PROFILE_SCHEMA_VERSION,
@@ -92,6 +92,6 @@ export function composeDeviceProfile(args: {
     controls: composeDeviceControls(protocolBindings, protocols, extensions),
     grids,
     sysex,
-    handshake,
+    setup,
   };
 }

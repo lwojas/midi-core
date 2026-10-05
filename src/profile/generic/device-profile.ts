@@ -10,7 +10,7 @@ import { GENERIC_MIDI_PROTOCOL } from "./protocol.js";
  * The baseline device profile: a device assumed to be nothing more than a
  * compliant MIDI device (`GENERIC_MIDI_PROTOCOL`, bound on an assumed
  * input+output pair) — no manufacturer, no fixed physical controls, no
- * SysEx, no handshake, and no `ControlMapping`s (those belong to the
+ * SysEx, no setup, and no `ControlMapping`s (those belong to the
  * mapping layer, not a profile). `identity.manufacturer`/`model` name
  * what this is ("Generic", "Generic MIDI Device"), not a real vendor.
  *

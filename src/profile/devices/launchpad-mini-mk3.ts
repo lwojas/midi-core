@@ -1,9 +1,9 @@
 import type { PhysicalControl } from "../types/control.js";
 import type { ControlGrid } from "../types/grid.js";
-import type { DeviceHandshake } from "../types/handshake.js";
 import type { DeviceIdentity } from "../types/identity.js";
 import type { DevicePortProfile } from "../types/port.js";
 import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "../types/profile.js";
+import type { DeviceSetup } from "../types/setup.js";
 import type { DeviceSysExProfile } from "../types/sysex.js";
 
 /**
@@ -157,39 +157,31 @@ export const LAUNCHPAD_MINI_MK3_SYSEX: DeviceSysExProfile = {
 };
 
 /**
- * **Not run automatically by `ControlSurface.attach()`**: `required` is
- * `false` (per the generated document — normal note/CC traffic works
- * without it once the device happens to already be in Programmer mode),
- * so `attach()` skips every step here regardless of whether a
- * `HandshakeExecutor` is supplied (`docs/contracts/surface-lifecycle.md`'s
- * `required` gate). A caller that needs the mode-switch step actually sent
- * — true the first time a fresh device is connected, since it defaults to
- * Live/Session mode — must perform it independently before relying on
- * this profile's addressing. See docs/hardware-validation.md's "Findings"
- * section: recorded there as a real usability gap in the `required`-gated
- * handshake design, not fixed here, since changing that gate is
- * `docs/contracts/surface-lifecycle.md`'s decision to make, not a profile
- * authoring choice.
+ * Programmer mode is the one thing this device needs before its note/CC addressing
+ * applies: a fresh device starts in Live/Session mode. Setup runs on every connect
+ * (`docs/contracts/device-setup.md`). The Device Inquiry reply is checked against
+ * the Novation id and Launchpad Mini [MK3] family code; byte 12 is the firmware
+ * version and is a wildcard. Bootloader mode replies differently and will fail this
+ * step, which is reported rather than skipped.
  */
-export const LAUNCHPAD_MINI_MK3_HANDSHAKE: DeviceHandshake = {
-  required: false,
+export const LAUNCHPAD_MINI_MK3_SETUP: DeviceSetup = {
+  inputPortId: "midi-in",
+  outputPortId: "midi-out",
   steps: [
     {
       id: "device-inquiry-request",
-      direction: "send",
-      description: "Send the Universal Device Inquiry SysEx message (F0h 7Eh 7Fh 06h 01h F7h) to identify the device.",
+      description: "Universal Device Inquiry, to identify the device.",
+      send: [0xf0, 0x7e, 0x7f, 0x06, 0x01, 0xf7],
     },
     {
       id: "device-inquiry-reply",
-      direction: "expect",
-      description:
-        "Expect the Device Inquiry reply (F0h 7Eh 00h 06h 02h 00h 20h 29h 13h 01h 00h 00h <app_version> F7h for Application mode, or the equivalent Bootloader-mode reply), confirming the Novation manufacturer id and the Launchpad Mini [MK3] family code (13h 01h).",
+      description: "Device Inquiry reply: Novation id 00 20 29, Launchpad Mini [MK3] family 13 01. Byte 12 is the app version.",
+      expect: [0xf0, 0x7e, 0x00, 0x06, 0x02, 0x00, 0x20, 0x29, 0x13, 0x01, 0x00, 0x00, null, 0xf7],
     },
     {
       id: "enter-programmer-mode",
-      direction: "send",
-      description:
-        "Send the Programmer/Live mode SysEx message (F0h 00h 20h 29h 02h 0Dh 0Eh 01h F7h) to switch the device into Programmer mode, enabling the generic note/CC addressing this profile's controls use.",
+      description: "Switch into Programmer mode so the note/CC addressing in this profile is active.",
+      send: [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x0e, 0x01, 0xf7],
     },
   ],
 };
@@ -201,5 +193,5 @@ export const LAUNCHPAD_MINI_MK3_PROFILE: DeviceProfile = {
   controls: LAUNCHPAD_MINI_MK3_CONTROLS,
   grids: [LAUNCHPAD_MINI_MK3_PAD_GRID],
   sysex: LAUNCHPAD_MINI_MK3_SYSEX,
-  handshake: LAUNCHPAD_MINI_MK3_HANDSHAKE,
+  setup: LAUNCHPAD_MINI_MK3_SETUP,
 };

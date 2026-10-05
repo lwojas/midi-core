@@ -60,12 +60,13 @@ included). `validateDeviceProfile()` does not catch this. Corrected in
 out on `midi-out`). The upstream fix belongs in midi-profiler's generation
 pipeline, which is outside this ticket.
 
-**F3: `handshake.required: false` means `attach()` never sends Programmer mode (open).**
-`ControlSurface.attach()` runs handshake steps only when `handshake.required`
-is true, whatever executor is supplied. A fresh device starts in Live mode, so
-the mode switch is effectively mandatory here. The demo and script send it
-themselves. Design gap in the `required` gate (`docs/contracts/surface-lifecycle.md`),
-not a profile authoring choice. Needs a decision (see below).
+**F3: setup gated on `handshake.required`, so Programmer mode was never sent (resolved by device setup).**
+`attach()` ran handshake steps only when `handshake.required` was true, whatever
+executor was supplied. A fresh device starts in Live mode, so the switch was
+effectively mandatory, and the demo and script sent it themselves. Resolved by
+replacing the handshake with device setup (`docs/contracts/device-setup.md`):
+the profile declares the steps with their bytes, and `attach()` runs them on
+every connect, with no `required` gate.
 
 **F4: pads do not self-light on press (by design; app policy added).**
 Echo suppression (ECS-57) withholds feedback for a value that arrived from the
@@ -99,9 +100,8 @@ pads, but the run is repeatable from the terminal.
 
 ## Open decisions
 
-1. **F3**: should a `required: false` handshake still run when a `HandshakeExecutor`
-   is supplied, or should the gate change? Current options: (a) mark this
-   profile's handshake `required: true`, which is a profile-level correction;
+1. **F3**: resolved by device setup (see above). Remaining decision: none.
+   The options below are kept for the record. (a) mark this profile's handshake `required: true`, which is a profile-level correction;
    (b) change `attach()` to run steps when an executor is present, which is a
    runtime contract change for `docs/contracts/surface-lifecycle.md`.
 2. **F5**: on mode change, should the surface repaint the outgoing mode's LEDs

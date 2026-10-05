@@ -93,11 +93,10 @@ export interface SurfaceModeHooks {
    * Runs once when entering this mode, before its `bindings` are bound —
    * for unusual initialization or a protocol quirk no declarative field
    * covers (e.g. a device-specific mode-select message that isn't part
-   * of `DeviceHandshake` because it happens on every mode switch, not
+   * of `DeviceSetup` because it happens on every mode switch, not
    * once at connection time). No `MidiOutput` is passed in: the same
-   * device-specific-knowledge boundary `HandshakeExecutor`
-   * (`docs/contracts/surface-lifecycle.md`) already draws — whoever
-   * supplies this hook supplies its own access to the device.
+   * device-specific-knowledge boundary `docs/contracts/device-setup.md` draws
+   * — whoever supplies this hook supplies its own access to the device.
    */
   onEnter?(): Promise<void> | void;
   /** Runs once when leaving this mode, after its `bindings` are unbound — cleanup for whatever `onEnter` did. */

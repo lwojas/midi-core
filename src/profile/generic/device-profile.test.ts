@@ -7,11 +7,11 @@ describe("GENERIC_MIDI_DEVICE_PROFILE", () => {
     expect(GENERIC_MIDI_DEVICE_PROFILE.identity.manufacturer).toBe("Generic");
   });
 
-  it("has no physical controls, grids, sysex or handshake", () => {
+  it("has no physical controls, grids, sysex or setup", () => {
     expect(GENERIC_MIDI_DEVICE_PROFILE.controls).toEqual([]);
     expect(GENERIC_MIDI_DEVICE_PROFILE.grids).toBeUndefined();
     expect(GENERIC_MIDI_DEVICE_PROFILE.sysex).toBeUndefined();
-    expect(GENERIC_MIDI_DEVICE_PROFILE.handshake).toBeUndefined();
+    expect(GENERIC_MIDI_DEVICE_PROFILE.setup).toBeUndefined();
   });
 
   it("composes the full generic channel-voice message set onto both ports", () => {

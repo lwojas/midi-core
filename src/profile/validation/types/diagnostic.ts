@@ -10,9 +10,9 @@
  * claim that can't be resolved (a dangling reference, an unknown enum
  * value, an unresolved protocol); `"warning"` means the document is valid
  * but under-specified in a way that would leave a consumer guessing (e.g.
- * a handshake step with no description). Nothing here *fixes* or
+ * a setup step with no description). Nothing here *fixes* or
  * *infers* a correction — per the ticket, unsupported/unknown/unresolved
- * behavior is reported, not papered over with an invented handshake or a
+ * behavior is reported, not papered over with an invented setup or a
  * guessed default.
  */
 export type DiagnosticSeverity = "error" | "warning";
@@ -38,9 +38,13 @@ export type ProfileDiagnosticCode =
   | "grid-cell-out-of-bounds"
   | "duplicate-grid-cell"
   | "sysex-required-no-manufacturer-id"
-  | "unknown-handshake-direction"
-  | "handshake-required-no-steps"
-  | "handshake-step-missing-description"
+  | "invalid-setup"
+  | "setup-step-needs-send-or-expect"
+  | "setup-byte-out-of-range"
+  | "setup-sysex-unterminated"
+  | "setup-port-wrong-type"
+  | "setup-port-not-required"
+  | "setup-step-missing-description"
   | "unresolved-protocol-reference"
   | "duplicate-binding-id";
 

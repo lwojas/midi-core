@@ -9,7 +9,7 @@ export {
 export type { SurfaceErrorCode, SurfaceError } from "./types/errors.js";
 export { SURFACE_ERROR_CODES, isSurfaceErrorCode } from "./types/errors.js";
 
-export type { HandshakeExecutor, ControlSurface } from "./types/runtime.js";
+export type { ControlSurface } from "./types/runtime.js";
 
 export type {
   SurfaceModeId,
@@ -47,6 +47,8 @@ export { bindEventFeedback } from "./event-feedback.js";
 export { bindActionTrigger } from "./action-binding.js";
 
 export { switchMode } from "./mode-switching.js";
+
+export { runDeviceSetup, DEFAULT_SETUP_TIMEOUT_MS } from "./setup.js";
 
 export type { ControlSurfaceDeps } from "./runtime.js";
 export { createControlSurface } from "./runtime.js";

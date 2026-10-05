@@ -30,8 +30,9 @@ feasibility, not as the selection itself.
 - Pads and buttons carry `velocity-color-led` feedback on `midi-out`.
 - **One grid**: `pads`, 8x8, cells mapping row/column to `pad-<note>`.
 - **SysEx**: manufacturer id `00 20 29`, `required: false`.
-- **Handshake**: three steps (Device Inquiry request, Device Inquiry reply,
-  Programmer-mode switch), `required: false`.
+- **Setup** (`docs/contracts/device-setup.md`): Device Inquiry request, Device
+  Inquiry reply (checked, byte 12 is a wildcard), and the Programmer-mode switch.
+  Runs on `midi-in`/`midi-out` on every connect.
 
 ## Correction applied on import
 

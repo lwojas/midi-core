@@ -13,7 +13,8 @@ import type { SurfaceError } from "./types/errors.js";
 import { isValidSurfaceTransition, type SurfaceLifecycleChange, type SurfaceLifecycleState } from "./types/lifecycle.js";
 import type { SurfaceNavigationState } from "./types/navigation.js";
 import type { SurfaceBindingTable } from "./types/bindings.js";
-import type { ControlSurface, HandshakeExecutor } from "./types/runtime.js";
+import type { ControlSurface } from "./types/runtime.js";
+import { runDeviceSetup } from "./setup.js";
 
 export interface ControlSurfaceDeps {
   readonly profile: DeviceProfile;
@@ -23,14 +24,13 @@ export interface ControlSurfaceDeps {
   readonly context: SurfaceContext;
   readonly registry: ControlRegistry;
   readonly generate: GenerateControlMappings;
-  readonly executor?: HandshakeExecutor;
   readonly initialNavigation: SurfaceNavigationState;
 }
 
 /**
  * The reference `ControlSurface` implementation
  * (`docs/contracts/surface-lifecycle.md`, ECS-66), wiring attach/detach,
- * the handshake boundary, spontaneous-disconnect detection, and mode
+ * device setup, spontaneous-disconnect detection, and mode
  * switching to the real pieces this project already has
  * (`bindActiveMode`/`switchMode`, ECS-69/75) — the "runtime foundation"
  * those tickets built this on top of.
@@ -129,17 +129,8 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
         watchForSpontaneousDisconnect(port, connection);
       }
 
-      if (deps.profile.handshake?.required) {
-        if (!deps.executor) {
-          throw { code: "handshake-unsupported", message: "Device profile requires a handshake, but no HandshakeExecutor was supplied." } satisfies SurfaceError;
-        }
-        for (const step of deps.profile.handshake.steps) {
-          try {
-            await deps.executor.performStep(step);
-          } catch (cause) {
-            throw { code: "handshake-failed", message: `Handshake step "${step.id}" failed.`, cause } satisfies SurfaceError;
-          }
-        }
+      if (deps.profile.setup) {
+        await runDeviceSetup(deps.profile.setup, deps.ports);
       }
     } catch (error) {
       const surfaceError: SurfaceError = isSurfaceError(error) ? error : { code: "unknown", message: "attach() failed.", cause: error };

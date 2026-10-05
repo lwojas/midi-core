@@ -13,7 +13,6 @@ import { generateControlMappings } from "./generate.js";
 import { createControlSurface, type ControlSurfaceDeps } from "./runtime.js";
 import type { SurfaceBindingTable } from "./types/bindings.js";
 import type { SurfaceLifecycleChange } from "./types/lifecycle.js";
-import type { HandshakeExecutor } from "./types/runtime.js";
 
 function mixerTable(): SurfaceBindingTable {
   return [
@@ -104,54 +103,39 @@ describe("createControlSurface — attach()", () => {
     expect(surface.state).toBe("error");
   });
 
-  it("fails with handshake-unsupported when the profile requires a handshake and no executor is supplied", async () => {
+  it("sends each setup step's bytes on the setup output port, in order, before attaching", async () => {
     const profile: DeviceProfile = {
       schemaVersion: "1.0",
-      identity: { id: "test.handshake-device", manufacturer: "Test", model: "Test Handshake Device" },
-      ports: [{ id: "main-in", type: "input", role: "main", required: true, messageTypes: [] }],
+      identity: { id: "test.setup-device", manufacturer: "Test", model: "Test Setup Device" },
+      ports: [
+        { id: "main-in", type: "input", role: "main", required: true, messageTypes: [] },
+        { id: "main-out", type: "output", role: "main", required: true, messageTypes: [] },
+      ],
       controls: [],
-      handshake: { required: true, steps: [{ id: "enter-mode", description: "Enter programmer mode", direction: "send" }] },
-    };
-    const { device } = buildDeps();
-    const deps: ControlSurfaceDeps = {
-      profile,
-      ports: { inputs: { "main-in": createMidiInput(device.input) }, outputs: {} },
-      bindingTable: [],
-      context: createSurfaceContext(),
-      registry: createControlRegistry(),
-      generate: generateControlMappings,
-      initialNavigation: { mode: "none" },
-    };
-    const surface = createControlSurface(deps);
-
-    await expect(surface.attach()).rejects.toMatchObject({ code: "handshake-unsupported" });
-    expect(surface.state).toBe("error");
-  });
-
-  it("runs every handshake step through the supplied HandshakeExecutor before attaching", async () => {
-    const profile: DeviceProfile = {
-      schemaVersion: "1.0",
-      identity: { id: "test.handshake-device", manufacturer: "Test", model: "Test Handshake Device" },
-      ports: [{ id: "main-in", type: "input", role: "main", required: true, messageTypes: [] }],
-      controls: [],
-      handshake: {
-        required: true,
+      setup: {
+        inputPortId: "main-in",
+        outputPortId: "main-out",
+        timeoutMs: 50,
         steps: [
-          { id: "enter-mode", description: "Enter programmer mode", direction: "send" },
-          { id: "await-ack", description: "Wait for ack", direction: "expect" },
+          { id: "enter-mode", description: "Enter programmer mode", send: [0xf0, 0x00, 0x20, 0x29, 0xf7] },
+          { id: "await-ack", description: "Wait for ack", expect: [0xf0, 0x00, null, 0xf7] },
         ],
       },
     };
     const { device } = buildDeps();
-    const performStep = vi.fn<HandshakeExecutor["performStep"]>(() => Promise.resolve());
+    const output = createMidiOutput(device.output);
+    const realSend = output.send.bind(output);
+    output.send = (message) => {
+      realSend(message);
+      device.input.emitRawMessage(Uint8Array.of(0xf0, 0x00, 0x7e, 0xf7)); // the device's ack
+    };
     const deps: ControlSurfaceDeps = {
       profile,
-      ports: { inputs: { "main-in": createMidiInput(device.input) }, outputs: {} },
+      ports: { inputs: { "main-in": createMidiInput(device.input) }, outputs: { "main-out": output } },
       bindingTable: [],
       context: createSurfaceContext(),
       registry: createControlRegistry(),
       generate: generateControlMappings,
-      executor: { performStep },
       initialNavigation: { mode: "none" },
     };
     const surface = createControlSurface(deps);
@@ -159,34 +143,70 @@ describe("createControlSurface — attach()", () => {
     await surface.attach();
 
     expect(surface.state).toBe("attached");
-    expect(performStep).toHaveBeenCalledTimes(2);
-    expect(performStep).toHaveBeenNthCalledWith(1, profile.handshake!.steps[0]);
-    expect(performStep).toHaveBeenNthCalledWith(2, profile.handshake!.steps[1]);
+    expect(device.output.sentMessages.map((bytes) => Array.from(bytes))).toEqual([[0xf0, 0x00, 0x20, 0x29, 0xf7]]);
   });
 
-  it("fails with handshake-failed (carrying the cause) when a handshake step rejects", async () => {
+  it("fails the attach with setup-timeout when an expected reply never arrives", async () => {
     const profile: DeviceProfile = {
       schemaVersion: "1.0",
-      identity: { id: "test.handshake-device", manufacturer: "Test", model: "Test Handshake Device" },
-      ports: [{ id: "main-in", type: "input", role: "main", required: true, messageTypes: [] }],
+      identity: { id: "test.setup-device", manufacturer: "Test", model: "Test Setup Device" },
+      ports: [
+        { id: "main-in", type: "input", role: "main", required: true, messageTypes: [] },
+        { id: "main-out", type: "output", role: "main", required: true, messageTypes: [] },
+      ],
       controls: [],
-      handshake: { required: true, steps: [{ id: "enter-mode", description: "Enter programmer mode", direction: "send" }] },
+      setup: {
+        inputPortId: "main-in",
+        outputPortId: "main-out",
+        timeoutMs: 20,
+        steps: [{ id: "await-ack", description: "Wait for ack", expect: [0xf0, 0x00, 0xf7] }],
+      },
     };
     const { device } = buildDeps();
-    const failure = new Error("device never acked");
     const deps: ControlSurfaceDeps = {
       profile,
-      ports: { inputs: { "main-in": createMidiInput(device.input) }, outputs: {} },
+      ports: { inputs: { "main-in": createMidiInput(device.input) }, outputs: { "main-out": createMidiOutput(device.output) } },
       bindingTable: [],
       context: createSurfaceContext(),
       registry: createControlRegistry(),
       generate: generateControlMappings,
-      executor: { performStep: () => Promise.reject(failure) },
       initialNavigation: { mode: "none" },
     };
     const surface = createControlSurface(deps);
 
-    await expect(surface.attach()).rejects.toMatchObject({ code: "handshake-failed", cause: failure });
+    await expect(surface.attach()).rejects.toMatchObject({ code: "setup-timeout" });
+    expect(surface.state).toBe("error");
+  });
+
+  it("fails the attach with setup-failed (carrying the cause) when a send step cannot be sent", async () => {
+    const profile: DeviceProfile = {
+      schemaVersion: "1.0",
+      identity: { id: "test.setup-device", manufacturer: "Test", model: "Test Setup Device" },
+      ports: [
+        { id: "main-in", type: "input", role: "main", required: true, messageTypes: [] },
+        { id: "main-out", type: "output", role: "main", required: true, messageTypes: [] },
+      ],
+      controls: [],
+      setup: { inputPortId: "main-in", outputPortId: "main-out", steps: [{ id: "enter-mode", description: "Enter mode", send: [0xf0, 0xf7] }] },
+    };
+    const { device } = buildDeps();
+    const failure = new Error("port went away");
+    const output = createMidiOutput(device.output);
+    output.send = () => {
+      throw failure;
+    };
+    const deps: ControlSurfaceDeps = {
+      profile,
+      ports: { inputs: { "main-in": createMidiInput(device.input) }, outputs: { "main-out": output } },
+      bindingTable: [],
+      context: createSurfaceContext(),
+      registry: createControlRegistry(),
+      generate: generateControlMappings,
+      initialNavigation: { mode: "none" },
+    };
+    const surface = createControlSurface(deps);
+
+    await expect(surface.attach()).rejects.toMatchObject({ code: "setup-failed", cause: failure });
     expect(surface.state).toBe("error");
   });
 });

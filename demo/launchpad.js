@@ -1,6 +1,6 @@
 import { createMidiInput, createMidiOutput } from "../dist/core/index.js";
 import { requestWebMidiAccess } from "../dist/adapters/web-midi/index.js";
-import { ENTER_PROGRAMMER_MODE, createLaunchpadApp, createLaunchpadSurface } from "./launchpad-surface.js";
+import { createLaunchpadApp, createLaunchpadSurface } from "./launchpad-surface.js";
 
 const $ = (id) => document.getElementById(id);
 const log = (line) => {
@@ -42,7 +42,6 @@ function setButtonsForLifecycle(state) {
   const attached = state === "attached";
   $("attach").disabled = attached || state === "attaching" || !access;
   $("detach").disabled = !attached;
-  $("enter-programmer").disabled = !attached;
   $("light-all").disabled = !attached;
   $("clear-all").disabled = !attached;
   for (const button of document.querySelectorAll("button.mode")) button.disabled = !attached;
@@ -116,10 +115,6 @@ $("attach").addEventListener("click", async () => {
 
 $("detach").addEventListener("click", async () => {
   await session?.detach();
-});
-
-$("enter-programmer").addEventListener("click", () => {
-  output.send({ type: "sysex", raw: ENTER_PROGRAMMER_MODE });
 });
 
 for (const button of document.querySelectorAll("button.mode")) {

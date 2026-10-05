@@ -30,8 +30,7 @@ export type { GridCell, ControlGrid } from "./types/grid.js";
 
 export type { DeviceSysExProfile } from "./types/sysex.js";
 
-export type { HandshakeDirection, HandshakeStep, DeviceHandshake } from "./types/handshake.js";
-export { HANDSHAKE_DIRECTIONS, isHandshakeDirection } from "./types/handshake.js";
+export type { DeviceSetupStep, DeviceSetup } from "./types/setup.js";
 
 export type { DeviceProfile } from "./types/profile.js";
 export { DEVICE_PROFILE_SCHEMA_VERSION } from "./types/profile.js";
@@ -77,7 +76,7 @@ export {
   LAUNCHPAD_MINI_MK3_CONTROLS,
   LAUNCHPAD_MINI_MK3_PAD_GRID,
   LAUNCHPAD_MINI_MK3_SYSEX,
-  LAUNCHPAD_MINI_MK3_HANDSHAKE,
+  LAUNCHPAD_MINI_MK3_SETUP,
   LAUNCHPAD_MINI_MK3_PROFILE,
 } from "./devices/launchpad-mini-mk3.js";
 

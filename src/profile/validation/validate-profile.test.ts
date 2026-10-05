@@ -18,7 +18,17 @@ function validProfile(): DeviceProfile {
     ],
     grids: [{ id: "grid-1", label: "Grid", rows: 1, columns: 1, cells: [{ row: 0, column: 0, controlId: "pad-1" }] }],
     sysex: { manufacturerId: [0x7d], required: false },
-    handshake: { required: true, steps: [{ id: "step-1", description: "Enter mode.", direction: "send" }] },
+  };
+}
+
+const MAIN_OUT_PORT: DeviceProfile["ports"][number] = { id: "main-out", type: "output", role: "main", required: true, messageTypes: ["note-on"] };
+
+function withSetup(steps: NonNullable<DeviceProfile["setup"]>["steps"]): DeviceProfile {
+  const profile = validProfile();
+  return {
+    ...profile,
+    ports: [...profile.ports, MAIN_OUT_PORT],
+    setup: { inputPortId: "main-in", outputPortId: "main-out", steps },
   };
 }
 
@@ -137,33 +147,56 @@ describe("validateDeviceProfile", () => {
     );
   });
 
-  it("flags a handshake marked required with no steps, rather than inventing one", () => {
-    const profile = validProfile();
-    const broken = { ...profile, handshake: { required: true, steps: [] } };
-    expect(validateDeviceProfile(broken)).toContainEqual(
-      expect.objectContaining({ code: "handshake-required-no-steps" }),
+  it("has no diagnostics for a setup with a send step and an expect step", () => {
+    const withReply = withSetup([
+      { id: "inquiry", description: "Identify.", send: [0xf0, 0x7e, 0x7f, 0x06, 0x01, 0xf7] },
+      { id: "reply", description: "Reply.", expect: [0xf0, 0x7e, 0x00, null, 0xf7] },
+    ]);
+    expect(validateDeviceProfile(withReply)).toEqual([]);
+  });
+
+  it("flags a setup step that has neither send nor expect, or both", () => {
+    expect(validateDeviceProfile(withSetup([{ id: "s", description: "x" }]))).toContainEqual(
+      expect.objectContaining({ code: "setup-step-needs-send-or-expect", path: "setup.steps[0]" }),
+    );
+    expect(validateDeviceProfile(withSetup([{ id: "s", description: "x", send: [0xf0, 0xf7], expect: [0xf0] }]))).toContainEqual(
+      expect.objectContaining({ code: "setup-step-needs-send-or-expect" }),
     );
   });
 
-  it("flags an unknown handshake step direction", () => {
-    const profile = validProfile();
-    const broken = {
-      ...profile,
-      handshake: { required: true, steps: [{ id: "s", description: "x", direction: "sideways" }] },
-    };
-    expect(validateDeviceProfile(broken)).toContainEqual(
-      expect.objectContaining({ code: "unknown-handshake-direction", path: "handshake.steps[0].direction" }),
+  it("flags out-of-range setup bytes, but allows null only in an expect step", () => {
+    expect(validateDeviceProfile(withSetup([{ id: "s", description: "x", send: [0xf0, 256, 0xf7] }]))).toContainEqual(
+      expect.objectContaining({ code: "setup-byte-out-of-range", path: "setup.steps[0].send[1]" }),
+    );
+    expect(validateDeviceProfile(withSetup([{ id: "s", description: "x", send: [0xf0, null, 0xf7] as unknown as number[] }]))).toContainEqual(
+      expect.objectContaining({ code: "setup-byte-out-of-range" }),
+    );
+    expect(validateDeviceProfile(withSetup([{ id: "s", description: "x", expect: [0xf0, null, 0xf7] }]))).toEqual([]);
+  });
+
+  it("flags a SysEx send that starts with 0xF0 but never ends with 0xF7", () => {
+    expect(validateDeviceProfile(withSetup([{ id: "s", description: "x", send: [0xf0, 0x00, 0x20] }]))).toContainEqual(
+      expect.objectContaining({ code: "setup-sysex-unterminated" }),
     );
   });
 
-  it("warns (not errors) on a handshake step with no description", () => {
-    const profile = validProfile();
-    const broken = {
-      ...profile,
-      handshake: { required: true, steps: [{ id: "s", description: "", direction: "send" }] },
-    };
-    expect(validateDeviceProfile(broken)).toContainEqual(
-      expect.objectContaining({ code: "handshake-step-missing-description", severity: "warning" }),
+  it("flags setup ports that are missing, the wrong direction, or not required", () => {
+    const profile = withSetup([]);
+    expect(validateDeviceProfile({ ...profile, setup: { ...profile.setup, inputPortId: "nope" } })).toContainEqual(
+      expect.objectContaining({ code: "dangling-port-reference", path: "setup.inputPortId" }),
+    );
+    expect(validateDeviceProfile({ ...profile, setup: { ...profile.setup, inputPortId: "main-out" } })).toContainEqual(
+      expect.objectContaining({ code: "setup-port-wrong-type", path: "setup.inputPortId" }),
+    );
+    const optionalOut = { ...profile, ports: profile.ports.map((p) => (p.id === "main-out" ? { ...p, required: false } : p)) };
+    expect(validateDeviceProfile(optionalOut)).toContainEqual(
+      expect.objectContaining({ code: "setup-port-not-required", path: "setup.outputPortId" }),
+    );
+  });
+
+  it("warns (not errors) on a setup step with no description", () => {
+    expect(validateDeviceProfile(withSetup([{ id: "s", description: "", send: [0xf0, 0xf7] }]))).toContainEqual(
+      expect.objectContaining({ code: "setup-step-missing-description", severity: "warning" }),
     );
   });
 });

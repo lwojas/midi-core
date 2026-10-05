@@ -20,7 +20,7 @@ import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "../types/prof
  * (`button-1`..`button-4`, note input only — Transport), and an
  * eight-pad row (`pad-1`..`pad-8`, note input *and* note feedback — the
  * "eight feedback outputs" the ticket names, and the Step Grid's cells).
- * No `sysex`/`handshake`: nothing about this device needs either, and
+ * No `sysex`/`setup`: nothing about this device needs either, and
  * inventing one here would be exactly the kind of profile this ticket's
  * "do not expand into general device profiling" warns against.
  *

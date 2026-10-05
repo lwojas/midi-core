@@ -5,6 +5,7 @@ import {
   LAUNCHPAD_MINI_MK3_PADS,
   LAUNCHPAD_MINI_MK3_PAD_GRID,
   LAUNCHPAD_MINI_MK3_PROFILE,
+  LAUNCHPAD_MINI_MK3_SETUP,
   LAUNCHPAD_MINI_MK3_SIDE_COLUMN,
   LAUNCHPAD_MINI_MK3_TOP_ROW,
 } from "./launchpad-mini-mk3.js";
@@ -19,6 +20,14 @@ describe("LAUNCHPAD_MINI_MK3_PROFILE", () => {
     expect(LAUNCHPAD_MINI_MK3_TOP_ROW).toHaveLength(8);
     expect(LAUNCHPAD_MINI_MK3_SIDE_COLUMN).toHaveLength(8);
     expect(LAUNCHPAD_MINI_MK3_CONTROLS).toHaveLength(81);
+  });
+
+  it("setup identifies the device, then switches it into Programmer mode, on the device's own midi-in/midi-out", () => {
+    expect(LAUNCHPAD_MINI_MK3_SETUP).toMatchObject({ inputPortId: "midi-in", outputPortId: "midi-out" });
+    const [inquiry, reply, programmer] = LAUNCHPAD_MINI_MK3_SETUP.steps;
+    expect(inquiry!.send).toEqual([0xf0, 0x7e, 0x7f, 0x06, 0x01, 0xf7]);
+    expect(reply!.expect).toEqual([0xf0, 0x7e, 0x00, 0x06, 0x02, 0x00, 0x20, 0x29, 0x13, 0x01, 0x00, 0x00, null, 0xf7]);
+    expect(programmer!.send).toEqual([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x0e, 0x01, 0xf7]);
   });
 
   it("every control id is unique", () => {

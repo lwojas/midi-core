@@ -11,14 +11,14 @@ import type { MidiTransportError } from "../../core/types/errors.js";
 
 export type SurfaceErrorCode =
   | "port-unavailable"
-  | "handshake-unsupported"
-  | "handshake-failed"
+  | "setup-failed"
+  | "setup-timeout"
   | "unknown";
 
 export const SURFACE_ERROR_CODES: readonly SurfaceErrorCode[] = [
   "port-unavailable",
-  "handshake-unsupported",
-  "handshake-failed",
+  "setup-failed",
+  "setup-timeout",
   "unknown",
 ];
 

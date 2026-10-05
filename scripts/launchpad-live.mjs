@@ -1,7 +1,7 @@
 // ECS-79 live run: drives a real Launchpad Mini MK3 through midi-core's ControlSurface from the terminal.
 // No browser, no permission prompt. Usage: node scripts/launchpad-live.mjs [seconds=30] [pads|transport]
 import { createMidiInput, createMidiOutput } from "../dist/core/index.js";
-import { createLaunchpadApp, createLaunchpadSurface, ENTER_PROGRAMMER_MODE } from "../demo/launchpad-surface.js";
+import { createLaunchpadApp, createLaunchpadSurface } from "../demo/launchpad-surface.js";
 import { createNodeInputTransport, createNodeOutputTransport, findPort } from "./node-midi-transport.mjs";
 
 const seconds = Number(process.argv[2] ?? 30);
@@ -49,9 +49,6 @@ const stopCounting = input.onMessage((m) => {
 await session.attach();
 log(`surface attached, mode=${session.surface.navigation.state.mode}`);
 
-output.send({ type: "sysex", raw: ENTER_PROGRAMMER_MODE });
-log("programmer mode requested");
-await new Promise((r) => setTimeout(r, 300));
 
 log("LED sweep: lighting each pad in turn");
 const pads = [...app.pads.keys()];

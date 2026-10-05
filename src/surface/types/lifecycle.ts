@@ -2,7 +2,7 @@ import type { ConnectionState } from "../../core/types/lifecycle.js";
 
 /**
  * A Control Surface's own lifecycle: attach/detach as one aggregate state
- * over however many ports and however much handshake a device profile
+ * over however many ports and however much device setup a profile
  * declares, instead of a caller tracking each composed port's own
  * `ConnectionState` (`docs/contracts/discovery-lifecycle.md`) by hand —
  * exactly what webseq's `useMidiControls.ts` currently hand-rolls for its
@@ -12,7 +12,7 @@ import type { ConnectionState } from "../../core/types/lifecycle.js";
  * Named attach/detach, not connect/disconnect, to keep this vocabulary
  * distinct from the per-port state it's built on: nothing here is a port,
  * and a surface can be `attaching` while every one of its ports is
- * already `connected` (e.g. a required handshake is still in flight).
+ * already `connected` (e.g. device setup is still in flight).
  */
 
 export type SurfaceLifecycleState = "detached" | "attaching" | "attached" | "detaching" | "error";

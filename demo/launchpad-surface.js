@@ -5,10 +5,6 @@ import { createAction, createControl, createControlRegistry, createSurfaceContex
 import { LAUNCHPAD_MINI_MK3_PADS, LAUNCHPAD_MINI_MK3_PROFILE } from "../dist/profile/index.js";
 import { bindActionTrigger, bindEventFeedback, createControlSurface, generateControlMappings, toMidiSource } from "../dist/surface/index.js";
 
-// Programmer-mode switch (F0h 00h 20h 29h 02h 0Dh 0Eh 01h F7h), from the profile's own handshake description.
-// Literal Launchpad bytes live in this demo layer, not in the surface runtime or the generic profile schema.
-export const ENTER_PROGRAMMER_MODE = Uint8Array.of(0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x0e, 0x01, 0xf7);
-
 const padNotes = new Set(LAUNCHPAD_MINI_MK3_PADS.map((pad) => pad.input.address.note));
 const padControlId = (note) => `pad.${8 - Math.floor(note / 10)}.${(note % 10) - 1}`;
 const topButton = (controller) => toMidiSource(LAUNCHPAD_MINI_MK3_PROFILE.controls.find((c) => c.id === `top-${controller}`));

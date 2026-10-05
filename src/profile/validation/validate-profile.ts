@@ -1,7 +1,6 @@
 import { isPortType } from "../../core/types/identity.js";
 import { isMidiMessageType } from "../../core/types/message.js";
 import { isControlKind, isControlValueMode, isFeedbackKind } from "../types/control.js";
-import { isHandshakeDirection } from "../types/handshake.js";
 import { DEVICE_PROFILE_SCHEMA_VERSION } from "../types/profile.js";
 import type { ProfileDiagnostic } from "./types/diagnostic.js";
 
@@ -20,9 +19,8 @@ import type { ProfileDiagnostic } from "./types/diagnostic.js";
  * `portId`/`controlId` references, out-of-bounds/duplicate grid cells,
  * duplicate ids, unknown enum values (`type`/`kind`/`valueMode`/
  * `direction`), a `schemaVersion` this version of midi-core doesn't
- * understand, and a `sysex`/`handshake` marked `required` but with
- * nothing in it to actually perform — the "rather than invented
- * handshakes" case named directly in the ticket. See
+ * understand, and a `sysex` marked `required` with no manufacturer id — the
+ * "rather than invented" case named directly in the ticket. See
  * docs/contracts/profile-validation.md for what's deliberately still not
  * checked (field-level type/range correctness beyond what's needed to run
  * these checks, and anything semantic no contract document actually
@@ -46,7 +44,7 @@ export function validateDeviceProfile(profile: unknown): readonly ProfileDiagnos
 
   diagnostics.push(...checkGrids(profile.grids, controlIds));
   diagnostics.push(...checkSysEx(profile.sysex));
-  diagnostics.push(...checkHandshake(profile.handshake));
+  diagnostics.push(...checkSetup(profile.setup, profile.ports));
 
   return diagnostics;
 }
@@ -267,32 +265,82 @@ function checkSysEx(value: unknown): ProfileDiagnostic[] {
   return [];
 }
 
-function checkHandshake(value: unknown): ProfileDiagnostic[] {
-  if (!isRecord(value)) return [];
-
-  const diagnostics: ProfileDiagnostic[] = [];
-  const steps = Array.isArray(value.steps) ? value.steps : [];
-
-  if (value.required === true && steps.length === 0) {
-    diagnostics.push({
-      severity: "error",
-      code: "handshake-required-no-steps",
-      path: "handshake.steps",
-      message: "handshake.required is true but no steps are declared — report this rather than assuming none is needed.",
-    });
+function checkSetup(value: unknown, ports: unknown): ProfileDiagnostic[] {
+  if (value === undefined) return [];
+  if (!isRecord(value) || typeof value.inputPortId !== "string" || typeof value.outputPortId !== "string" || !Array.isArray(value.steps)) {
+    return [{ severity: "error", code: "invalid-setup", path: "setup", message: "setup must have string inputPortId/outputPortId and a steps array." }];
   }
 
-  steps.forEach((step, index) => {
-    const path = `handshake.steps[${index}]`;
-    if (!isRecord(step)) return;
+  const diagnostics: ProfileDiagnostic[] = [];
+  const declaredPorts = Array.isArray(ports) ? ports.filter(isRecord) : [];
+  diagnostics.push(...checkSetupPort(declaredPorts, value.inputPortId, "input", "setup.inputPortId"));
+  diagnostics.push(...checkSetupPort(declaredPorts, value.outputPortId, "output", "setup.outputPortId"));
 
-    if (!isHandshakeDirection(step.direction)) {
-      diagnostics.push({ severity: "error", code: "unknown-handshake-direction", path: `${path}.direction`, message: `Unknown handshake direction ${JSON.stringify(step.direction)}.` });
-    }
-    if (typeof step.description !== "string" || step.description.trim() === "") {
-      diagnostics.push({ severity: "warning", code: "handshake-step-missing-description", path: `${path}.description`, message: "Handshake step has no description." });
-    }
+  value.steps.forEach((step, index) => {
+    diagnostics.push(...checkSetupStep(step, `setup.steps[${index}]`));
   });
 
+  return diagnostics;
+}
+
+function checkSetupPort(ports: readonly Record<string, unknown>[], portId: string, expectedType: string, path: string): ProfileDiagnostic[] {
+  const port = ports.find((candidate) => candidate.id === portId);
+  if (!port) {
+    return [{ severity: "error", code: "dangling-port-reference", path, message: `Setup references port "${portId}", which isn't declared in ports.` }];
+  }
+  if (port.type !== expectedType) {
+    return [{ severity: "error", code: "setup-port-wrong-type", path, message: `Setup port "${portId}" must be an ${expectedType} port, but it is ${JSON.stringify(port.type)}.` }];
+  }
+  if (port.required !== true) {
+    return [{ severity: "error", code: "setup-port-not-required", path, message: `Setup port "${portId}" must be required, so attach() connects it before setup runs.` }];
+  }
+  return [];
+}
+
+function checkSetupStep(value: unknown, path: string): ProfileDiagnostic[] {
+  if (!isRecord(value) || typeof value.id !== "string") {
+    return [{ severity: "error", code: "invalid-setup", path, message: "Setup step must be an object with a string id." }];
+  }
+
+  const diagnostics: ProfileDiagnostic[] = [];
+  const hasSend = value.send !== undefined;
+  const hasExpect = value.expect !== undefined;
+  if (hasSend === hasExpect) {
+    diagnostics.push({ severity: "error", code: "setup-step-needs-send-or-expect", path, message: `Setup step "${value.id}" must have exactly one of send or expect.` });
+  }
+
+  if (hasSend) {
+    diagnostics.push(...checkBytes(value.send, `${path}.send`, false));
+    if (Array.isArray(value.send) && value.send[0] === 0xf0 && value.send[value.send.length - 1] !== 0xf7) {
+      diagnostics.push({ severity: "error", code: "setup-sysex-unterminated", path: `${path}.send`, message: `Setup step "${value.id}" starts a SysEx (0xF0) but does not end it with 0xF7.` });
+    }
+  }
+  if (hasExpect) {
+    diagnostics.push(...checkBytes(value.expect, `${path}.expect`, true));
+  }
+
+  if (typeof value.description !== "string" || value.description.trim() === "") {
+    diagnostics.push({ severity: "warning", code: "setup-step-missing-description", path: `${path}.description`, message: "Setup step has no description." });
+  }
+
+  return diagnostics;
+}
+
+function checkBytes(value: unknown, path: string, allowWildcard: boolean): ProfileDiagnostic[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    return [{ severity: "error", code: "setup-byte-out-of-range", path, message: "Setup bytes must be a non-empty array." }];
+  }
+  const diagnostics: ProfileDiagnostic[] = [];
+  value.forEach((byte, index) => {
+    if (allowWildcard && byte === null) return;
+    if (!Number.isInteger(byte) || (byte as number) < 0 || (byte as number) > 255) {
+      diagnostics.push({
+        severity: "error",
+        code: "setup-byte-out-of-range",
+        path: `${path}[${index}]`,
+        message: `Byte ${JSON.stringify(byte)} is not an integer 0-255${allowWildcard ? " or null" : ""}.`,
+      });
+    }
+  });
   return diagnostics;
 }
