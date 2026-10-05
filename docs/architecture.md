@@ -151,7 +151,7 @@ none of them are implemented by this ticket.
   [docs/contracts/generic-midi-profile.md](contracts/generic-midi-profile.md).
 - ECS-42 — Define profile validation and diagnostics (actionable findings
   for a profile document's dangling references, unknown enum values, and
-  a `sysex`/`handshake` marked required with nothing in it to perform —
+  a `sysex` marked required with no manufacturer id, or a setup step malformed —
   reported, never invented or guessed) — see
   [docs/contracts/profile-validation.md](contracts/profile-validation.md).
 - ECS-32 — Create MIDI Core mock/test device (implements the Mock/test
@@ -189,7 +189,7 @@ none of them are implemented by this ticket.
   [docs/contracts/control-api.md](contracts/control-api.md).
 - ECS-66 — Define surface lifecycle and runtime model (`ControlSurface`'s
   attach/detach as one aggregate state over Core's own per-port
-  `ConnectionState`, the handshake-execution boundary, and where
+  `ConnectionState`, the device setup boundary (see `contracts/device-setup.md`), and where
   `ControlMapping` binding hooks into the lifecycle without this ticket
   deciding what a binding is) — see
   [docs/contracts/surface-lifecycle.md](contracts/surface-lifecycle.md).
@@ -246,8 +246,7 @@ none of them are implemented by this ticket.
   Grid sharing one profile and one mock device) — see
   [docs/contracts/mode-switching.md](contracts/mode-switching.md).
 - ECS-76 — Implement surface lifecycle/error handling
-  (`createControlSurface()`'s real `attach()`/`detach()`, handshake
-  execution, spontaneous-disconnect detection, and the
+  (`createControlSurface()`'s real `attach()`/`detach()`, device setup (originally a handshake executor, since replaced by declared setup), spontaneous-disconnect detection, and the
   `navigation.onChange()` subscription — serialized through one queue —
   that now owns mode switching for the surface's attached lifetime) —
   see

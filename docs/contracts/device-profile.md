@@ -13,7 +13,7 @@ Source of truth: [`src/profile/`](../../src/profile)
 This defines the schema for a **device profile**: a data shape describing
 one device model's identity, ports, physical controls (and how they're
 laid out), output/LED or motorized feedback, vendor SysEx needs, and
-connection handshake. Per the ticket and `docs/architecture.md`'s Device
+connection setup. Per the ticket and `docs/architecture.md`'s Device
 profiles extension point, a profile describes *the device*, not
 application behavior — this ticket produces **only the schema**: types and
 a handful of leaf-level type guards, no runtime loading/parsing, no
@@ -61,7 +61,7 @@ interface DeviceProfile {
   readonly controls: readonly PhysicalControl[]; // { id, label, kind, portId, feedbackPortId?, input?, feedback?, valueMode? }
   readonly grids?: readonly ControlGrid[];
   readonly sysex?: DeviceSysExProfile;
-  readonly handshake?: DeviceHandshake;
+  readonly setup?: DeviceSetup;
 }
 ```
 
@@ -113,14 +113,11 @@ interface DeviceProfile {
   operation depends on it; it does not model SysEx message
   templates/byte layouts — that's real protocol/codec work, left to
   ECS-40 once a composition model exists.
-- **`handshake`** — `DeviceHandshake`: `{ required, steps }`, where each
-  `HandshakeStep` is `{ id, description, direction }` and `direction` is
-  `"send" | "expect"`. Each step is a documented fact about what the
-  device expects at connection time (a mode-switch SysEx, an identity
-  reply), not a runtime instruction — nothing here sends or waits for
-  anything. Actually performing a handshake is application behavior built
-  on top of a profile, the same boundary this schema draws everywhere
-  else.
+- **`setup`** — `DeviceSetup`: `{ inputPortId, outputPortId, timeoutMs?, steps }`. Each step is
+  `{ id, description, send?, expect? }`, where `send` is bytes to transmit and
+  `expect` is a reply pattern (`null` matches any byte). Declared setup is run
+  by the surface on connect; see [device-setup.md](./device-setup.md). Replaces
+  the earlier `DeviceHandshake`, which described steps without bytes.
 
 `schemaVersion` (currently `DEVICE_PROFILE_SCHEMA_VERSION = "1.0"`) is this
 document shape's own version, not the device's firmware version. Profiles
@@ -154,8 +151,7 @@ independently and detect a mismatch is the whole reason this field exists.
   such a document is read, written, or cached. A future profiler or
   consumer can serialize a `DeviceProfile` directly, since every field is
   a plain, JSON-compatible value (no functions, no class instances).
-- **No SysEx byte templates or handshake execution** — see `sysex` and
-  `handshake` above; both describe, they don't implement.
+- **No SysEx byte templates beyond setup** — `sysex` describes, it doesn't implement. Setup steps carry their own bytes (`setup`), see `device-setup.md`.
 - **No mapping generation** — nothing here turns a profile's
   `PhysicalControl`s into `ControlMapping`s (`docs/contracts/mapping.md`).
   That would be a later tool bridging this schema and the mapping layer,

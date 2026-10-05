@@ -78,7 +78,7 @@ const GENERIC_MIDI_DEVICE_PROFILE: DeviceProfile = composeDeviceProfile({
   `GENERIC_MIDI_PROTOCOL`.
 - **`controls`** — empty. No physical controls are modeled, because none
   can be assumed without knowing the actual device.
-- **`grids`/`sysex`/`handshake`** — all absent, for the same reason.
+- **`grids`/`sysex`/`setup`** — all absent, for the same reason.
 
 ## Using this as a baseline
 

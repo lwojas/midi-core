@@ -13,8 +13,7 @@ Source of truth: [`src/surface/navigation.ts`](../../src/surface/navigation.ts),
 ## Scope
 
 Phase 1 (ECS-63–68) produced contracts only — types and pure functions,
-no code that resolves a profile against real ports, runs a real
-handshake, or binds a real `ControlMapping`. This is the first Phase 2
+no code that resolves a profile against real ports, runs device setup, or binds a real `ControlMapping`. This is the first Phase 2
 ticket: "the small runtime connecting application contracts to
 profile-defined controls and MIDI Core." It deliberately does **not**
 implement everything Phase 2 eventually needs — two pieces it explicitly
@@ -145,7 +144,7 @@ without this file changing.
 ## What's deliberately not here
 
 - **No `ControlSurface` implementation** — no `attach()`/`detach()`
-  connecting real ports or running a real handshake. That contract
+  connecting real ports or running device setup. That contract
   (`docs/contracts/surface-lifecycle.md`) is fully specified already;
   implementing it is ECS-76 ("Implement surface lifecycle/error
   handling... after runtime foundation exists"), built on

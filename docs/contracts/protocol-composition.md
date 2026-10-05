@@ -76,7 +76,7 @@ function composeDeviceProfile(args: {
   extensions?: readonly PhysicalControl[];
   grids?: readonly ControlGrid[];
   sysex?: DeviceSysExProfile;
-  handshake?: DeviceHandshake;
+  setup?: DeviceSetup;
 }): DeviceProfile;
 ```
 

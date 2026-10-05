@@ -187,14 +187,12 @@ ticket's remaining named categories:
   Both are, concretely, "something imperative has to happen around a mode
   transition that no declarative field covers" — a device-specific
   mode-select message sent on every switch into a mode (not a one-time
-  connection handshake, so it doesn't belong in `DeviceHandshake`), or a
+  connection setup, so it doesn't belong in `DeviceSetup`), or a
   quirky device needing a specific message sequence to arm a mode. One
   pair of hooks, `onEnter`/`onExit`, covers both without inventing a
   second, overlapping hook type for "quirks" specifically. Neither is
-  passed a `MidiOutput` — the same device-specific-knowledge boundary
-  `HandshakeExecutor` (`docs/contracts/surface-lifecycle.md`) already
-  draws: whoever supplies a hook supplies its own access to the device,
-  this contract doesn't hand it one.
+  passed a `MidiOutput`: a hook that needs the device supplies its own access
+  to it, and this contract doesn't hand one over.
 - **Dynamic modes** get `resolveBindings(context)`, called in place of a
   fixed `bindings` array when a mode's control set can't be known at
   authoring time (e.g. one pad bound per currently-existing track). It

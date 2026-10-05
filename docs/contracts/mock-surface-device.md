@@ -65,7 +65,7 @@ built from partial real-world evidence (ECS-62's `unresolved` case),
 nothing about a fictional device is partially known, so there's no
 reason to leave anything unresolved here.
 
-**No `sysex`/`handshake`.** Nothing about this device needs either, and
+**No `sysex`/`setup`.** Nothing about this device needs either, and
 adding one — even a trivial "do nothing" one — would be exactly the kind
 of invented device detail the ticket's "do not expand this into general
 device profiling" rules out.
@@ -117,7 +117,4 @@ harness guessing at what was meant.
   template for arbitrary device shapes.
 - **No real hardware, no Launchpad-specific knowledge** — the whole
   point; every address is invented for this profile alone.
-- **No SysEx/handshake simulation** — this device doesn't have either;
-  a future profile that needs to exercise `HandshakeExecutor`
-  (`docs/contracts/surface-lifecycle.md`) against a mock would need its
-  own profile, not an addition to this one.
+- **No SysEx/setup simulation** — this device doesn't have either; a future profile that needs setup against a mock would need its own profile, not an addition to this one.

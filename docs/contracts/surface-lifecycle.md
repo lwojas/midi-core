@@ -24,7 +24,7 @@ Contract.
 Like `docs/contracts/mapping.md` before its own runtime ticket (ECS-37),
 this produces **only the contract** — types and pure functions
 (`src/surface/types/`), no code that resolves a profile against real
-discovered ports, runs a real handshake, or binds a real `ControlMapping`.
+discovered ports, runs device setup, or binds a real `ControlMapping`.
 That implementation is ECS-76 ("implement surface lifecycle/error
 handling"), built against the shape defined here.
 
@@ -35,7 +35,7 @@ handling"), built against the shape defined here.
 connect/disconnect, to keep this vocabulary distinct from the per-port
 `ConnectionState` (`docs/contracts/discovery-lifecycle.md`) it's built on.
 Nothing here is a port, and a surface can be `attaching` while every
-composed port is already `connected` — a required handshake can still be
+composed port is already `connected` — device setup can still be
 in flight.
 
 ```
@@ -89,8 +89,7 @@ concrete-need-yet non-gap in the ECS-63 audit). This contract assumes that
 resolution already happened; it does not perform it.
 
 `attach()` is initialisation: connect every port `profile.ports` marks
-`required`, then run `profile.handshake`'s steps (if `required`) — see
-"The handshake boundary" below. `detach()` is cleanup: the reverse, after
+`required`, then run `profile.setup`'s steps on those ports — see "Device setup" below. `detach()` is cleanup: the reverse, after
 giving a caller the chance to unbind whatever it bound (next section).
 
 ## No binding here — only the moment it hooks in
@@ -103,8 +102,7 @@ level up: `attach()`/`detach()` do not call `bindControlMapping()` or know
 what a `ControlMapping` is. They only name the moment a caller should:
 
 - `onStateChange` reporting entry into `"attached"` is when bindings
-  should be installed (every required port is connected and any required
-  handshake is complete).
+  should be installed (every required port is connected and setup is complete).
 - `onStateChange` reporting entry into `"detaching"` is when bindings
   should be torn down, before ports disconnect underneath them.
 
@@ -125,47 +123,23 @@ afterward to run cleanup (unbind, release remaining ports) from `error`'s
 one valid transition — but the surface does not pretend an unrequested
 disconnect was a graceful one.
 
-## The handshake boundary
+## Device setup
 
-`docs/contracts/device-profile.md`'s `DeviceHandshake`/`HandshakeStep`
-describe *that* a device needs a connection-time exchange and each step's
-intent (`send`/`expect` plus a description) — deliberately no message
-bytes, since modeling those is real protocol work ECS-40's composition
-model hasn't built yet. That leaves a genuine question this ticket has to
-answer: who performs a handshake, and what happens when nothing can?
+Connection-time setup is declared by the profile and run by `attach()`; see
+[device-setup.md](./device-setup.md). `attach()` runs the declared steps on the
+required ports after connecting them, and before the initial mode is installed.
+The profile carries the message bytes, so no device-specific executor is needed.
 
-**Surface-owned, not profile-owned, and not synthesized.** Performing a
-handshake is `attach()`'s job — the first layer above Core allowed to
-know about both a profile and live ports. But since a `HandshakeStep`
-carries no executable payload, a generic `ControlSurface` cannot derive
-*how* to perform one from the profile alone; that requires device-specific
-knowledge the schema deliberately excluded. `HandshakeExecutor`
-(`performStep(step): Promise<void>`) names that knowledge as something
-supplied by whoever constructs a `ControlSurface` for a specific device —
-device-specific, outside this contract — rather than something `attach()`
-invents.
-
-**Failing loud, not silently, when there's nothing to perform it.** If
-`profile.handshake?.required` is `true` and no `HandshakeExecutor` was
-supplied, `attach()` fails with a `SurfaceError` (`"handshake-unsupported"`)
-instead of silently proceeding as if the device were ready. This is the
-same "report, never invented or guessed" stance
-`docs/contracts/profile-validation.md` already takes for a profile
-authored with a handshake marked required and nothing in it to perform —
-applied here to the runtime that would otherwise skip it quietly.
-
-`SysEx` (`DeviceSysExProfile`) draws the identical line for the same
-reason: described, not executed, and genuinely not executable from
-today's schema. No separate "SysEx executor" is added — a vendor SysEx
-need that matters at connection time is exactly what `handshake` already
-exists to describe; one that doesn't (an optional extra, per `required:
-false`) has no lifecycle role at all, attach-time or otherwise.
+A setup failure fails the attach with `"setup-failed"` or `"setup-timeout"`
+(`cause` set where there is one), and the surface moves to `"error"`. Setup
+always runs when declared. There is no `required` gate, so a profile cannot skip
+the setup its addressing depends on. Setup is the only place vendor SysEx bytes
+are sent, and only the bytes the profile declares.
 
 ## Error responsibility
 
 `SurfaceError` (`src/surface/types/errors.ts`) is reported in the
-surface's own terms — `"port-unavailable"`, `"handshake-unsupported"`,
-`"handshake-failed"`, `"unknown"` — rather than widening
+surface's own terms — `"port-unavailable"`, `"setup-failed"`, `"setup-timeout"`, `"unknown"` — rather than widening
 `MidiTransportError` to cover them, the same boundary
 `docs/contracts/discovery-lifecycle.md` already draws ("device- or
 application-level failures are out of scope for Core... reported by
@@ -177,7 +151,7 @@ surface failure (a required port's `connect()` rejecting) is carried as
 ## What's deliberately not here
 
 - **No implementation** — no code resolving `profile.ports` against real
-  discovered ports, no real `HandshakeExecutor`, no `ControlSurface`
+  discovered ports, no device setup runner, no `ControlSurface`
   backed by live `MidiConnection`s. That's ECS-76.
 - **No profile-to-port matching** — unchanged non-gap from the ECS-63
   audit; still someone else's job, by name/manufacturer heuristic or
@@ -186,9 +160,7 @@ surface failure (a required port's `connect()` rejecting) is carried as
   switching. This ticket names the lifecycle moment bindings hook into
   (`onStateChange` into `"attached"`/`"detaching"`); ECS-67 (modes) and
   ECS-68 (binding language) decide the rest.
-- **No SysEx or handshake byte templates** — unchanged from
-  `docs/contracts/device-profile.md`; still ECS-40's scope, if ever
-  needed.
+- **No general SysEx template language** — setup steps carry their own declared bytes (`device-setup.md`); a general template language is still ECS-40's scope, if ever needed.
 - **No retry/reconnection policy** — `attach()`/`detach()` are one
   attempt each; a caller wanting retries composes that itself, the same
   stance `docs/contracts/discovery-lifecycle.md` already takes for Core's

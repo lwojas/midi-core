@@ -35,7 +35,7 @@ as shipped contracts; this ticket places the fourth between them:
 | Name | Responsibility | Status |
 |---|---|---|
 | **MIDI Core** | Moves MIDI messages: discovery, lifecycle, normalized input/output. Knows nothing about devices or applications. | Built — [docs/architecture.md](../architecture.md) |
-| **Device Profile** | Describes one device's hardware capabilities and protocol: its physical controls, where each lives on the wire, feedback, SysEx/handshake needs. Knows nothing about applications. | Built — [docs/contracts/device-profile.md](./contracts/device-profile.md) |
+| **Device Profile** | Describes one device's hardware capabilities and protocol: its physical controls, where each lives on the wire, feedback, SysEx and setup needs. Knows nothing about applications. | Built — [docs/contracts/device-profile.md](./contracts/device-profile.md) |
 | **Control Surface** | Defines how a connected device's physical controls drive an application's controls: generates bindings from a profile, owns their lifecycle as a group, switches which are active by application-owned mode/context, resolves controls dynamically. Knows about both neighbors; is the only layer that does. | **New — this ticket** |
 | **Application Contract** | Exposes an application's software controls/state for something else to read, set and observe. Knows nothing about MIDI or devices. | Built — [docs/contracts/control-api.md](./contracts/control-api.md) (there called the Application Control API) |
 
@@ -211,7 +211,7 @@ defines:
 
 - **No application contract shape** — controls, actions, context,
   selection, events. That's ECS-65.
-- **No lifecycle contract** — attach/detach, availability, handshake
+- **No lifecycle contract** — attach/detach, availability, device setup
   boundary between profile and surface. That's ECS-66.
 - **No modes/context model** — how application context selects a mode, who
   owns bank/page/navigation. That's ECS-67.
@@ -289,7 +289,7 @@ defines:
   [docs/contracts/mode-switching.md](./contracts/mode-switching.md).
 - ECS-76 — Implement surface lifecycle/error handling
   (`createControlSurface()`: real `attach()`/`detach()` over live ports
-  and an optional `HandshakeExecutor`, spontaneous-disconnect detection,
+  and device setup (the `HandshakeExecutor` first sketched for this was replaced, see `contracts/device-setup.md`), spontaneous-disconnect detection,
   and the `navigation.onChange()` subscription ECS-75 deferred — "that's
   `ControlSurface.attach()`" — now owning mode switching for the
   surface's whole attached lifetime) — see

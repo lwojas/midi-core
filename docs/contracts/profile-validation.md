@@ -31,7 +31,7 @@ interface ProfileDiagnostic {
 that can't be resolved (a dangling reference, an unknown enum value, an
 unresolved protocol). `"warning"` means the document is valid but
 under-specified in a way that would leave a consumer guessing (currently
-only a handshake step with no description). Nothing here corrects or
+only a setup step with no description). Nothing here corrects or
 infers a fix — every finding is reported, never papered over.
 
 ## `validateDeviceProfile(profile: unknown): readonly ProfileDiagnostic[]`
@@ -79,13 +79,14 @@ specific thing an earlier contract named as deferred:
   "unresolved... rather than invented" case from the ticket — silently
   treating it as "no SysEx needed" would be inventing an answer the data
   doesn't support.
-- **`handshake`** — the same reasoning, by name: `required: true` with
-  zero `steps` is flagged (`handshake-required-no-steps`) rather than a
-  consumer silently skipping the handshake or synthesizing one. Each
-  step's `direction` must be a real `HandshakeDirection`
-  (`unknown-handshake-direction`); a step with no `description` is a
-  `warning` (`handshake-step-missing-description`) — valid, but not
-  actionable for whoever has to perform it.
+- **`setup`** — the same reasoning. `inputPortId`/`outputPortId` must name a declared
+  input and output port that is `required` (`dangling-port-reference`,
+  `setup-port-wrong-type`, `setup-port-not-required`). Each step must have exactly
+  one of `send` or `expect` (`setup-step-needs-send-or-expect`). Bytes must be
+  integers 0-255, and `null` is allowed only in `expect` (`setup-byte-out-of-range`).
+  A SysEx `send` must end in 0xF7 (`setup-sysex-unterminated`). A step with no
+  `description` is a `warning` (`setup-step-missing-description`), valid but not
+  actionable for whoever has to perform it.actionable for whoever has to perform it.
 
 ## `validateProtocolBindings(bindings, protocols, ports): readonly ProfileDiagnostic[]`
 

@@ -29,8 +29,7 @@ explicitly.
 
 Connects every `profile.ports` marked `required` (resolved from the
 caller-supplied `ports: SurfacePorts`, per the contract's own "port
-resolution already happened" stance), runs `profile.handshake`'s steps
-through the supplied `executor` if required, then installs the mode
+resolution already happened" stance), runs `profile.setup`'s steps on those ports, then installs the mode
 matching `navigation.state.mode` via `bindActiveMode()` (ECS-69) and
 starts following `navigation.onChange()` (see "Mode switching," below).
 Fails loud at the first problem, exactly as specified:
@@ -39,8 +38,8 @@ Fails loud at the first problem, exactly as specified:
 |---|---|
 | A required port has nothing resolved for it in `ports` | `"port-unavailable"` |
 | A required port's `connect()` rejects | `"port-unavailable"` (`cause` set) |
-| `handshake.required` but no `executor` supplied | `"handshake-unsupported"` |
-| A handshake step's `performStep()` rejects | `"handshake-failed"` (`cause` set) |
+| A setup `send` cannot be made, or a setup step is malformed | `"setup-failed"` (`cause` set where there is one) |
+| A setup `expect` step gets no matching reply within `timeoutMs` | `"setup-timeout"` |
 
 Every failure reports the `SurfaceError` to `onError` listeners, moves
 `state` to `"error"`, and **rejects `attach()`'s own promise with that
