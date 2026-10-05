@@ -81,7 +81,7 @@ function stepBindings() {
 
 function mixerBindings() {
   // Top pad row (notes 81-88) mutes tracks 1-8.
-  return LAUNCHPAD_MINI_MK3_PADS.filter((pad) => padRowColumn(pad.input.address.note).row === 8)
+  return LAUNCHPAD_MINI_MK3_PADS.filter((pad) => padRowColumn(pad.input.address.note).row === 0)
     .map((pad) => {
       const { column } = padRowColumn(pad.input.address.note);
       return { kind: "control", physicalControlId: pad.id, role: `mute ${column + 1}`, resolve: { kind: "static", controlId: `mute.${column + 1}` }, press: "toggle" };
@@ -136,7 +136,9 @@ export function createLaunchpadSurface({ input, output, app, log = () => {} }) {
 
   surface.onStateChange((change) => log(`surface: ${change.from} -> ${change.to}`));
   surface.onError((e) => log(`surface error [${e.code}]: ${e.message}`));
-  surface.navigation.onChange((change) => log(`mode: ${change.from.mode} -> ${change.to.mode}`));
+  surface.navigation.onChange((change) => {
+    if (change.from.mode !== change.to.mode) log(`mode: ${change.from.mode} -> ${change.to.mode}`);
+  });
 
   return {
     surface,
