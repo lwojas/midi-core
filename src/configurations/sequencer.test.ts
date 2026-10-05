@@ -69,9 +69,12 @@ describe("createSequencerBindings on the Launchpad", () => {
     ]);
   });
 
-  it("pages tracks in the mixer, but not time", () => {
+  it("pages tracks in the mixer with the left and right arrows, since its tracks run across, and has no vertical paging", () => {
     const pages = bindingsOf(table, "mixer").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page");
-    expect(pages.map((binding) => binding.physicalControlId)).toEqual(["top-91", "top-92"]);
+    expect(pages.map((binding) => [binding.physicalControlId, binding.kind === "navigate" && binding.navigate.kind === "page" ? binding.navigate.direction : undefined])).toEqual([
+      ["top-93", { row: -1, column: 0 }],
+      ["top-94", { row: 1, column: 0 }],
+    ]);
   });
 
   it("mixer mutes one track per column of the top row, laid out horizontally, and pages through tracks", () => {
@@ -88,6 +91,17 @@ describe("createSequencerBindings on the Launchpad", () => {
         colour: { red: 127, green: 0, blue: 0 },
       });
     }
+  });
+
+  it("lights steps blue and mutes red by default", () => {
+    expect(bindingsOf(table, "steps").find((binding) => binding.kind === "window")).toMatchObject({ colour: { red: 0, green: 0, blue: 127 } });
+    expect(bindingsOf(table, "mixer").find((binding) => binding.kind === "window")).toMatchObject({ colour: { red: 127, green: 0, blue: 0 } });
+  });
+
+  it("takes the colours an app names in its contract, and keeps the defaults for the rest", () => {
+    const { bindings } = createSequencerBindings(input, launchpad.profile, { ...contract(), colours: { mutes: { red: 0, green: 127, blue: 0 } } });
+    expect(bindingsOf(bindings, "steps").find((binding) => binding.kind === "window")).toMatchObject({ colour: { red: 0, green: 0, blue: 127 } });
+    expect(bindingsOf(bindings, "mixer").find((binding) => binding.kind === "window")).toMatchObject({ colour: { red: 0, green: 127, blue: 0 } });
   });
 
   it("transport sits on the side column, clear of the arrows", () => {

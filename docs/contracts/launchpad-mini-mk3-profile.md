@@ -64,8 +64,8 @@ Their order (up, down, left, right, from the left) is an assumption, not yet
 confirmed on hardware. Transport moved to the side column because the arrows
 take CC 91-94. Paging up and down moves by eight tracks, and the window stops
 at the track count the application provides. The mixer lays its eight tracks
-across the top row, as its UI does, and paging moves that row to the next
-eight tracks.
+across the top row, as its UI does, so left and right page it through the
+tracks eight at a time, and up and down do nothing there.
 
 ## Deliberately not modeled
 

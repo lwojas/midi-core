@@ -117,21 +117,25 @@ describe("the Launchpad sequencer, driven through the surface", () => {
     await press("side-79"); // mixer
     expect(surface.navigation.state).toMatchObject({ mode: "mixer", gridOffset: { row: 8, column: 0 } });
 
-    await press("pad-81"); // the first row of this page: track 9
+    await press("pad-81"); // the first track across the top row of this page: track 9
     expect(mutes[8]?.getValue()).toBe(true);
     expect(mutes[0]?.getValue()).toBe(false);
 
-    await press("top-91"); // up to tracks 1-8, still in the mixer
+    await press("top-93"); // left to tracks 1-8, still in the mixer
     await press("pad-81");
     expect(mutes[0]?.getValue()).toBe(true);
     await surface.detach();
   });
 
-  it("does not page time in the mixer", async () => {
+  it("pages tracks with left and right in the mixer, not time, and ignores up and down there", async () => {
     const { surface, press } = build();
     await surface.attach();
     await press("side-79");
-    await press("top-94"); // right: no binding in the mixer
+    await press("top-92"); // down: no binding in the mixer
+    expect(surface.navigation.state.gridOffset).toEqual({ row: 0, column: 0 });
+    await press("top-94"); // right: the next eight tracks
+    expect(surface.navigation.state.gridOffset).toEqual({ row: 8, column: 0 });
+    await press("top-93"); // left: back
     expect(surface.navigation.state.gridOffset).toEqual({ row: 0, column: 0 });
     await surface.detach();
   });
@@ -153,7 +157,7 @@ describe("the Launchpad sequencer, driven through the surface", () => {
     await press("pad-83"); // the third track across the top row: track 3
     expect(mutes[2]?.getValue()).toBe(true);
 
-    await press("top-92"); // page down: tracks 9-16
+    await press("top-94"); // right: tracks 9-16
     await press("pad-83"); // the same position now shows track 11
     expect(mutes[10]?.getValue()).toBe(true);
     expect(mutes[2]?.getValue()).toBe(true);

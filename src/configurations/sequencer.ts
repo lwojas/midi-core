@@ -7,6 +7,7 @@ import { bindActionTrigger } from "../surface/action-binding.js";
 import { toMidiSource } from "../surface/generate.js";
 import type { ModeBinding, SurfaceBindingTable } from "../surface/types/bindings.js";
 import type { MidiSource, RgbColour } from "../mapping/types/address.js";
+import type { GridOffset } from "../surface/types/navigation.js";
 
 /**
  * The application contract a sequencer exposes to a device (ECS-89). A sequencer names its controls and
@@ -24,7 +25,23 @@ export interface SequencerContract {
   readonly trackCountControl?: string;
   /** Transport actions the application supports. An action left out has no binding, and its device button does nothing. */
   readonly actions: { readonly play?: Action; readonly stop?: Action; readonly record?: Action; readonly clear?: Action };
+  /**
+   * The lit colours of steps and track mutes on an RGB device (ECS-95). Left out, each takes its default
+   * (`DEFAULT_SEQUENCER_COLOURS`): steps blue, mutes red. A device without RGB ignores them.
+   */
+  readonly colours?: Partial<SequencerColours>;
 }
+
+export interface SequencerColours {
+  readonly steps: RgbColour;
+  readonly mutes: RgbColour;
+}
+
+/** The colours a sequencer uses when its contract names none: a lit step is blue, a muted track red (ECS-95). */
+export const DEFAULT_SEQUENCER_COLOURS: SequencerColours = {
+  steps: { red: 0, green: 0, blue: 127 },
+  mutes: { red: 127, green: 0, blue: 0 },
+};
 
 export interface SequencerBindings {
   readonly bindings: SurfaceBindingTable;
@@ -34,9 +51,6 @@ export interface SequencerBindings {
 
 const TRANSPORT_NAMES = ["play", "stop", "record", "clear"] as const;
 
-/** The colour a lit step and a muted track show on an RGB pad (ECS-95). A usage default, like the layout. */
-const STEP_COLOUR: RgbColour = { red: 0, green: 0, blue: 127 };
-const MUTE_COLOUR: RgbColour = { red: 127, green: 0, blue: 0 };
 
 /**
  * Builds the binding table for a sequencer on a device: three modes (steps, mixer, transport) with the device's
@@ -52,6 +66,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   const hasControl = (controlId: string) => profile.controls.some((control) => control.id === controlId);
 
   const layout: DeviceLayout = profile.layout ?? {};
+  const colours: SequencerColours = { ...DEFAULT_SEQUENCER_COLOURS, ...contract.colours };
   if (!profile.layout) unresolved.push("layout (the profile declares none)");
 
   const grid: ControlGrid | undefined = profile.grids?.find((candidate) => candidate.paging);
@@ -66,8 +81,9 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
     modeBindings.push({ kind: "navigate", physicalControlId: controlId, role: `mode: ${mode}`, navigate: { kind: "set-mode", mode } });
   }
 
-  // Page buttons, split by axis: up/down page tracks (both modes), left/right page time (steps only).
-  const pageBindings: Array<{ axis: "vertical" | "horizontal"; binding: ModeBinding }> = [];
+  // Page buttons, each resolved once. Steps: up/down page tracks (rows), left/right page time (columns). The mixer
+  // lays tracks across the top row, so there left/right page tracks, and up/down have nothing to page.
+  const pageButtons: Array<{ side: string; controlId: string; direction: GridOffset; gridId: string }> = [];
   if (grid) {
     for (const [side, controlId, direction] of [
       ["page up", layout.pageUp, { row: -1, column: 0 }],
@@ -80,13 +96,19 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         unresolved.push(`${side} (control ${controlId})`);
         continue;
       }
-      pageBindings.push({
-        axis: direction.row !== 0 ? "vertical" : "horizontal",
-        binding: { kind: "navigate", physicalControlId: controlId, role: side, navigate: { kind: "page", gridId: grid.id, direction } },
-      });
+      pageButtons.push({ side, controlId, direction, gridId: grid.id });
     }
   }
-  const pages = (axis: "vertical" | "horizontal") => pageBindings.filter((page) => page.axis === axis).map((page) => page.binding);
+  const pageBinding = (button: (typeof pageButtons)[number], direction: GridOffset, role: string): ModeBinding => ({
+    kind: "navigate",
+    physicalControlId: button.controlId,
+    role,
+    navigate: { kind: "page", gridId: button.gridId, direction },
+  });
+  const stepPages = pageButtons.map((button) => pageBinding(button, button.direction, button.side));
+  const mixerPages = pageButtons
+    .filter((button) => button.direction.column !== 0)
+    .map((button) => pageBinding(button, { row: button.direction.column, column: 0 }, `${button.side} (tracks)`));
 
   const cells = grid?.cells ?? [];
   const stepBindings: ModeBinding[] = grid
@@ -99,7 +121,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         press: "toggle",
         columnCountControl: contract.lengthControl,
         rowCountControl: contract.trackCountControl,
-        colour: STEP_COLOUR,
+        colour: colours.steps,
       }))
     : [];
 
@@ -117,7 +139,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
           press: "toggle",
           orientation: "horizontal",
           rowCountControl: contract.trackCountControl,
-          colour: MUTE_COLOUR,
+          colour: colours.mutes,
         }))
     : [];
 
@@ -138,8 +160,8 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   let transportUnbinds: Array<() => void> = [];
 
   const bindings: SurfaceBindingTable = [
-    { mode: "steps", bindings: [...modeBindings, ...pages("vertical"), ...pages("horizontal"), ...stepBindings], activateOn: { scope: "step" } },
-    { mode: "mixer", bindings: [...modeBindings, ...pages("vertical"), ...muteBindings], activateOn: { scope: "track" } },
+    { mode: "steps", bindings: [...modeBindings, ...stepPages, ...stepBindings], activateOn: { scope: "step" } },
+    { mode: "mixer", bindings: [...modeBindings, ...mixerPages, ...muteBindings], activateOn: { scope: "track" } },
     {
       mode: "transport",
       bindings: modeBindings,

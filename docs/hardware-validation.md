@@ -143,11 +143,13 @@ driving the real profile through the surface runtime with raw Note/CC messages.
   because the arrows take 91-94. Not yet checked on hardware since the move; the
   ECS-79/94 transport checks predate it.
 - **Mixer mutes** lie across the top row, one track per column, laid out
-  horizontally as the mixer UI is. Paging up and down moves that row through the
-  tracks. Not yet checked on hardware.
+  horizontally as the mixer UI is. Left and right page that row through the
+  tracks, eight at a time (up and down are unbound in the mixer). The mute
+  orientation passed on hardware; the left/right paging change is not yet checked.
 - **RGB feedback**: pads and buttons are lit by RGB SysEx rather than velocity.
-  Steps are blue and track mutes red (a usage default in `sequencer.ts`). Not yet
-  checked on hardware; confirm the colours and that off really goes black.
+  Steps are blue and track mutes red by default. An app sets its own colours
+  through the sequencer contract's `colours`. Not yet checked on hardware; confirm
+  the colours and that off really goes black.
 
 **Mixer faders (investigated, not implemented).** The manual's Programmer/DAW
 reference (`midi-profiler/research/novation-launchpad-mini-mk3/programmers-reference-manual.pdf`)
