@@ -141,6 +141,7 @@ export const LAUNCHPAD_MINI_MK3_PAD_GRID: ControlGrid = {
   rows: 8,
   columns: 8,
   cells: LAUNCHPAD_MINI_MK3_PADS.map((pad, index) => ({ row: Math.floor(index / 8), column: index % 8, controlId: pad.id })),
+  paging: { rows: 8, columns: 8 },
 };
 
 /**

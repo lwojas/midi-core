@@ -10,6 +10,7 @@ import type { GenerateControlMappings } from "./types/generation.js";
 import { switchMode } from "./mode-switching.js";
 import { bindSelectionModePolicy } from "./selection-policy.js";
 import { createSurfaceNavigation } from "./navigation.js";
+import { sequenceClamp } from "./paging.js";
 import type { SurfaceError } from "./types/errors.js";
 import { isValidSurfaceTransition, type SurfaceLifecycleChange, type SurfaceLifecycleState } from "./types/lifecycle.js";
 import type { SurfaceNavigationState } from "./types/navigation.js";
@@ -37,7 +38,9 @@ export interface ControlSurfaceDeps {
  * those tickets built this on top of.
  */
 export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
-  const navigation = createSurfaceNavigation(deps.initialNavigation);
+  const navigation = createSurfaceNavigation(deps.initialNavigation, {
+    clamp: sequenceClamp(deps.bindingTable, deps.profile, deps.registry),
+  });
 
   let state: SurfaceLifecycleState = "detached";
   const stateListeners = new Set<(change: SurfaceLifecycleChange) => void>();

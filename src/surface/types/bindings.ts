@@ -58,7 +58,11 @@ export type ControlIdResolution =
  */
 export type NavigationAction =
   | { readonly kind: "set-mode"; readonly mode: SurfaceModeId }
-  | { readonly kind: "page-by"; readonly delta: GridOffset };
+  /**
+   * One page turn of `gridId`, in pages (`direction` of `{ column: 1 }` is one page right). The size of a
+   * page is the grid's `paging` in its profile, not something the binding names (ECS-89).
+   */
+  | { readonly kind: "page"; readonly gridId: string; readonly direction: GridOffset };
 
 interface ModeBindingBase {
   /** `PhysicalControl.id` (`docs/contracts/device-profile.md`) this binding assigns meaning to. */
@@ -98,6 +102,11 @@ export interface WindowedControlBinding extends ModeBindingBase {
   readonly gridId: string;
   readonly template: string;
   readonly press?: ControlPress;
+  /**
+   * An application control holding how many columns the sequence has (ECS-89). Paging stops at the first
+   * column and at the last window that still shows the end of the sequence. Omitted means no upper bound.
+   */
+  readonly columnCountControl?: string;
 }
 
 /** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, or a window onto a grid of controls. */

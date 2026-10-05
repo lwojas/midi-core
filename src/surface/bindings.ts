@@ -222,10 +222,13 @@ export async function bindSurfaceMode(
     const source = physical && toMidiSource(physical);
     const input = physical && deps.ports.inputs[physical.portId];
     if (!navigation || !source || !input) continue;
+    const navigate = binding.navigate;
+    const paging = navigate.kind === "page" ? deps.profile.grids?.find((candidate) => candidate.id === navigate.gridId)?.paging : undefined;
+    if (navigate.kind === "page" && !paging) continue;
 
     const action = createAction({ id: `navigate.${binding.physicalControlId}`, label: binding.role }, () => {
-      if (binding.navigate.kind === "set-mode") navigation.setMode(binding.navigate.mode);
-      else navigation.pageBy(binding.navigate.delta);
+      if (navigate.kind === "set-mode") navigation.setMode(navigate.mode);
+      else if (paging) navigation.pageBy({ row: navigate.direction.row * paging.rows, column: navigate.direction.column * paging.columns });
     });
     unsubscribes.push(bindActionTrigger(input, source, action));
   }

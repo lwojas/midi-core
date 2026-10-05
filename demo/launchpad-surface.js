@@ -1,18 +1,19 @@
-// The Launchpad Mini MK3 surface configuration, shared by the browser demo (demo/launchpad.js) and the
-// Node live-run script (scripts/launchpad-live.mjs). Transport-agnostic: it only ever sees MidiInput/MidiOutput.
-// The binding table is surface configuration, not sequencer code: the application here exposes plain Controls
-// and Actions, and this module decides which device control means what in each mode (ECS-89).
+// The demo's Launchpad sequencer: a plain application (Controls and Actions, no MIDI) plus the surface wiring.
+// The device configuration lives in midi-core (src/configurations), so this file only names the application's
+// controls and actions. Transport-agnostic: it only ever sees MidiInput/MidiOutput.
 import { createAction, createControl, createControlRegistry, createSurfaceContext } from "../dist/control-api/index.js";
-import { LAUNCHPAD_MINI_MK3_PADS, LAUNCHPAD_MINI_MK3_PROFILE } from "../dist/profile/index.js";
-import { bindActionTrigger, createControlSurface, generateControlMappings, toMidiSource } from "../dist/surface/index.js";
+import { LAUNCHPAD_MINI_MK3_PROFILE } from "../dist/profile/index.js";
+import { createLaunchpadSequencerBindings } from "../dist/configurations/index.js";
+import { createControlSurface, generateControlMappings } from "../dist/surface/index.js";
 
 export const STEP_ROWS = 8;
 export const STEP_COLUMNS = 32; // four pages of eight
-const PAGE_COLUMNS = 8;
 
-const padRowColumn = (note) => ({ row: 8 - Math.floor(note / 10), column: (note % 10) - 1 }); // row 1..8 from bottom, col 1..8
-const topButton = (controller) => toMidiSource(LAUNCHPAD_MINI_MK3_PROFILE.controls.find((c) => c.id === `top-${controller}`));
-const sideButtonId = (controller) => `side-${controller}`;
+const CONTRACT = {
+  stepTemplate: "step.{row}.{column}",
+  lengthControl: "steps.length",
+  muteTemplate: "mute.{track}",
+};
 
 export function createLaunchpadApp({ onChange = () => {} } = {}) {
   const steps = new Map();
@@ -27,6 +28,8 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
     const id = `mute.${track}`;
     mutes.set(id, createControl({ id, label: `Mute ${track}`, kind: "boolean", default: false }));
   }
+  const length = createControl({ id: CONTRACT.lengthControl, label: "Sequence length", kind: "number", min: 0, max: 64, default: STEP_COLUMNS });
+
   const transport = { status: "stopped" };
   const setStatus = (status) => {
     transport.status = status;
@@ -43,6 +46,7 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
   return {
     steps,
     mutes,
+    length,
     transport,
     actions,
     litSteps,
@@ -52,82 +56,13 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
   };
 }
 
-/** The mode a device button selects, and the bindings each mode installs. Mode buttons work from every mode. */
-const MODE_BUTTONS = [
-  { controller: 89, mode: "steps" },
-  { controller: 79, mode: "mixer" },
-  { controller: 69, mode: "transport" },
-];
-
-function modeButtonBindings() {
-  return MODE_BUTTONS.map(({ controller, mode }) => ({
-    kind: "navigate",
-    physicalControlId: sideButtonId(controller),
-    role: `mode: ${mode}`,
-    navigate: { kind: "set-mode", mode },
-  }));
-}
-
-function stepBindings() {
-  return [
-    ...LAUNCHPAD_MINI_MK3_PADS.map((pad) => {
-      const { row, column } = padRowColumn(pad.input.address.note);
-      return { kind: "window", physicalControlId: pad.id, role: `step ${row},${column}`, gridId: "pads", template: "step.{row}.{column}", press: "toggle" };
-    }),
-    { kind: "navigate", physicalControlId: "top-95", role: "page left", navigate: { kind: "page-by", delta: { row: 0, column: -PAGE_COLUMNS } } },
-    { kind: "navigate", physicalControlId: "top-96", role: "page right", navigate: { kind: "page-by", delta: { row: 0, column: PAGE_COLUMNS } } },
-  ];
-}
-
-function mixerBindings() {
-  // Top pad row (notes 81-88) mutes tracks 1-8.
-  return LAUNCHPAD_MINI_MK3_PADS.filter((pad) => padRowColumn(pad.input.address.note).row === 0)
-    .map((pad) => {
-      const { column } = padRowColumn(pad.input.address.note);
-      return { kind: "control", physicalControlId: pad.id, role: `mute ${column + 1}`, resolve: { kind: "static", controlId: `mute.${column + 1}` }, press: "toggle" };
-    });
-}
-
-/**
- * Builds the surface for one connected input/output pair. `log` receives human-readable lines.
- * Returns { surface, attach, detach }. attach/detach wrap the surface plus the pad-press LED policy.
- */
+/** Builds the surface for one connected input/output pair. `log` receives human-readable lines. */
 export function createLaunchpadSurface({ input, output, app, log = () => {} }) {
-  const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values()]);
-  let transportUnbinds = [];
+  const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values(), app.length]);
   const surface = createControlSurface({
     profile: LAUNCHPAD_MINI_MK3_PROFILE,
     ports: { inputs: { "midi-in": input }, outputs: { "midi-out": output } },
-    bindingTable: [
-      {
-        mode: "steps",
-        bindings: [...modeButtonBindings(), ...stepBindings()],
-        activateOn: { scope: "step" },
-      },
-      {
-        mode: "mixer",
-        bindings: [...modeButtonBindings(), ...mixerBindings()],
-        activateOn: { scope: "track" },
-      },
-      {
-        mode: "transport",
-        bindings: modeButtonBindings(),
-        hooks: {
-          onEnter: () => {
-            transportUnbinds = [
-              bindActionTrigger(input, topButton(91), app.actions.play),
-              bindActionTrigger(input, topButton(92), app.actions.stop),
-              bindActionTrigger(input, topButton(93), app.actions.record),
-              bindActionTrigger(input, topButton(94), app.actions.clear),
-            ];
-          },
-          onExit: () => {
-            for (const unbind of transportUnbinds) unbind();
-            transportUnbinds = [];
-          },
-        },
-      },
-    ],
+    bindingTable: createLaunchpadSequencerBindings(input, { ...CONTRACT, actions: app.actions }),
     context: createSurfaceContext(),
     registry,
     generate: generateControlMappings,

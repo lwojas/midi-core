@@ -15,10 +15,21 @@ export interface GridCell {
   readonly controlId: string;
 }
 
+/**
+ * How far one page turn moves a window onto a larger virtual space (ECS-89), in cells: one press of a
+ * "page" navigation binding moves the window by `paging`, so the device, not the application, decides the
+ * page size (eight columns on a Launchpad's 8x8 grid).
+ */
+export interface GridPaging {
+  readonly rows: number;
+  readonly columns: number;
+}
+
 export interface ControlGrid {
   readonly id: string;
   readonly label: string;
   readonly rows: number;
   readonly columns: number;
   readonly cells: readonly GridCell[];
+  readonly paging?: GridPaging;
 }

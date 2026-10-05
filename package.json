@@ -45,6 +45,10 @@
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
+    },
+    "./configurations": {
+      "types": "./dist/configurations/index.d.ts",
+      "import": "./dist/configurations/index.js"
     }
   },
   "scripts": {

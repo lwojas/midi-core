@@ -62,7 +62,7 @@ const navBinding: ModeBinding = {
   physicalControlId: "next-btn",
   role: "next-page",
   kind: "navigate",
-  navigate: { kind: "page-by", delta: { row: 0, column: 1 } },
+  navigate: { kind: "page", gridId: "pads", direction: { row: 0, column: 1 } },
 };
 
 const controlBinding: ModeBinding = {

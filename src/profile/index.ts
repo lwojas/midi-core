@@ -26,7 +26,7 @@ export {
   isFeedbackKind,
 } from "./types/control.js";
 
-export type { GridCell, ControlGrid } from "./types/grid.js";
+export type { GridCell, GridPaging, ControlGrid } from "./types/grid.js";
 
 export type { DeviceSysExProfile } from "./types/sysex.js";
 

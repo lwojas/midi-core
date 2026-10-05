@@ -13,8 +13,14 @@ import type {
  * just apply the change and notify whoever's listening; *deciding* which
  * mode a selection should arm is ECS-75's job, built on top of this.
  */
-export function createSurfaceNavigation(initial: SurfaceNavigationState): SurfaceNavigation {
+export interface SurfaceNavigationOptions {
+  /** Applied to every `pageBy()` result before it's stored, so paging can't leave the sequence (ECS-89). */
+  readonly clamp?: (offset: GridOffset) => GridOffset;
+}
+
+export function createSurfaceNavigation(initial: SurfaceNavigationState, options: SurfaceNavigationOptions = {}): SurfaceNavigation {
   let state = initial;
+  const clamp = options.clamp ?? ((offset: GridOffset) => offset);
   const listeners = new Set<(change: SurfaceNavigationChange) => void>();
 
   function applyState(next: SurfaceNavigationState): void {
@@ -39,7 +45,7 @@ export function createSurfaceNavigation(initial: SurfaceNavigationState): Surfac
       if (!state.gridOffset) return;
       applyState({
         ...state,
-        gridOffset: { row: state.gridOffset.row + delta.row, column: state.gridOffset.column + delta.column },
+        gridOffset: clamp({ row: state.gridOffset.row + delta.row, column: state.gridOffset.column + delta.column }),
       });
     },
     onChange(listener) {

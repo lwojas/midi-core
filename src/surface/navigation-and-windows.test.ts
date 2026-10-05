@@ -11,6 +11,7 @@ import { createMockSurfaceHarness } from "../testing/mock-surface-harness.js";
 import { generateControlMappings } from "./generate.js";
 import { createControlSurface } from "./runtime.js";
 import type { SurfaceBindingTable } from "./types/bindings.js";
+import type { DeviceProfile } from "../profile/types/profile.js";
 
 /** The mock device's step grid is one row of eight pads (pad-1..pad-8). Steps are controls step.0.0..step.0.15, so two pages. */
 const STEP_COUNT = 16;
@@ -19,7 +20,11 @@ function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function build(press: "hold" | "toggle" = "hold") {
+function withPaging(profile: DeviceProfile, columns: number): DeviceProfile {
+  return { ...profile, grids: profile.grids?.map((grid) => ({ ...grid, paging: { rows: 1, columns } })) };
+}
+
+function build(press: "hold" | "toggle" = "hold", pageColumns = 1, sequenceLength = STEP_COUNT) {
   const device = createMockSurfaceDevice();
   const harness = createMockSurfaceHarness(device);
   const input = createMidiInput(device.input);
@@ -29,24 +34,26 @@ function build(press: "hold" | "toggle" = "hold") {
   const steps = Array.from({ length: STEP_COUNT }, (_, column) =>
     createControl<BooleanControlDef>({ id: `step.0.${column}`, label: `Step ${column}`, kind: "boolean", default: false }),
   );
+  const length = createControl<NumericControlDef>({ id: "steps.length", label: "Steps", kind: "number", min: 0, max: 64, default: 0 });
+  length.setValue(sequenceLength);
   const mute = createControl<BooleanControlDef>({ id: "mute.0", label: "Mute 1", kind: "boolean", default: false });
   const volume = createControl<NumericControlDef>({ id: "track.1.volume", label: "Volume 1", kind: "number", min: 0, max: 127, default: 0 });
-  const registry = createControlRegistry([...steps, mute, volume]);
+  const registry = createControlRegistry([...steps, length, mute, volume]);
 
   const table: SurfaceBindingTable = [
     {
       mode: "steps",
       bindings: [
-        { kind: "window", physicalControlId: "pad-1", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
-        { kind: "window", physicalControlId: "pad-2", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
-        { kind: "window", physicalControlId: "pad-3", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
-        { kind: "window", physicalControlId: "pad-4", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
-        { kind: "window", physicalControlId: "pad-5", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
-        { kind: "window", physicalControlId: "pad-6", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
-        { kind: "window", physicalControlId: "pad-7", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
-        { kind: "window", physicalControlId: "pad-8", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press },
-        { kind: "navigate", physicalControlId: "button-1", role: "page right", navigate: { kind: "page-by", delta: { row: 0, column: 1 } } },
-        { kind: "navigate", physicalControlId: "button-2", role: "page left", navigate: { kind: "page-by", delta: { row: 0, column: -1 } } },
+        { kind: "window", physicalControlId: "pad-1", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press, columnCountControl: "steps.length" },
+        { kind: "window", physicalControlId: "pad-2", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press, columnCountControl: "steps.length" },
+        { kind: "window", physicalControlId: "pad-3", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press, columnCountControl: "steps.length" },
+        { kind: "window", physicalControlId: "pad-4", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press, columnCountControl: "steps.length" },
+        { kind: "window", physicalControlId: "pad-5", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press, columnCountControl: "steps.length" },
+        { kind: "window", physicalControlId: "pad-6", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press, columnCountControl: "steps.length" },
+        { kind: "window", physicalControlId: "pad-7", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press, columnCountControl: "steps.length" },
+        { kind: "window", physicalControlId: "pad-8", role: "step", gridId: "step-grid", template: "step.{row}.{column}", press, columnCountControl: "steps.length" },
+        { kind: "navigate", physicalControlId: "button-1", role: "page right", navigate: { kind: "page", gridId: "step-grid", direction: { row: 0, column: 1 } } },
+        { kind: "navigate", physicalControlId: "button-2", role: "page left", navigate: { kind: "page", gridId: "step-grid", direction: { row: 0, column: -1 } } },
         { kind: "navigate", physicalControlId: "button-4", role: "to mixer", navigate: { kind: "set-mode", mode: "mixer" } },
       ],
     },
@@ -62,7 +69,7 @@ function build(press: "hold" | "toggle" = "hold") {
   ];
 
   const surface = createControlSurface({
-    profile: device.profile,
+    profile: withPaging(device.profile, pageColumns),
     ports: { inputs: { "main-in": input }, outputs: { "main-out": output } },
     bindingTable: table,
     context,
@@ -71,7 +78,7 @@ function build(press: "hold" | "toggle" = "hold") {
     initialNavigation: { mode: "steps", gridOffset: { row: 0, column: 0 } },
   });
 
-  return { device, harness, surface, context, steps, mute, volume };
+  return { device, harness, surface, context, steps, mute, volume, length };
 }
 
 describe("ECS-89: offset-aware step grid", () => {
@@ -199,6 +206,37 @@ describe("ECS-89: toggle press", () => {
     harness.press("pad-1");
     expect(mute.getValue()).toBe(true);
     expect(harness.lastFeedbackFor("pad-1")).toMatchObject({ type: "note-on" });
+    await surface.detach();
+  });
+});
+
+describe("ECS-89: paging bounds", () => {
+  it("does not page before the first step", async () => {
+    const { harness, surface } = build();
+    await surface.attach();
+    harness.press("button-2"); // page left from the first page
+    await flush();
+    expect(surface.navigation.state.gridOffset?.column).toBe(0);
+    await surface.detach();
+  });
+
+  it("stops at the last window that still shows the end of the sequence", async () => {
+    const { harness, surface } = build("hold", 1, 16); // 16 steps, 8 visible: last page starts at column 8
+    await surface.attach();
+    for (let press = 0; press < 12; press++) {
+      harness.press("button-1");
+      await flush();
+    }
+    expect(surface.navigation.state.gridOffset?.column).toBe(8);
+    await surface.detach();
+  });
+
+  it("pages by the amount the profile declares, not by one cell", async () => {
+    const { harness, surface } = build("hold", 4, 32);
+    await surface.attach();
+    harness.press("button-1");
+    await flush();
+    expect(surface.navigation.state.gridOffset?.column).toBe(4);
     await surface.detach();
   });
 });
