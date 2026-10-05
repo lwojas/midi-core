@@ -1,2 +1,2 @@
-export { createLaunchpadSequencerBindings } from "./launchpad-mini-mk3-sequencer.js";
-export type { SequencerContract } from "./launchpad-mini-mk3-sequencer.js";
+export { createSequencerBindings } from "./sequencer.js";
+export type { SequencerContract, SequencerLayout, SequencerDevice, SequencerBindings } from "./sequencer.js";

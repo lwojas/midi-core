@@ -49,6 +49,10 @@
     "./configurations": {
       "types": "./dist/configurations/index.d.ts",
       "import": "./dist/configurations/index.js"
+    },
+    "./devices": {
+      "types": "./dist/devices/index.d.ts",
+      "import": "./dist/devices/index.js"
     }
   },
   "scripts": {

@@ -2,8 +2,8 @@
 // The device configuration lives in midi-core (src/configurations), so this file only names the application's
 // controls and actions. Transport-agnostic: it only ever sees MidiInput/MidiOutput.
 import { createAction, createControl, createControlRegistry, createSurfaceContext } from "../dist/control-api/index.js";
-import { LAUNCHPAD_MINI_MK3_PROFILE } from "../dist/profile/index.js";
-import { createLaunchpadSequencerBindings } from "../dist/configurations/index.js";
+import { createSequencerBindings } from "../dist/configurations/index.js";
+import { DEVICE_REGISTRY } from "../dist/devices/index.js";
 import { createControlSurface, generateControlMappings } from "../dist/surface/index.js";
 
 export const STEP_ROWS = 8;
@@ -59,10 +59,13 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
 /** Builds the surface for one connected input/output pair. `log` receives human-readable lines. */
 export function createLaunchpadSurface({ input, output, app, log = () => {} }) {
   const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values(), app.length]);
+  const device = DEVICE_REGISTRY.find((entry) => entry.id === "novation.launchpad-mini-mk3");
+  const sequencer = createSequencerBindings(input, device, { ...CONTRACT, actions: app.actions });
+  for (const role of sequencer.unresolved) log(`unresolved: ${role}`);
   const surface = createControlSurface({
-    profile: LAUNCHPAD_MINI_MK3_PROFILE,
+    profile: device.profile,
     ports: { inputs: { "midi-in": input }, outputs: { "midi-out": output } },
-    bindingTable: createLaunchpadSequencerBindings(input, { ...CONTRACT, actions: app.actions }),
+    bindingTable: sequencer.bindings,
     context: createSurfaceContext(),
     registry,
     generate: generateControlMappings,
