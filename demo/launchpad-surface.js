@@ -6,13 +6,14 @@ import { createSequencerBindings } from "../dist/configurations/index.js";
 import { DEVICE_REGISTRY } from "../dist/devices/index.js";
 import { createControlSurface, generateControlMappings } from "../dist/surface/index.js";
 
-export const STEP_ROWS = 8;
+export const STEP_ROWS = 16; // one row per track: two pages of eight
 export const STEP_COLUMNS = 32; // four pages of eight
 
 const CONTRACT = {
   stepTemplate: "step.{row}.{column}",
   lengthControl: "steps.length",
   muteTemplate: "mute.{track}",
+  trackCountControl: "tracks.count",
 };
 
 export function createLaunchpadApp({ onChange = () => {} } = {}) {
@@ -24,11 +25,12 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
     }
   }
   const mutes = new Map();
-  for (let track = 1; track <= 8; track++) {
+  for (let track = 1; track <= STEP_ROWS; track++) {
     const id = `mute.${track}`;
     mutes.set(id, createControl({ id, label: `Mute ${track}`, kind: "boolean", default: false }));
   }
   const length = createControl({ id: CONTRACT.lengthControl, label: "Sequence length", kind: "number", min: 0, max: 64, default: STEP_COLUMNS });
+  const trackCount = createControl({ id: CONTRACT.trackCountControl, label: "Track count", kind: "number", min: 0, max: 64, default: STEP_ROWS });
 
   const transport = { status: "stopped" };
   const setStatus = (status) => {
@@ -47,6 +49,7 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
     steps,
     mutes,
     length,
+    trackCount,
     transport,
     actions,
     litSteps,
@@ -58,7 +61,7 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
 
 /** Builds the surface for one connected input/output pair. `log` receives human-readable lines. */
 export function createLaunchpadSurface({ input, output, app, log = () => {} }) {
-  const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values(), app.length]);
+  const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values(), app.length, app.trackCount]);
   const device = DEVICE_REGISTRY.find((entry) => entry.id === "novation.launchpad-mini-mk3");
   const sequencer = createSequencerBindings(input, device.profile, { ...CONTRACT, actions: app.actions });
   for (const role of sequencer.unresolved) log(`unresolved: ${role}`);

@@ -131,6 +131,43 @@ which made the browser route unsuitable for repeatable hardware checks. The
 Node transport removes the browser and the prompt. A person still presses the
 pads, but the run is repeatable from the terminal.
 
+## Sequencer surface UI (ECS-95)
+
+Not yet run on hardware. The changes are covered by unit and end-to-end tests
+(`src/configurations/launchpad-paging.test.ts`) driving the real profile through
+the surface runtime with raw Note/CC messages.
+
+- **Arrows** (top row CC 91-94) page tracks (up/down, eight at a time) and time
+  (left/right) in steps mode. Up/down also pages the mixer. Source: the user
+  guide's arrow buttons. The order (up, down, left, right, left to right) is an
+  assumption, so confirm the arrow order on the device first.
+- **Transport** moved from top-row CC 91-94 to the side column (CC 59/49/39/29),
+  because the arrows take 91-94. The ECS-79/94 transport checks predate this move
+  and need repeating.
+- **Mixer** mutes one track per row, from the grid's first column (previously the
+  top row), so the mixer can page through all 16 tracks.
+
+**Mixer faders (investigated, not implemented).** The manual's Programmer/DAW
+reference (`midi-profiler/research/novation-launchpad-mini-mk3/programmers-reference-manual.pdf`)
+says the faders are not available in Programmer mode:
+
+- Faders are the **DAW Fader layout** (layout `0Dh`), which is "only selectable in
+  DAW mode". Programmer mode is layout `7Fh`. Only one layout is shown at a time.
+- Enabling it takes two steps: DAW mode on (`F0 00 20 29 02 0D 10 01 F7`), then
+  layout DAW Faders (`F0 00 20 29 02 0D 00 0D F7`). Programmer mode comes back with
+  layout `7Fh`. Bank setup is `F0 00 20 29 02 0D 01 00 <orientation> <fader>... F7`,
+  where each fader gives its index, unipolar/bipolar, CC and colour.
+- Fader moves arrive and are sent on **channel 5** (CC on B4h): the DAW Fader
+  position and activity messages. These are the DAW ports (`daw-in` / `daw-out`)
+  that the profile declares but does not address.
+
+What this means for the surface: faders need the device to change layout when the
+mixer is entered and left. The sequencer configuration can only do that through a
+mode hook that has an output, and it has none today. Whether the arrows and the
+mixer's pad mutes still send in the DAW Fader layout is unknown, and needs a
+hardware check. Any fader feedback must not echo a fader's own CC back, per the
+echo lesson in ECS-57. This needs a follow-up ticket, with hardware testing first.
+
 ## Open decisions
 
 1. **F3**: resolved by device setup (see above). Remaining decision: none.

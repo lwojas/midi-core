@@ -92,7 +92,8 @@ export interface NavigationBinding extends ModeBindingBase {
  * (ECS-89). Each physical cell drives the application control at its position in the
  * window the surface's current page offset selects. `template` names those application
  * controls with `{row}` and `{column}` placeholders, filled with the virtual coordinates
- * (page offset plus the cell's own position). Pages are turned by a navigation binding, so
+ * (page offset plus the cell's own position). `{track}` is the virtual row plus one, for
+ * controls numbered from one (ECS-95). Pages are turned by a navigation binding, so
  * the binding is installed once per mode and never rebuilt on a page turn.
  *
  * Drives boolean controls (pads, buttons). A window over numeric controls is not modeled.
@@ -107,6 +108,11 @@ export interface WindowedControlBinding extends ModeBindingBase {
    * column and at the last window that still shows the end of the sequence. Omitted means no upper bound.
    */
   readonly columnCountControl?: string;
+  /**
+   * An application control holding how many rows the window pages through, such as the number of tracks (ECS-95).
+   * Paging stops at the first row and at the last window that still shows the last row. Omitted means no upper bound.
+   */
+  readonly rowCountControl?: string;
 }
 
 /** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, or a window onto a grid of controls. */

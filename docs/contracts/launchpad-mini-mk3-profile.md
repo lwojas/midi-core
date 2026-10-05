@@ -44,12 +44,31 @@ then drops every feedback-bearing mapping entirely. `validateDeviceProfile()`
 does not detect this, since it only checks a `feedbackPortId` that is present.
 See [docs/hardware-validation.md](../hardware-validation.md) for the finding.
 
+## Layout (ECS-90, ECS-95)
+
+The sequencer's roles on this device, as the profile's default:
+
+| Role | Control |
+|---|---|
+| Mode buttons: steps / mixer / transport | side-89 / side-79 / side-69 |
+| Page up / down (tracks) | top-91 / top-92 (the arrows) |
+| Page left / right (time) | top-93 / top-94 (the arrows) |
+| Transport: play / stop / record / clear | side-59 / side-49 / side-39 / side-29 |
+
+The first four top-row buttons are the arrows, per the device's user guide.
+Their order (up, down, left, right, from the left) is an assumption, not yet
+confirmed on hardware. Transport moved to the side column because the arrows
+take CC 91-94. Paging up and down moves by eight tracks, and the window stops
+at the track count the application provides.
+
 ## Deliberately not modeled
 
 The generated evidence's own `unresolved` list, unchanged: the Session/DAW-Fader
 address scheme on the DAW ports, the bootloader pad layout, global brightness
 and LED-feedback configuration SysEx, and generic (non-positional) button labels.
-Programmer mode is the only mode this profile addresses.
+Programmer mode is the only mode this profile addresses. The mixer's faders
+are not modeled, because the device only exposes them in DAW mode, on a separate
+layout. See [docs/hardware-validation.md](../hardware-validation.md) (ECS-95).
 
 ## Validation
 

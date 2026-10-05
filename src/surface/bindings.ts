@@ -131,7 +131,13 @@ function restValue(def: ControlDef): ControlValue<ControlDef> | undefined {
 }
 
 function fillTemplate(template: string, row: number, column: number): string {
-  return template.split("{row}").join(String(row)).split("{column}").join(String(column));
+  return template
+    .split("{row}")
+    .join(String(row))
+    .split("{column}")
+    .join(String(column))
+    .split("{track}")
+    .join(String(row + 1));
 }
 
 function painterFor(

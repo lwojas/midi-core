@@ -23,9 +23,14 @@ export interface TransportRoles {
 export interface DeviceLayout {
   /** Mode buttons, in order. Each switches the surface to its mode and is available in every mode. */
   readonly modeButtons?: readonly ModeButtonRole[];
-  /** Page buttons, one each side of the step grid. A side left out has no page binding. */
+  /**
+   * Page buttons, one each side of the grid. Left and right page through time (steps); up and down page through
+   * tracks (rows). A side left out has no page binding.
+   */
   readonly pageLeft?: string;
   readonly pageRight?: string;
+  readonly pageUp?: string;
+  readonly pageDown?: string;
   /** Transport buttons. A button left out has no binding. */
   readonly transport?: TransportRoles;
 }

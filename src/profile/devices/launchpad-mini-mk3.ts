@@ -189,9 +189,12 @@ export const LAUNCHPAD_MINI_MK3_SETUP: DeviceSetup = {
 };
 
 /**
- * ECS-90: the sequencer's roles on this device. Side buttons switch steps / mixer / transport, top buttons 95/96 page
- * the step grid, and top buttons 91-94 are transport. This is the Launchpad's usage, not a fact about the hardware,
- * which is why it lives in the profile as a default and can be overridden in the app.
+ * ECS-90 / ECS-95: the sequencer's roles on this device. Side buttons switch steps / mixer / transport. The first four
+ * top-row buttons (CC 91-94) are the arrows: up and down page through tracks, left and right page through time.
+ * Transport moved to the side column (CC 59-29, under the mode buttons) because the arrows take CC 91-94. The top-row
+ * arrows are assumed to read up, down, left, right from the left, matching the device's user guide; confirm on hardware.
+ * This is the Launchpad's usage, not a fact about the hardware, which is why it lives in the profile as a default and
+ * can be overridden in the app.
  */
 export const LAUNCHPAD_MINI_MK3_LAYOUT: DeviceLayout = {
   modeButtons: [
@@ -199,9 +202,11 @@ export const LAUNCHPAD_MINI_MK3_LAYOUT: DeviceLayout = {
     { controlId: "side-79", mode: "mixer" },
     { controlId: "side-69", mode: "transport" },
   ],
-  pageLeft: "top-95",
-  pageRight: "top-96",
-  transport: { play: "top-91", stop: "top-92", record: "top-93", clear: "top-94" },
+  pageUp: "top-91",
+  pageDown: "top-92",
+  pageLeft: "top-93",
+  pageRight: "top-94",
+  transport: { play: "side-59", stop: "side-49", record: "side-39", clear: "side-29" },
 };
 
 export const LAUNCHPAD_MINI_MK3_PROFILE: DeviceProfile = {

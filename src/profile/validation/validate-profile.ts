@@ -235,6 +235,8 @@ function checkLayout(value: unknown, controlIds: Set<string>): ProfileDiagnostic
 
   checkReference(value.pageLeft, "layout.pageLeft");
   checkReference(value.pageRight, "layout.pageRight");
+  checkReference(value.pageUp, "layout.pageUp");
+  checkReference(value.pageDown, "layout.pageDown");
 
   if (value.transport !== undefined) {
     if (!isRecord(value.transport)) {

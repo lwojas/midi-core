@@ -3,7 +3,6 @@ import { createAction } from "../control-api/action.js";
 import { createMidiInput } from "../core/input/create-midi-input.js";
 import { MockMidiInput } from "../adapters/mock/mock-input.js";
 import { DEVICE_REGISTRY, findDevice, type DeviceEntry } from "../devices/registry.js";
-import { LAUNCHPAD_SEQUENCER_BINDINGS_JSON } from "./fixtures/launchpad-sequencer-bindings.js";
 import { EXAMPLE_GRID_8X8_PROFILE } from "../profile/devices/example-grid-8x8.js";
 import { validateDeviceProfile } from "../profile/validation/validate-profile.js";
 import type { ModeBinding, SurfaceBindingTable } from "../surface/types/bindings.js";
@@ -16,6 +15,7 @@ const contract = (): SequencerContract => ({
   stepTemplate: "step.{row}.{column}",
   lengthControl: "steps.length",
   muteTemplate: "mute.{track}",
+  trackCountControl: "tracks.count",
   actions: { play: action(), stop: action(), record: action(), clear: action() },
 });
 
@@ -43,25 +43,48 @@ describe("createSequencerBindings on the Launchpad", () => {
     expect(table.find((definition) => definition.mode === "mixer")?.activateOn).toEqual({ scope: "track" });
   });
 
-  it("steps mode windows all 64 pads onto the sequence, paged by the grid's page size, bounded by the length control", () => {
+  it("steps mode windows all 64 pads onto the sequence, bounded by the length control and the track count", () => {
     const windows = bindingsOf(table, "steps").filter((binding) => binding.kind === "window");
     expect(windows).toHaveLength(64);
     for (const window of windows) {
-      expect(window).toMatchObject({ kind: "window", gridId: "pads", template: "step.{row}.{column}", press: "toggle", columnCountControl: "steps.length" });
+      expect(window).toMatchObject({
+        kind: "window",
+        gridId: "pads",
+        template: "step.{row}.{column}",
+        press: "toggle",
+        columnCountControl: "steps.length",
+        rowCountControl: "tracks.count",
+      });
     }
+  });
+
+  it("pages tracks with the arrows' vertical pair, and time with the horizontal pair, in steps mode", () => {
     const pages = bindingsOf(table, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page");
-    expect(pages).toHaveLength(2);
+    expect(pages.map((binding) => [binding.physicalControlId, binding.kind === "navigate" && binding.navigate.kind === "page" ? binding.navigate.direction : undefined])).toEqual([
+      ["top-91", { row: -1, column: 0 }],
+      ["top-92", { row: 1, column: 0 }],
+      ["top-93", { row: 0, column: -1 }],
+      ["top-94", { row: 0, column: 1 }],
+    ]);
   });
 
-  it("mixer mutes tracks 1-8 from the top pad row, one per column", () => {
-    const mutes = bindingsOf(table, "mixer").filter((binding) => binding.kind === "control");
-    expect(mutes).toHaveLength(8);
-    const controlIds = mutes.map((binding) => (binding.kind === "control" && binding.resolve.kind === "static" ? binding.resolve.controlId : undefined));
-    expect(controlIds).toEqual(["mute.1", "mute.2", "mute.3", "mute.4", "mute.5", "mute.6", "mute.7", "mute.8"]);
+  it("pages tracks in the mixer, but not time", () => {
+    const pages = bindingsOf(table, "mixer").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page");
+    expect(pages.map((binding) => binding.physicalControlId)).toEqual(["top-91", "top-92"]);
   });
 
-  it("gives the same bindings as the hardcoded configuration this replaced (ECS-89), so the refactor changed no behavior", () => {
-    expect(JSON.stringify(table, null, 1)).toBe(LAUNCHPAD_SEQUENCER_BINDINGS_JSON);
+  it("mixer mutes one track per grid row, from the first column, and follows the page so it reaches every track", () => {
+    const mutes = bindingsOf(table, "mixer").filter((binding) => binding.kind === "window");
+    expect(mutes.map((binding) => binding.physicalControlId)).toEqual(["pad-81", "pad-71", "pad-61", "pad-51", "pad-41", "pad-31", "pad-21", "pad-11"]);
+    for (const mute of mutes) {
+      expect(mute).toMatchObject({ kind: "window", gridId: "pads", template: "mute.{track}", press: "toggle", rowCountControl: "tracks.count" });
+    }
+  });
+
+  it("transport sits on the side column, clear of the arrows", () => {
+    expect(launchpadLayout.transport).toEqual({ play: "side-59", stop: "side-49", record: "side-39", clear: "side-29" });
+    expect(launchpadLayout.pageUp).toBe("top-91");
+    expect(launchpadLayout.pageDown).toBe("top-92");
   });
 });
 
@@ -79,13 +102,13 @@ describe("createSequencerBindings on the example grid", () => {
     expect(modeButtons.map((binding) => binding.physicalControlId)).toEqual(["button-mode-a", "button-mode-b", "button-mode-c"]);
   });
 
-  it("windows its own 8x8 grid, paged by its own paging, and mutes from its top row", () => {
+  it("windows its own 8x8 grid, paged by its own paging, and mutes from its first column", () => {
     const windows = bindingsOf(table, "steps").filter((binding) => binding.kind === "window");
     expect(windows).toHaveLength(64);
     expect(new Set(windows.map((binding) => binding.physicalControlId)).size).toBe(64);
     expect(windows.every((binding) => binding.kind === "window" && binding.gridId === "grid")).toBe(true);
-    const mutes = bindingsOf(table, "mixer").filter((binding) => binding.kind === "control");
-    expect(mutes.map((binding) => binding.physicalControlId)).toEqual(["pad-0-0", "pad-0-1", "pad-0-2", "pad-0-3", "pad-0-4", "pad-0-5", "pad-0-6", "pad-0-7"]);
+    const mutes = bindingsOf(table, "mixer").filter((binding) => binding.kind === "window");
+    expect(mutes.map((binding) => binding.physicalControlId)).toEqual(["pad-0-0", "pad-1-0", "pad-2-0", "pad-3-0", "pad-4-0", "pad-5-0", "pad-6-0", "pad-7-0"]);
   });
 
   it("binds its page buttons to the grid's paging", () => {
@@ -114,7 +137,7 @@ describe("createSequencerBindings when a role cannot be found", () => {
       transport: { ...launchpadLayout.transport, play: "top-0" },
     });
     expect(unresolved).toEqual(["page left (control top-0)", "transport: play (control top-0)"]);
-    expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page")).toHaveLength(1);
+    expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page")).toHaveLength(3);
   });
 
   it("reports the step grid, and builds the modes without its windows, mutes or pages, when the profile has no grid with paging", () => {

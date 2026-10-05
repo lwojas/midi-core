@@ -121,10 +121,11 @@ interface DeviceProfile {
   the earlier `DeviceHandshake`, which described steps without bytes.
 - **`layout`** — `DeviceLayout` (ECS-90): which controls play which
   sequencer roles, as the profile's default. `modeButtons` is an ordered list of
-  `{ controlId, mode }`; `pageLeft`/`pageRight` and `transport`
+  `{ controlId, mode }`; `pageUp`/`pageDown`, `pageLeft`/`pageRight` and `transport`
   (`{ play?, stop?, record?, clear? }`) are control ids. Every id names a
   `PhysicalControl` on this profile. The step grid is not named here: it is the
-  grid with `paging`, and track mutes are its top row. A profile with no layout
+  grid with `paging`. Rows are tracks, so up and down page tracks, and the mixer
+  mutes one track per row from the grid's first column (ECS-95). A profile with no layout
   is valid; the sequencer configuration reports that and builds what it can.
   The layout is a usage default, not a fact about the hardware, so an app may
   override it, but overrides belong outside the profile document: a profile is
