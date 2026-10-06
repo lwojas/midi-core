@@ -75,6 +75,15 @@ export interface SequencerBindings {
   readonly unresolved: readonly string[];
 }
 
+/**
+ * The number of faders one page of the mixer shows (ECS-102): the smallest fader count among the profile's fader banks,
+ * so every bank can show a full page. The application sizes its fader pages with it. 0 when the profile has no fader banks.
+ */
+export function sequencerFaderCount(profile: DeviceProfile): number {
+  const counts = (profile.modes ?? []).flatMap((mode) => mode.faders.banks.map((bank) => bank.controllers.length));
+  return counts.length === 0 ? 0 : Math.min(...counts);
+}
+
 const TRANSPORT_NAMES = ["play", "stop", "record", "clear"] as const;
 
 

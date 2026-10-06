@@ -20,6 +20,12 @@ doc comments.
   and its mode button is not shown on that device.
 - **`colours`** — `Partial<{ steps, mutes }>` (ECS-95). Left out, each takes `DEFAULT_SEQUENCER_COLOURS`.
 
+## Fader count (ECS-102)
+
+`sequencerFaderCount(profile)` is the number of faders one page of the mixer shows: the smallest fader count among
+the profile's fader banks, or 0 when there are none. The application sizes its fader pages with it, so a page
+never assumes the device's count. The Launchpad's count is 8.
+
 ## SequencerDevices
 
 The device connection the fader modes need:

@@ -6,7 +6,7 @@ import type { MidiOutput } from "../core/types/output.js";
 import { MockMidiInput } from "../adapters/mock/mock-input.js";
 import { LAUNCHPAD_MINI_MK3_MODES, LAUNCHPAD_MINI_MK3_PROFILE } from "../profile/devices/launchpad-mini-mk3.js";
 import type { ModeBinding, SurfaceBindingTable, SurfaceModeDefinition } from "../surface/types/bindings.js";
-import { createSequencerBindings, type SequencerContract, type SequencerDevices } from "./sequencer.js";
+import { createSequencerBindings, sequencerFaderCount, type SequencerContract, type SequencerDevices } from "./sequencer.js";
 
 const action = () => createAction({ id: "a", label: "a" }, () => {});
 const input = createMidiInput(new MockMidiInput({ id: "in", type: "input", name: "in", manufacturer: null }));
@@ -58,6 +58,23 @@ function setModeTargets(bindings: readonly ModeBinding[] | undefined): Record<st
   }
   return targets;
 }
+
+describe("sequencerFaderCount (ECS-102)", () => {
+  it("is the Launchpad's eight faders per page", () => {
+    expect(sequencerFaderCount(LAUNCHPAD_MINI_MK3_PROFILE)).toBe(8);
+  });
+
+  it("is the smallest bank's count, so every bank can show a full page", () => {
+    const [volume, pan, send] = LAUNCHPAD_MINI_MK3_MODES[0]!.faders.banks;
+    const narrow = { ...pan!, controllers: pan!.controllers.slice(0, 4), controlIds: pan!.controlIds.slice(0, 4) };
+    const profile = { ...LAUNCHPAD_MINI_MK3_PROFILE, modes: [{ ...LAUNCHPAD_MINI_MK3_MODES[0]!, faders: { ...LAUNCHPAD_MINI_MK3_MODES[0]!.faders, banks: [volume!, narrow, send!] } }] };
+    expect(sequencerFaderCount(profile as typeof LAUNCHPAD_MINI_MK3_PROFILE)).toBe(4);
+  });
+
+  it("is 0 for a profile with no fader modes", () => {
+    expect(sequencerFaderCount({ ...LAUNCHPAD_MINI_MK3_PROFILE, modes: undefined })).toBe(0);
+  });
+});
 
 describe("the fader modes, without a device connection", () => {
   it("builds no fader modes, so a device without the DAW ports has only its own modes", () => {
