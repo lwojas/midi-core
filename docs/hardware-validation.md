@@ -363,6 +363,8 @@ Run with `scripts/launchpad-live.mjs` on the device, using the demo's controls.
   gain, 0 to 1.5). A page turn notifies each fader, so its colour follows the new track. Pan and
   send have no application controls yet, so those faders are not bound.
 - **Tests.** webseq: 167 pass against this midi-core checkout. midi-core: 406 pass.
-- **Not done.** webseq depends on midi-core from GitHub, so it needs a push and a dependency bump
-  before the app sees this. The device run of the paging is still to do.
+- **Tested in the webseq app.** Side-69 enters the volume bank, the faders drive tracks 1 to 8,
+  and the DAW arrows page through the tracks with no errors. Pushed as midi-core `f3aaa38` and
+  webseq `f05ad0c`.
+- **Not done.** Pan and send, which webseq has no controls for yet.
 
