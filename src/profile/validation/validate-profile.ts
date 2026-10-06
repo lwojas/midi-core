@@ -337,6 +337,9 @@ function checkModes(value: unknown, ports: unknown, controlIds: ReadonlySet<stri
   const diagnostics: ProfileDiagnostic[] = [];
   const declaredPorts = Array.isArray(ports) ? ports.filter(isRecord) : [];
   const seenIds = new Set<string>();
+  // Fader mode ids and fader control ids are unique across the whole profile, since each names one mode or one control (ECS-100).
+  const faderModeIds = new Set<string>();
+  const faderControlIds = new Set<string>();
 
   // A port the device doesn't declare is fine when the mode is optional: the mode is simply unavailable. `mustExist`
   // is for the port every mode sends on. A declared port must still have the right type.
@@ -472,6 +475,13 @@ function checkModes(value: unknown, ports: unknown, controlIds: ReadonlySet<stri
         diagnostics.push({ severity: "error", code: "duplicate-mode-id", path: `${bankPath}.id`, message: `Fader bank id "${bank.id}" is declared twice in this mode.` });
       }
       bankIds.add(bank.id);
+      if (typeof bank.modeId !== "string") {
+        diagnostics.push({ severity: "error", code: "invalid-mode", path: `${bankPath}.modeId`, message: "A fader bank needs a string modeId." });
+      } else if (faderModeIds.has(bank.modeId)) {
+        diagnostics.push({ severity: "error", code: "duplicate-mode-id", path: `${bankPath}.modeId`, message: `Fader mode id "${bank.modeId}" is declared by two banks.` });
+      } else {
+        faderModeIds.add(bank.modeId);
+      }
       if (!Number.isInteger(bank.colour) || (bank.colour as number) < 1 || (bank.colour as number) > 127) {
         diagnostics.push({ severity: "error", code: "invalid-mode", path: `${bankPath}.colour`, message: "A bank's colour is a palette entry from 1 to 127 (0 switches a fader off)." });
       }
@@ -485,6 +495,20 @@ function checkModes(value: unknown, ports: unknown, controlIds: ReadonlySet<stri
           diagnostics.push({ severity: "error", code: "invalid-mode", path: `${bankPath}.controllers[${index}]`, message: "Each fader's CC must be a distinct controller from 0 to 127." });
         }
         seen.add(controller as number);
+      });
+      if (!Array.isArray(bank.controlIds) || bank.controlIds.length !== bank.controllers.length) {
+        diagnostics.push({ severity: "error", code: "invalid-mode", path: `${bankPath}.controlIds`, message: "A fader bank needs one control id per fader." });
+        return;
+      }
+      bank.controlIds.forEach((controlId, index) => {
+        const idPath = `${bankPath}.controlIds[${index}]`;
+        if (typeof controlId !== "string" || !controlIds.has(controlId)) {
+          diagnostics.push({ severity: "error", code: "dangling-control-reference", path: idPath, message: `Fader control ${JSON.stringify(controlId)} isn't declared in controls.` });
+        } else if (faderControlIds.has(controlId)) {
+          diagnostics.push({ severity: "error", code: "duplicate-control-id", path: idPath, message: `Fader control "${controlId}" is declared by two faders.` });
+        } else {
+          faderControlIds.add(controlId);
+        }
       });
     });
   });

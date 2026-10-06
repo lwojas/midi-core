@@ -4,7 +4,7 @@ import { createMidiInput } from "../core/input/create-midi-input.js";
 import type { MidiMessage } from "../core/types/message.js";
 import type { MidiOutput } from "../core/types/output.js";
 import { MockMidiInput } from "../adapters/mock/mock-input.js";
-import { LAUNCHPAD_MINI_MK3_PROFILE } from "../profile/devices/launchpad-mini-mk3.js";
+import { LAUNCHPAD_MINI_MK3_MODES, LAUNCHPAD_MINI_MK3_PROFILE } from "../profile/devices/launchpad-mini-mk3.js";
 import type { ModeBinding, SurfaceBindingTable, SurfaceModeDefinition } from "../surface/types/bindings.js";
 import { createSequencerBindings, type SequencerContract, type SequencerDevices } from "./sequencer.js";
 
@@ -133,6 +133,23 @@ describe("the fader modes, on a Launchpad with its DAW ports", () => {
       0, 1, 88, 21, 1, 1, 89, 21, 2, 1, 90, 21, 3, 1, 91, 21, 4, 1, 92, 21, 5, 1, 93, 21, 6, 1, 94, 21, 7, 1, 95, 21,
       0xf7,
     ]);
+  });
+
+  it("binds each fader to the control id the profile gives it, and the mode to the bank's mode id (ECS-100)", () => {
+    const { devices } = connectedLaunchpad();
+    const rename = (id: string) => id.replace("fader-pan-", "pan-knob-");
+    const profile = {
+      ...LAUNCHPAD_MINI_MK3_PROFILE,
+      controls: LAUNCHPAD_MINI_MK3_PROFILE.controls.map((control) => (control.id.startsWith("fader-pan-") ? { ...control, id: rename(control.id) } : control)),
+      modes: LAUNCHPAD_MINI_MK3_MODES.map((mode) => ({
+        ...mode,
+        faders: { ...mode.faders, banks: mode.faders.banks.map((bank) => (bank.id === "pan" ? { ...bank, controlIds: bank.controlIds.map(rename) } : bank)) },
+      })),
+    } as typeof LAUNCHPAD_MINI_MK3_PROFILE;
+    const { bindings } = createSequencerBindings(input, profile, contract(), devices);
+    const faders = (definitionOf(bindings, "faders-pan").bindings ?? []).filter((binding) => binding.kind === "control");
+    expect(faders[0]).toMatchObject({ physicalControlId: "pan-knob-0", resolve: { kind: "static", controlId: "mixer.pan.0" } });
+    expect(faders[7]).toMatchObject({ physicalControlId: "pan-knob-7", resolve: { kind: "static", controlId: "mixer.pan.7" } });
   });
 
   it("writes each fader's entry in the profile's field order and bank type values (ECS-99)", async () => {

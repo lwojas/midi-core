@@ -82,10 +82,14 @@ export interface DeviceFaderSet {
  * switch a fader off).
  */
 export interface DeviceFaderBank {
-  /** Profile-document-scoped id, unique among the banks of its mode. Names the fader controls, e.g. `fader-volume-0`. */
+  /** Profile-document-scoped id, unique among the banks of its mode. Names the bank in the application contract's `faderTemplates`. */
   readonly id: string;
+  /** The id of the mode that shows this bank, unique across the profile's banks (ECS-100), e.g. `faders-volume`. */
+  readonly modeId: string;
   readonly bipolar: boolean;
   readonly colour: number;
   /** One CC per fader, 0-127, all different. */
   readonly controllers: readonly number[];
+  /** The control id of each fader, parallel to `controllers` and unique across the profile (ECS-100), e.g. `fader-volume-0`. */
+  readonly controlIds: readonly string[];
 }

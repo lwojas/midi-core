@@ -100,11 +100,12 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
 
   const faderModes = devices ? faderModeDefinitions(profile, contract, devices) : [];
   const faderModeIds = new Set(faderModes.map((definition) => definition.mode));
+  const declaredFaderModeIds = new Set((profile.modes ?? []).flatMap((mode) => mode.faders.banks.map((bank) => bank.modeId)));
 
   const modeBindings: ModeBinding[] = [];
   for (const { controlId, mode } of layout.modeButtons ?? []) {
     // A fader mode the device can't run is skipped silently: its button is simply not there on that device.
-    if (mode.startsWith("faders-") && !faderModeIds.has(mode)) continue;
+    if (declaredFaderModeIds.has(mode) && !faderModeIds.has(mode)) continue;
     if (!hasControl(controlId)) {
       unresolved.push(`mode: ${mode} (control ${controlId})`);
       continue;
@@ -225,9 +226,8 @@ function faderModeDefinitions(profile: DeviceProfile, contract: SequencerContrac
     if (!send || !mode.requiredPortIds.every((portId) => devices.connectedPortIds.includes(portId))) return [];
     return mode.faders.banks.flatMap((bank) => {
       const template = contract.faderTemplates?.[bank.id];
-      const controlIds = bank.controllers.map((_, index) => `fader-${bank.id}-${index}`);
-      if (!template || !controlIds.every(hasControl)) return [];
-      return [{ mode, bank, send, template, controlIds, modeId: `faders-${bank.id}`, dawInput: devices.inputs[mode.faders.inputPortId] }];
+      if (!template || !bank.controlIds.every(hasControl)) return [];
+      return [{ mode, bank, send, template, controlIds: bank.controlIds, modeId: bank.modeId, dawInput: devices.inputs[mode.faders.inputPortId] }];
     });
   });
   const faderModeIds = new Set(banks.map((entry) => entry.modeId));

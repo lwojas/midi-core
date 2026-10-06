@@ -125,9 +125,11 @@ interface DeviceProfile {
   when all of them are present on the device), `activate` (SysEx sent before the fader
   bank), `showLayout` (SysEx sent after the bank), `deactivate` (SysEx to leave), and
   `faders` (`inputPortId`/`inputChannel` for fader moves, `feedbackPortId`/`feedbackChannel`
-  for fader colour, and `banks`). Each bank has `id`, `bipolar`, `colour` (1-127) and
-  `controllers`, one fixed CC per fader (1 to 8). The CCs are in the profile so it can name
-  the fader controls; the sequencer sends the bank to make them live. The bank message is
+  for fader colour, and `banks`). Each bank has `id`, `bipolar`, `colour` (1-127),
+  `controllers` (one fixed CC per fader, 1 to 8), `modeId` (the fader mode that shows it,
+  unique across the profile) and `controlIds` (each fader's control, one per fader, unique
+  across the profile). The CCs are in the profile so it can name the fader controls; the
+  sequencer sends the bank to make them live. The bank message is
   `bankPrefix` (from F0), then one entry per fader in the order `bankEntry` lists (each of
   `index`, `type`, `controller`, `colour` once), then F7. `bankTypes` gives the `type` byte
   for unipolar and bipolar banks. Optional: `modeButtons` (read on the mode's own ports) and

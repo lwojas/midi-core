@@ -174,9 +174,30 @@ export const LAUNCHPAD_MINI_MK3_MODES: readonly DeviceModeProfile[] = [
       feedbackPortId: "daw-out",
       feedbackChannel: 5,
       banks: [
-        { id: "volume", bipolar: false, colour: 37, controllers: [80, 81, 82, 83, 84, 85, 86, 87] },
-        { id: "pan", bipolar: true, colour: 21, controllers: [88, 89, 90, 91, 92, 93, 94, 95] },
-        { id: "send", bipolar: false, colour: 13, controllers: [102, 103, 104, 105, 106, 107, 108, 109] },
+        {
+          id: "volume",
+          modeId: "faders-volume",
+          bipolar: false,
+          colour: 37,
+          controllers: [80, 81, 82, 83, 84, 85, 86, 87],
+          controlIds: ["fader-volume-0", "fader-volume-1", "fader-volume-2", "fader-volume-3", "fader-volume-4", "fader-volume-5", "fader-volume-6", "fader-volume-7"],
+        },
+        {
+          id: "pan",
+          modeId: "faders-pan",
+          bipolar: true,
+          colour: 21,
+          controllers: [88, 89, 90, 91, 92, 93, 94, 95],
+          controlIds: ["fader-pan-0", "fader-pan-1", "fader-pan-2", "fader-pan-3", "fader-pan-4", "fader-pan-5", "fader-pan-6", "fader-pan-7"],
+        },
+        {
+          id: "send",
+          modeId: "faders-send",
+          bipolar: false,
+          colour: 13,
+          controllers: [102, 103, 104, 105, 106, 107, 108, 109],
+          controlIds: ["fader-send-0", "fader-send-1", "fader-send-2", "fader-send-3", "fader-send-4", "fader-send-5", "fader-send-6", "fader-send-7"],
+        },
       ],
     },
   },
@@ -212,7 +233,7 @@ export const LAUNCHPAD_MINI_MK3_DAW_SIDE_BUTTONS: readonly PhysicalControl[] = [
 export const LAUNCHPAD_MINI_MK3_FADER_CONTROLS: readonly PhysicalControl[] = LAUNCHPAD_MINI_MK3_MODES.flatMap((mode) =>
   mode.faders.banks.flatMap((bank) =>
     bank.controllers.map((controller, index): PhysicalControl => ({
-      id: `fader-${bank.id}-${index}`,
+      id: bank.controlIds[index]!,
       label: `${bank.id} fader ${index + 1} (CC ${controller})`,
       kind: "fader",
       portId: mode.faders.inputPortId,

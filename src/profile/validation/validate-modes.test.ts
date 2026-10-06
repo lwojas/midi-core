@@ -99,6 +99,27 @@ describe("validateDeviceProfile: modes (ECS-96)", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({ code: "invalid-mode", path: "modes[0].bankTypes" }));
   });
 
+  it("rejects two banks that share a fader mode id, since the id would name two modes (ECS-100)", () => {
+    const [volume, pan, send] = mixer.faders.banks;
+    const clash = { ...pan!, modeId: volume!.modeId };
+    const diagnostics = validateDeviceProfile(withModes([{ ...mixer, faders: { ...mixer.faders, banks: [volume!, clash, send!] } }]));
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "duplicate-mode-id", path: "modes[0].faders.banks[1].modeId" }));
+  });
+
+  it("rejects a bank whose control ids don't match its faders one for one (ECS-100)", () => {
+    const [volume, pan, send] = mixer.faders.banks;
+    const short = { ...volume!, controlIds: volume!.controlIds.slice(1) };
+    const diagnostics = validateDeviceProfile(withModes([{ ...mixer, faders: { ...mixer.faders, banks: [short, pan!, send!] } }]));
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "invalid-mode", path: "modes[0].faders.banks[0].controlIds" }));
+  });
+
+  it("rejects a fader control id the profile doesn't declare (ECS-100)", () => {
+    const [volume, pan, send] = mixer.faders.banks;
+    const stray = { ...volume!, controlIds: ["fader-volume-0", "fader-volume-1", "fader-volume-2", "fader-volume-3", "fader-volume-4", "fader-volume-5", "fader-volume-6", "nope"] };
+    const diagnostics = validateDeviceProfile(withModes([{ ...mixer, faders: { ...mixer.faders, banks: [stray, pan!, send!] } }]));
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "dangling-control-reference", path: "modes[0].faders.banks[0].controlIds[7]" }));
+  });
+
   it("rejects fader controls whose ports the device lacks, since the controls would dangle", () => {
     const profile = { ...LAUNCHPAD_MINI_MK3_PROFILE, ports: LAUNCHPAD_MINI_MK3_PROFILE.ports.filter((port) => !port.id.startsWith("daw-")) };
     expect(validateDeviceProfile(profile).map((d) => d.code)).toContain("dangling-port-reference");
