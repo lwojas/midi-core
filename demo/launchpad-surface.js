@@ -14,7 +14,11 @@ const CONTRACT = {
   lengthControl: "steps.length",
   muteTemplate: "mute.{track}",
   trackCountControl: "tracks.count",
+  // ECS-96: each fader's application control, by bank and fader position (0-7). The demo's controls are 0-127.
+  faderTemplates: { volume: "mixer.volume.{index}", pan: "mixer.pan.{index}", send: "mixer.send.{index}" },
 };
+
+export const FADER_BANKS = ["volume", "pan", "send"];
 
 export function createLaunchpadApp({ onChange = () => {} } = {}) {
   const steps = new Map();
@@ -32,6 +36,15 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
   const length = createControl({ id: CONTRACT.lengthControl, label: "Sequence length", kind: "number", min: 0, max: 64, default: STEP_COLUMNS });
   const trackCount = createControl({ id: CONTRACT.trackCountControl, label: "Track count", kind: "number", min: 0, max: 64, default: STEP_ROWS });
 
+  // ECS-96: the mixer faders' controls, one per bank and position. Values are 0-127, the device's own range.
+  const faders = new Map();
+  for (const bank of FADER_BANKS) {
+    for (let index = 0; index < 8; index++) {
+      const id = `mixer.${bank}.${index}`;
+      faders.set(id, createControl({ id, label: `${bank} ${index + 1}`, kind: "number", min: 0, max: 127, default: 64 }));
+    }
+  }
+
   const transport = { status: "stopped" };
   const setStatus = (status) => {
     transport.status = status;
@@ -48,6 +61,7 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
   return {
     steps,
     mutes,
+    faders,
     length,
     trackCount,
     transport,
@@ -59,15 +73,28 @@ export function createLaunchpadApp({ onChange = () => {} } = {}) {
   };
 }
 
-/** Builds the surface for one connected input/output pair. `log` receives human-readable lines. */
-export function createLaunchpadSurface({ input, output, app, log = () => {} }) {
-  const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values(), app.length, app.trackCount]);
+/**
+ * Builds the surface for one connected input/output pair. `daw` is the optional DAW port pair (ECS-96): when given, the
+ * mixer's fader modes are available, and without it the Launchpad has no fader modes. `log` receives human-readable lines.
+ */
+export function createLaunchpadSurface({ input, output, app, daw, log = () => {} }) {
+  const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values(), ...app.faders.values(), app.length, app.trackCount]);
   const device = DEVICE_REGISTRY.find((entry) => entry.id === "novation.launchpad-mini-mk3");
-  const sequencer = createSequencerBindings(input, device.profile, { ...CONTRACT, actions: app.actions });
+  const devices = daw
+    ? {
+        outputs: { "midi-out": output, "daw-out": daw.output },
+        inputs: { "daw-in": daw.input },
+        connectedPortIds: ["midi-in", "midi-out", "daw-in", "daw-out"],
+      }
+    : { outputs: { "midi-out": output }, inputs: {}, connectedPortIds: ["midi-in", "midi-out"] };
+  const sequencer = createSequencerBindings(input, device.profile, { ...CONTRACT, actions: app.actions }, devices);
   for (const role of sequencer.unresolved) log(`unresolved: ${role}`);
   const surface = createControlSurface({
     profile: device.profile,
-    ports: { inputs: { "midi-in": input }, outputs: { "midi-out": output } },
+    ports: {
+      inputs: { "midi-in": input, ...(daw ? { "daw-in": daw.input } : {}) },
+      outputs: { "midi-out": output, ...(daw ? { "daw-out": daw.output } : {}) },
+    },
     bindingTable: sequencer.bindings,
     context: createSurfaceContext(),
     registry,

@@ -46,6 +46,7 @@ export function validateDeviceProfile(profile: unknown): readonly ProfileDiagnos
   diagnostics.push(...checkLayout(profile.layout, controlIds));
   diagnostics.push(...checkSysEx(profile.sysex));
   diagnostics.push(...checkSetup(profile.setup, profile.ports));
+  diagnostics.push(...checkModes(profile.modes, profile.ports, controlIds));
 
   return diagnostics;
 }
@@ -316,6 +317,166 @@ function checkGrids(value: unknown, controlIds: Set<string>): ProfileDiagnostic[
           message: `Grid cell references controlId "${cell.controlId}", which isn't declared in controls.`,
         });
       }
+    });
+  });
+
+  return diagnostics;
+}
+
+/**
+ * ECS-96: a mode's messages must be real, and its send port must exist. The fader ports may be absent: a device
+ * without them has the mode unavailable, not an invalid profile. Each fader port has to be listed in
+ * `requiredPortIds`, so the mode's availability depends on it.
+ */
+function checkModes(value: unknown, ports: unknown, controlIds: ReadonlySet<string>): ProfileDiagnostic[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    return [{ severity: "error", code: "invalid-mode", path: "modes", message: "modes must be an array when present." }];
+  }
+
+  const diagnostics: ProfileDiagnostic[] = [];
+  const declaredPorts = Array.isArray(ports) ? ports.filter(isRecord) : [];
+  const seenIds = new Set<string>();
+
+  // A port the device doesn't declare is fine when the mode is optional: the mode is simply unavailable. `mustExist`
+  // is for the port every mode sends on. A declared port must still have the right type.
+  const checkPort = (portId: unknown, expectedType: "input" | "output", path: string, mustExist: boolean) => {
+    if (typeof portId !== "string") {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path, message: "A mode port reference must be a string." });
+      return;
+    }
+    const port = declaredPorts.find((candidate) => candidate.id === portId);
+    if (!port) {
+      if (mustExist) {
+        diagnostics.push({ severity: "error", code: "dangling-port-reference", path, message: `Mode references port "${portId}", which isn't declared in ports.` });
+      }
+    } else if (port.type !== expectedType) {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path, message: `Mode port "${portId}" must be an ${expectedType} port, but it is ${JSON.stringify(port.type)}.` });
+    }
+  };
+
+  const checkMessage = (bytes: unknown, path: string) => {
+    const valid =
+      Array.isArray(bytes) &&
+      bytes.length >= 2 &&
+      bytes[0] === 0xf0 &&
+      bytes[bytes.length - 1] === 0xf7 &&
+      bytes.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255);
+    if (!valid) {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path, message: "A mode message must be a complete SysEx message, from F0 to F7, with bytes 0-255." });
+    }
+  };
+
+  value.forEach((mode, index) => {
+    const path = `modes[${index}]`;
+    if (!isRecord(mode) || typeof mode.id !== "string") {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path, message: "A mode must be an object with a string id." });
+      return;
+    }
+    if (seenIds.has(mode.id)) {
+      diagnostics.push({ severity: "error", code: "duplicate-mode-id", path: `${path}.id`, message: `Mode id "${mode.id}" is declared twice.` });
+    }
+    seenIds.add(mode.id);
+
+    checkPort(mode.sendPortId, "output", `${path}.sendPortId`, true);
+    const requiredPortIds: unknown[] = Array.isArray(mode.requiredPortIds) ? mode.requiredPortIds : [];
+    if (!Array.isArray(mode.requiredPortIds)) {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.requiredPortIds`, message: "requiredPortIds must be an array of port ids." });
+    } else {
+      mode.requiredPortIds.forEach((portId, portIndex) => {
+        if (typeof portId !== "string") {
+          diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.requiredPortIds[${portIndex}]`, message: "A required port id must be a string." });
+        }
+      });
+    }
+
+    if (!Array.isArray(mode.activate)) {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.activate`, message: "activate must be an array of SysEx messages." });
+    } else {
+      mode.activate.forEach((bytes, messageIndex) => checkMessage(bytes, `${path}.activate[${messageIndex}]`));
+    }
+    checkMessage(mode.showLayout, `${path}.showLayout`);
+    if (mode.pageButtons !== undefined) {
+      if (!isRecord(mode.pageButtons)) {
+        diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.pageButtons`, message: "pageButtons must be an object." });
+      } else {
+        for (const name of ["pageUp", "pageDown", "pageLeft", "pageRight"] as const) {
+          const controlId = mode.pageButtons[name];
+          if (controlId !== undefined && (typeof controlId !== "string" || !controlIds.has(controlId))) {
+            diagnostics.push({ severity: "error", code: "dangling-control-reference", path: `${path}.pageButtons.${name}`, message: `Page button references control ${JSON.stringify(controlId)}, which isn't declared in controls.` });
+          }
+        }
+      }
+    }
+    if (!Array.isArray(mode.bankPrefix) || mode.bankPrefix[0] !== 0xf0 || !mode.bankPrefix.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.bankPrefix`, message: "bankPrefix must start with F0 and hold bytes 0-255." });
+    }
+    if (mode.modeButtons !== undefined) {
+      if (!Array.isArray(mode.modeButtons)) {
+        diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.modeButtons`, message: "modeButtons must be an array." });
+      } else {
+        mode.modeButtons.forEach((button, buttonIndex) => {
+          const buttonPath = `${path}.modeButtons[${buttonIndex}]`;
+          if (!isRecord(button) || typeof button.controlId !== "string" || typeof button.mode !== "string") {
+            diagnostics.push({ severity: "error", code: "invalid-mode", path: buttonPath, message: "A mode button needs a string controlId and mode." });
+          } else if (!controlIds.has(button.controlId)) {
+            diagnostics.push({ severity: "error", code: "dangling-control-reference", path: `${buttonPath}.controlId`, message: `Mode button references control "${button.controlId}", which isn't declared in controls.` });
+          }
+        });
+      }
+    }
+    if (!Array.isArray(mode.deactivate)) {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.deactivate`, message: "deactivate must be an array of SysEx messages." });
+    } else {
+      mode.deactivate.forEach((bytes, messageIndex) => checkMessage(bytes, `${path}.deactivate[${messageIndex}]`));
+    }
+
+    if (!isRecord(mode.faders)) {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.faders`, message: "A mode needs a faders description." });
+      return;
+    }
+    const faders = mode.faders;
+    checkPort(faders.inputPortId, "input", `${path}.faders.inputPortId`, false);
+    checkPort(faders.feedbackPortId, "output", `${path}.faders.feedbackPortId`, false);
+    for (const [name, portId] of [["inputPortId", faders.inputPortId], ["feedbackPortId", faders.feedbackPortId]] as const) {
+      if (!requiredPortIds.includes(portId)) {
+        diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.faders.${name}`, message: `Fader port "${String(portId)}" must be listed in requiredPortIds, so the mode is unavailable without it.` });
+      }
+    }
+    for (const [name, channel] of [["inputChannel", faders.inputChannel], ["feedbackChannel", faders.feedbackChannel]] as const) {
+      if (!Number.isInteger(channel) || (channel as number) < 0 || (channel as number) > 15) {
+        diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.faders.${name}`, message: `${name} must be a channel from 0 to 15.` });
+      }
+    }
+    if (!Array.isArray(faders.banks)) {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.faders.banks`, message: "faders.banks must be an array." });
+      return;
+    }
+    const bankIds = new Set<string>();
+    faders.banks.forEach((bank, bankIndex) => {
+      const bankPath = `${path}.faders.banks[${bankIndex}]`;
+      if (!isRecord(bank) || typeof bank.id !== "string" || typeof bank.bipolar !== "boolean") {
+        diagnostics.push({ severity: "error", code: "invalid-mode", path: bankPath, message: "A fader bank needs a string id and a boolean bipolar." });
+        return;
+      }
+      if (bankIds.has(bank.id)) {
+        diagnostics.push({ severity: "error", code: "duplicate-mode-id", path: `${bankPath}.id`, message: `Fader bank id "${bank.id}" is declared twice in this mode.` });
+      }
+      bankIds.add(bank.id);
+      if (!Number.isInteger(bank.colour) || (bank.colour as number) < 1 || (bank.colour as number) > 127) {
+        diagnostics.push({ severity: "error", code: "invalid-mode", path: `${bankPath}.colour`, message: "A bank's colour is a palette entry from 1 to 127 (0 switches a fader off)." });
+      }
+      if (!Array.isArray(bank.controllers) || bank.controllers.length < 1 || bank.controllers.length > 8) {
+        diagnostics.push({ severity: "error", code: "invalid-mode", path: `${bankPath}.controllers`, message: "A fader bank holds 1 to 8 faders, one CC each." });
+        return;
+      }
+      const seen = new Set<number>();
+      bank.controllers.forEach((controller, index) => {
+        if (!Number.isInteger(controller) || (controller as number) < 0 || (controller as number) > 127 || seen.has(controller as number)) {
+          diagnostics.push({ severity: "error", code: "invalid-mode", path: `${bankPath}.controllers[${index}]`, message: "Each fader's CC must be a distinct controller from 0 to 127." });
+        }
+        seen.add(controller as number);
+      });
     });
   });
 

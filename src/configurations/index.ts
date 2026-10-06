@@ -1,2 +1,2 @@
 export { createSequencerBindings } from "./sequencer.js";
-export type { SequencerContract, SequencerBindings } from "./sequencer.js";
+export type { SequencerBindings, SequencerColours, SequencerContract, SequencerDevices } from "./sequencer.js";

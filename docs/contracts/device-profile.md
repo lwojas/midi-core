@@ -119,6 +119,16 @@ interface DeviceProfile {
   `expect` is a reply pattern (`null` matches any byte). Declared setup is run
   by the surface on connect; see [device-setup.md](./device-setup.md). Replaces
   the earlier `DeviceHandshake`, which described steps without bytes.
+- **`modes`** — `DeviceModeProfile[]` (ECS-96), optional. A mode that needs its own
+  messages and ports on top of the main surface. Each has `id`, `description`,
+  `sendPortId` (the output its messages go to), `requiredPortIds` (the mode exists only
+  when all of them are present on the device), `activate` (SysEx sent before the fader
+  bank), `showLayout` (SysEx sent after the bank), `deactivate` (SysEx to leave), and
+  `faders` (`count` 1-8, `inputPortId`/`inputChannel` for fader moves,
+  `feedbackPortId`/`feedbackChannel` for fader colour). The fader CCs are set at
+  runtime, per bank, so they are not in the profile. A fader port must be listed in
+  `requiredPortIds`. A device without the ports has the mode unavailable, not an
+  invalid profile.
 - **`layout`** — `DeviceLayout` (ECS-90): which controls play which
   sequencer roles, as the profile's default. `modeButtons` is an ordered list of
   `{ controlId, mode }`; `pageUp`/`pageDown`, `pageLeft`/`pageRight` and `transport`

@@ -26,13 +26,27 @@ log(`output [${outPort.index}] ${outPort.names[outPort.index]}`);
 const input = createMidiInput(createNodeInputTransport(inPort.index, inPort.names[inPort.index]));
 const output = createMidiOutput(createNodeOutputTransport(outPort.index, outPort.names[outPort.index]));
 
+// ECS-96: the DAW pair, when the device has it. Without it the mixer's fader modes are not offered.
+const dawInPort = findPort("input", /Launchpad Mini MK3.*DAW Out/);
+const dawOutPort = findPort("output", /Launchpad Mini MK3.*DAW In/);
+const daw =
+  dawInPort.index >= 0 && dawOutPort.index >= 0
+    ? {
+        input: createMidiInput(createNodeInputTransport(dawInPort.index, dawInPort.names[dawInPort.index])),
+        output: createMidiOutput(createNodeOutputTransport(dawOutPort.index, dawOutPort.names[dawOutPort.index])),
+      }
+    : undefined;
+log(daw ? "DAW ports found: fader modes available" : "no DAW ports: fader modes unavailable");
+// The DAW port's traffic (fader moves, and side buttons while a fader layout is shown) is logged on its own line.
+daw?.input.onMessage((m) => log(`daw in: ${describe(m)}`));
+
 const app = createLaunchpadApp({
   onChange: (what, value) => {
     if (what === "transport") log(`app: transport status = ${value}`);
   },
 });
 
-const session = createLaunchpadSurface({ input, output, app, log });
+const session = createLaunchpadSurface({ input, output, app, daw, log });
 input.onMessage((m) => log(`in:  ${describe(m)}`));
 const loggedSend = output.send.bind(output);
 output.send = (m) => {

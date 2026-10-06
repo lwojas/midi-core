@@ -48,7 +48,9 @@ export type ProfileDiagnosticCode =
   | "setup-port-not-required"
   | "setup-step-missing-description"
   | "unresolved-protocol-reference"
-  | "duplicate-binding-id";
+  | "duplicate-binding-id"
+  | "invalid-mode"
+  | "duplicate-mode-id";
 
 export interface ProfileDiagnostic {
   readonly severity: DiagnosticSeverity;

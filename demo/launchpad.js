@@ -38,6 +38,17 @@ function refreshPortOptions() {
   }
 }
 
+/** The DAW input and output of the same Launchpad, found by name from its MIDI pair; undefined when the device has no DAW pair. */
+function dawPairFor(inputName, outputName) {
+  if (!inputName || !outputName) return undefined;
+  const ports = access.discovery.listPorts();
+  const find = (type, name) => ports.find((p) => p.type === type && p.name === name);
+  const dawInput = find("input", inputName.replace("MIDI Out", "DAW Out"));
+  const dawOutput = find("output", outputName.replace("MIDI In", "DAW In"));
+  if (!dawInput || !dawOutput) return undefined;
+  return { input: createMidiInput(access.getInput(dawInput.id)), output: createMidiOutput(access.getOutput(dawOutput.id)) };
+}
+
 function setButtonsForLifecycle(state) {
   const attached = state === "attached";
   $("attach").disabled = attached || state === "attaching" || !access;
@@ -88,6 +99,11 @@ $("attach").addEventListener("click", async () => {
 
   input = createMidiInput(rawInput);
   output = createMidiOutput(rawOutput);
+
+  // ECS-96: the device's DAW pair, found from the selected MIDI pair by port name (e.g. "... MIDI Out" -> "... DAW Out").
+  // Without it the mixer's fader modes are not offered.
+  const portName = (id) => access.discovery.listPorts().find((p) => p.id === id)?.name;
+  const daw = dawPairFor(portName($("input-select").value), portName($("output-select").value));
   input.onError((e) => log(`input error: ${e.code} ${e.message}`));
   output.onError((e) => log(`output error: ${e.code} ${e.message}`));
   input.onMessage((message) => log(`in:  ${describe(message)}`));
@@ -98,7 +114,7 @@ $("attach").addEventListener("click", async () => {
     loggedSend(message);
   };
 
-  session = createLaunchpadSurface({ input, output, app, log });
+  session = createLaunchpadSurface({ input, output, app, daw, log });
   session.surface.onStateChange((change) => {
     $("lifecycle").textContent = change.to;
     setButtonsForLifecycle(change.to);

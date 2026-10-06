@@ -5,6 +5,7 @@ import type { ControlGrid } from "./grid.js";
 import type { DeviceSysExProfile } from "./sysex.js";
 import type { DeviceSetup } from "./setup.js";
 import type { DeviceLayout } from "./layout.js";
+import type { DeviceModeProfile } from "./mode.js";
 
 /**
  * A device profile describes one device model: its identity, the ports it
@@ -37,4 +38,6 @@ export interface DeviceProfile {
   readonly setup?: DeviceSetup;
   /** Which controls play which sequencer roles (ECS-90). Optional: a device without one gets no mode, page or transport bindings. */
   readonly layout?: DeviceLayout;
+  /** Modes that need their own messages and ports (ECS-96). Optional: a device without them has no such modes. */
+  readonly modes?: readonly DeviceModeProfile[];
 }

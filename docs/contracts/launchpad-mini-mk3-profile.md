@@ -54,7 +54,7 @@ The sequencer's roles on this device, as the profile's default:
 
 | Role | Control |
 |---|---|
-| Mode buttons: steps / mixer / transport | side-89 / side-79 / side-69 |
+| Mode buttons: steps / mixer | side-89 / side-79 (side-69 is free for the mixer faders, ECS-96) |
 | Page up / down (tracks) | top-91 / top-92 (the arrows) |
 | Page left / right (time) | top-93 / top-94 (the arrows) |
 | Transport: play / stop / record / clear | side-59 / side-49 / side-39 / side-29 |
@@ -66,6 +66,13 @@ take CC 91-94. Paging up and down moves by eight tracks, and the window stops
 at the track count the application provides. The mixer lays its eight tracks
 across the top row, as its UI does, so left and right page it through the
 tracks eight at a time, and up and down do nothing there.
+
+## Modes (ECS-96)
+
+`mixer-faders`: the DAW Fader layout, eight faders on `daw-in`/`daw-out` (channel 5 for
+fader moves, channel 6 for fader colour). It needs the DAW ports, so it is unavailable on
+a Launchpad without them. Entering sends DAW mode on, the bank, then the layout; leaving
+sends the Programmer layout and DAW mode off. The bank's CCs are set at runtime.
 
 ## Deliberately not modeled
 

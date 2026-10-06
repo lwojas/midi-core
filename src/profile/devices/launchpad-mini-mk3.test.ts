@@ -15,11 +15,11 @@ describe("LAUNCHPAD_MINI_MK3_PROFILE", () => {
     expect(validateDeviceProfile(LAUNCHPAD_MINI_MK3_PROFILE)).toEqual([]);
   });
 
-  it("has 64 pads, 8 top-row buttons, 8 side-column buttons and a logo, 81 controls in all", () => {
+  it("has 64 pads, 8 top-row buttons, 8 side-column buttons and a logo, 81 controls, plus 24 mixer fader controls, 6 DAW side buttons and 4 DAW arrows (ECS-96)", () => {
     expect(LAUNCHPAD_MINI_MK3_PADS).toHaveLength(64);
     expect(LAUNCHPAD_MINI_MK3_TOP_ROW).toHaveLength(8);
     expect(LAUNCHPAD_MINI_MK3_SIDE_COLUMN).toHaveLength(8);
-    expect(LAUNCHPAD_MINI_MK3_CONTROLS).toHaveLength(81);
+    expect(LAUNCHPAD_MINI_MK3_CONTROLS).toHaveLength(115);
   });
 
   it("setup identifies the device, then switches it into Programmer mode, on the device's own midi-in/midi-out", () => {
@@ -48,10 +48,11 @@ describe("LAUNCHPAD_MINI_MK3_PROFILE", () => {
     expect(LAUNCHPAD_MINI_MK3_PAD_GRID.cells[63]).toEqual({ row: 7, column: 7, controlId: "pad-18" });
   });
 
-  it("every control with feedback routes it to midi-out, not midi-in (the feedbackPortId correction)", () => {
+  it("every control with feedback routes it to midi-out, not midi-in (the feedbackPortId correction); the mixer faders route to daw-out", () => {
     for (const control of LAUNCHPAD_MINI_MK3_CONTROLS) {
       if (!control.feedback) continue;
-      expect(control.feedbackPortId, `${control.id} feedbackPortId`).toBe("midi-out");
+      const expected = control.id.startsWith("fader-") ? "daw-out" : "midi-out";
+      expect(control.feedbackPortId, `${control.id} feedbackPortId`).toBe(expected);
     }
   });
 

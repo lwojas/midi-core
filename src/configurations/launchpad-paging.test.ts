@@ -141,9 +141,12 @@ describe("the Launchpad sequencer, driven through the surface", () => {
   });
 
   it("runs transport from the side column, and the arrows no longer reach it", async () => {
+    // The Launchpad has no transport mode button since side-69 was freed for the mixer (ECS-96), so the mode is set directly.
+    // Transport gets its own surface in a separate issue.
     const { surface, played, press } = build();
     await surface.attach();
-    await press("side-69"); // transport mode
+    surface.navigation.setMode("transport");
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let the queued mode switch bind
     await press("side-59"); // play
     await press("top-91"); // an arrow does nothing in transport mode
     expect(played).toEqual(["play"]);

@@ -172,6 +172,128 @@ mixer's pad mutes still send in the DAW Fader layout is unknown, and needs a
 hardware check. Any fader feedback must not echo a fader's own CC back, per the
 echo lesson in ECS-57. This needs a follow-up ticket, with hardware testing first.
 
+**ECS-96 spike (hardware, `scripts/launchpad-daw-spike.mjs`).** Run on the device, on the MIDI In port and on the DAW In port:
+
+- **Layout switching works on the MIDI port, confirmed on hardware.** DAW mode enable
+  (`10 01`) and the DAW Fader layout (`00 0D`) were sent on `MIDI In`. Readbacks
+  confirmed DAW mode `00` → `01` and the layout `7F` → `0D`, and Programmer mode came
+  back with `00 7F`. The readbacks reply on `MIDI Out`.
+- **The DAW In port also accepts the same sequence**, with the same readbacks.
+- **Fader moves arrive on `daw-out` (`DAW Out`) even when the SysEx went to `MIDI In`.**
+  In a 20 s window the top two faders sent 985 CC messages, all on channel 5 (B4h).
+  CC 7 (unipolar) and CC 8 (bipolar) both covered the full value range 0-127.
+  No channel-5 messages reached `MIDI Out`.
+- So the separate ports do not block the layout switch. The mode SysEx goes to
+  `midi-out`, and the faders' input and feedback go to `daw-out` / `daw-in`.
+- **Arrows still send in the fader layout, but on the DAW port.** Pressing the top-row
+  arrows (CC 91-98, channel 1) produced messages on `DAW Out`, not on `MIDI Out`. The
+  sequencer listens on `midi-in`, so it would see no arrow presses here. That matches
+  the operator's report that the arrows did nothing in the app.
+- **Pads send on the DAW port too.** Two pad presses (notes 11 and 31, channel 1) came
+  from `DAW Out`. These are not yet tied to a named pad.
+- **Session and mode buttons changed the layout without any logged message.** Pressing
+  Session cleared the faders from view, and a mode button switched to a device custom
+  mode. Neither produced a logged message on either port, so the app can't see those
+  layout changes. It must not assume the fader layout persists.
+- **The CC 7 bursts on `MIDI Out` came from a device custom mode, not the faders.** They
+  started after the custom-mode switch, on channels 5, 7, 8, 9, 11 and 12, values 1-127.
+  The first pass had none, because no custom mode was entered.
+- **Answered for question 2:** in the fader layout the arrows send on `daw-out`, not
+  `midi-in`. The mute pads are not present in the fader layout at all (operator
+  observation: they can't be pressed there), so mixer mutes cannot work in this layout.
+  Two pad notes (11 and 31) did come from `daw-out`, which is not yet explained. Fader
+  feedback (question 4) is untested.
+- **Side-column buttons also send on the DAW port in the fader layout.** A later pass
+  logged eight presses, one per button, top to bottom: CC 89, 79, 69, 59, 49, 39, 29,
+  19, on channel 1, all on `DAW Out`. No note-ons were logged in that window, so no pads
+  were pressed there.
+- **Switching modes without reconnecting works.** Every change in the spike ran on
+  ports that stayed open: DAW mode on and off, the fader layout and Programmer again.
+  The mode SysEx goes on `midi-out`, and the faders report on `daw-out`.
+- **The runtime does not open the DAW ports.** `src/surface/runtime.ts` opens only
+  required ports, and `daw-in`/`daw-out` are `required: false`. Faders and any
+  fader-layout buttons would never be heard. The mixer mode has to open `daw-in`/`daw-out`
+  when it is entered and close them on exit. Marking them required would break devices
+  without a DAW port, so that's the wrong fix.
+- **One profile, two modes.** The DAW surface stays in this profile, not a second one:
+  one device, one identity. The mixer mode's `onEnter` sends DAW mode and the fader layout
+  on `midi-out` and opens the DAW ports. `onExit` restores Programmer and closes them.
+  This needs the mode hooks to send output, which they can't do today.
+- **Hardware-initiated switching has to be app-driven.** Session and the mode buttons
+  change the device's layout silently, so the app can't follow them. To switch from the
+  hardware, use a button the app can see in both layouts. The side-column buttons (CC
+  89-19) send on `daw-out` in the fader layout, as logged above. In Programmer mode they
+  send on `midi-in`. So a side-column button can enter or leave the mixer.
+  **Chosen: side-69**, the transport-mode select in the profile. Confirmed on hardware:
+  in Programmer mode it sent seven presses as CC 69 (B0h 45h), channel 1, on `MIDI Out`
+  (the `midi-in` side). In the fader layout it sent CC 69 on `DAW Out` (logged earlier).
+  Both directions are seen, so this button can switch the mixer on and off.
+  Caveat: side-69 is also the transport-mode select today. Making transport persistent,
+  a separate issue, is what frees it for the mixer, so the two must land together.
+- **Round trip confirmed on hardware** (`roundtrip.mjs` scratch script, not committed).
+  Four cycles in 60 s. Side-69 on `MIDI Out` sent DAW mode on, the bank, and the fader
+  layout on `MIDI In`, and the layout readback confirmed `0D`. Side-69 on `DAW Out`
+  restored Programmer (`7F`, confirmed by readback) and DAW mode off (`00`, confirmed).
+  In the mixer, 363 channel-5 fader messages arrived. The release of each press (value
+  `00`) was ignored.
+  Not checked: whether the sequencer app sees the switch through midi-core.
+- **Fader LED feedback works** (operator observation).
+- **Bank switching inside the mixer works.** A bank re-sent with the fader layout active
+  (volume CC 7, pan CC 10 bipolar, send CC 12) reads back correctly, and the faders then
+  report the new CC. No mode change or layout reselect was needed. The brief
+  switch-over latency is not measured cleanly, because operator moves are mixed in.
+- **Position updates on `DAW In` do not echo.** Channel 5, controller = the fader's CC,
+  value 0-127. Position set A, then B, with the faders untouched: zero channel-7 messages
+  on `DAW Out` in either silent window. An earlier run that logged 182 messages was the
+  operator moving the faders, not an echo.
+- **Position sets did not move the faders with the CC-number reading.** Operator
+  observation: the faders stayed where they were. The index reading (controller = fader
+  index, 0-7) was also sent, with zero echoes, but its movement is not yet observed. The
+  manual gives no detail on the position set, and the faders may not be motorised at all.
+  Until proven otherwise, treat a fader's physical position as unknown to the app.
+- **Decision: no position feedback.** The app does not push positions to the faders. The
+  fader's physical position is the only record of the level. On a page change the app
+  keeps its own stored value for the new track and uses soft takeover: a fader only
+  changes that value once it crosses the stored level. Until then the value stays
+  unchanged. The LEDs show the state. A page change does not move the faders.
+- **Requirement (operator): a page change must update the displayed level of each track.**
+  This conflicts with the decision above, unless the LEDs can show a level without the
+  faders moving. The manual's DAW Fader position set may do that. The earlier position
+  tests were judged on physical movement only, so whether the LEDs changed is unknown.
+  To check: send position sets (index reading) and watch the LEDs, not the faders.
+  **Result:** the LEDs did not change with position sets (operator observation).
+- **Next check: fader colour sets (channel 6, B5h, controller = fader index).** These are
+  the manual's DAW Fader colour sets. Colour set A (palette 5 to 61 across the faders),
+  then set B (reversed). Zero echoes. Whether the LED colours changed is an operator
+  observation still to confirm. If they did, a colour step can stand in for the level.
+  **Result:** the LED colours changed with the colour sets (operator observation,
+  "yes"). A fader's colour can therefore show its track's level, in palette steps.
+  Decision: a page change sends a colour set for the new page's levels. Palette steps
+  are coarse, so the mapping and the number of steps still need choosing.
+- **Level test (`levels.mjs`, scratch, not committed).** A sweep of palette indices 1 to
+  121 in steps of 8, all faders the same, then a bar with fader i at palette 1 + 16i.
+  Operator observation: the sweep showed **different intensities of one colour, light
+  blue**. So a level can be shown as the intensity of a single hue, not a change of hue.
+  Operator clarification: the sweep set the whole row of faders to the same colour, and
+  each palette row is one colour family. Within a row, blue steps up in **three
+  increments** to maximum intensity, then the next row starts another colour step. So each
+  palette row gives about three intensity levels, and the rows are the colour families.
+  Implication: a single hue gives only about three levels per row. The bar test set
+  different indices per fader, so it does not answer whether a ramp reads correctly.
+  Still open: how many rows are usable as one family, and whether a level scale needs
+  several rows.
+- **Palette scan (`palette-scan.mjs`, scratch, not committed).** All indices 1-127 shown
+  eight at a time, three seconds per batch, fader i = base + i. Operator observation: in
+  every batch all faders were the same colour, changing only in intensity, incrementally.
+  This contradicts the three-steps-per-row reading above, unless that reading was a
+  description of the same ramp. Open: is the ramp continuous across all 127 indices, or
+  does it break into colour families at some point?
+  **Result (operator): continuous, one colour, 127 levels.** Decision: a track's level maps
+  straight onto a palette index, 1 to 127, using the blue ramp. Index 0 is avoided, since it
+  switches the fader off. The earlier "three steps per row" reading is withdrawn.
+- **Pan and send have no app-side meaning yet.** Track identity lives in the app, not
+  the device, so paging tracks means sending new positions, not changing the bank.
+
 ## Open decisions
 
 1. **F3**: resolved by device setup (see above). Remaining decision: none.
@@ -187,3 +309,60 @@ echo lesson in ECS-57. This needs a follow-up ticket, with hardware testing firs
 - ECS-77 — mock validation this device validation builds on.
 - ECS-78 — the sequencer integration; the same ControlSurface pattern, now on hardware.
 - ECS-80 — MIDI Profiler → surface integration. F2 is an input to it.
+
+## ECS-96 implementation (fader modes)
+
+- **Profile.** `modes` on the device profile (`src/profile/types/mode.ts`). The Launchpad's
+  `mixer-faders` mode has three fixed fader banks, each with its own CC per fader: volume
+  CCs 80-87 (colour 37), pan CCs 88-95 (bipolar, colour 21), send CCs 102-109 (colour 13). Its
+  DAW-port side buttons (`daw-side-89` to `daw-side-39`) are read on `daw-in`, because the device
+  sends them there while a fader layout is shown.
+- **Sequencer.** `createSequencerBindings(..., devices)` builds one mode per bank the application
+  has a template for (`faderTemplates`, `{index}` = fader position): `faders-volume`,
+  `faders-pan`, `faders-send`. Entering a bank sends DAW mode, the bank, then the layout; leaving
+  sends the Programmer layout and DAW mode off. Switching banks leaves one and enters the next.
+- **Availability.** A device without `daw-in`/`daw-out` gets no fader modes, and its side-59/49/69
+  buttons are not bound for them.
+- **Transport.** The transport mode has no button on the Launchpad (side-69 is the mixer's now).
+  Its side-59 is the pan bank's button, so the transport mode does not bind it.
+- **Colour echo.** Moving a fader does not repaint its colour (the ECS-57 rule). The colour follows
+  only the application's changes to the level.
+- **Open.** A level of 0 paints palette entry 0, which switches the fader off. The application's
+  level controls should run 1-127 for a visible fader at zero. The hardware check of the full
+  round trip with the app is still to do.
+
+### Fader modes on hardware (ECS-96)
+
+Run with `scripts/launchpad-live.mjs` on the device, using the demo's controls.
+
+- **Entering and leaving.** Side-69 enters the volume bank from Programmer mode. The
+  DAW-port side buttons switch banks (side-59 pan, side-49 send), leave to mixer (side-79)
+  and steps (side-89). Re-entry after leaving works.
+- **Bank messages.** DAW mode, the bank and the layout go out in order on enter, and the
+  layout and DAW mode off go out on leave.
+- **Faders.** Each bank reports on its own CCs: volume 80-87, pan 88-95, send 102-109, on
+  channel 5. Moves arrive on the DAW port.
+- **Colour feedback.** Verified on device: a fader's colour follows its level when the
+  application sets it.
+- **Pan exit bug (fixed).** Leaving pan failed because the DAW ports closed on each mode
+  change and could not reopen. The runtime now opens the optional ports at attach and
+  keeps them open until detach.
+- **Not checked on the device.** The application's own values (the demo does not log
+  them). Paging is not implemented.
+
+### Fader paging (ECS-96, webseq owns paging)
+
+- **midi-core.** The DAW-port arrows (CC 91-94) are `daw-top-91` to `daw-top-94`. In the fader
+  modes, left and right go to the application as `faderActions.pageLeft` and `pageRight`. Up and
+  down are not bound. The application decides which tracks the faders show, so midi-core does not
+  track a page.
+- **Devices.** `SequencerDevices` now carries the device's inputs as well as its outputs, so the
+  arrows can be bound on the DAW port.
+- **webseq.** Its registry resolves `mixer.volume.0` to `mixer.volume.7`. Fader N shows track
+  `page * 8 + N`, reads 0 when the page has no track there, and sets the track's volume (linear
+  gain, 0 to 1.5). A page turn notifies each fader, so its colour follows the new track. Pan and
+  send have no application controls yet, so those faders are not bound.
+- **Tests.** webseq: 167 pass against this midi-core checkout. midi-core: 406 pass.
+- **Not done.** webseq depends on midi-core from GitHub, so it needs a push and a dependency bump
+  before the app sees this. The device run of the paging is still to do.
+

@@ -34,10 +34,10 @@ describe("createSequencerBindings on the Launchpad", () => {
     expect(unresolved).toEqual([]);
   });
 
-  it("has the three modes, each with the device's mode buttons available, and activates steps and mixer from the application's selection", () => {
+  it("has the three modes, each with the device's two mode buttons available (side-69 is free, ECS-96), and activates steps and mixer from the application's selection", () => {
     expect(table.map((definition) => definition.mode)).toEqual(["steps", "mixer", "transport"]);
     for (const definition of table) {
-      expect(definition.bindings?.filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode")).toHaveLength(3);
+      expect(definition.bindings?.filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode")).toHaveLength(2);
     }
     expect(table.find((definition) => definition.mode === "steps")?.activateOn).toEqual({ scope: "step" });
     expect(table.find((definition) => definition.mode === "mixer")?.activateOn).toEqual({ scope: "track" });
@@ -150,7 +150,7 @@ describe("createSequencerBindings when a role cannot be found", () => {
       modeButtons: [...(launchpadLayout.modeButtons ?? []), { controlId: "side-1", mode: "extra" }],
     });
     expect(unresolved).toEqual(["mode: extra (control side-1)"]);
-    expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode")).toHaveLength(3);
+    expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode")).toHaveLength(2);
   });
 
   it("reports a page button and a transport button the profile lacks, and keeps the rest", () => {
@@ -168,7 +168,7 @@ describe("createSequencerBindings when a role cannot be found", () => {
     expect(unresolved).toEqual(["step grid (a grid with paging)"]);
     expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "window")).toHaveLength(0);
     expect(bindingsOf(bindings, "mixer").filter((binding) => binding.kind === "control")).toHaveLength(0);
-    expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode")).toHaveLength(3);
+    expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode")).toHaveLength(2);
   });
 
   it("builds transport without a button the layout does not name, and does not report it", () => {

@@ -52,6 +52,8 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
   const connectionWatchers: Unsubscribe[] = [];
   const connectedPortIds = new Set<string>();
   let detachRequested = false;
+  // Non-required ports the surface opened at attach because a mode uses them (ECS-96: the DAW ports). Closed at detach.
+  const optionalPortIds: string[] = [];
   let modeSwitchQueue: Promise<void> = Promise.resolve();
 
   function transitionTo(next: SurfaceLifecycleState): void {
@@ -70,6 +72,53 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
 
   function requiredPorts(): readonly DevicePortProfile[] {
     return deps.profile.ports.filter((port) => port.required);
+  }
+
+  /** The ports a mode's bindings read or write, by their profile ids: the control's own port and its feedback port. */
+  function portIdsUsedBy(mode: string): Set<string> {
+    const used = new Set<string>();
+    const bindings = deps.bindingTable.find((definition) => definition.mode === mode)?.bindings ?? [];
+    for (const binding of bindings) {
+      const control = deps.profile.controls.find((candidate) => candidate.id === binding.physicalControlId);
+      if (!control) continue;
+      used.add(control.portId);
+      if (control.feedbackPortId) used.add(control.feedbackPortId);
+    }
+    return used;
+  }
+
+  /**
+   * Opens the non-required ports the surface's modes use, once, at attach (ECS-96: the DAW ports, for the mixer's fader
+   * modes). They stay open until detach, so a mode switch never reopens a port: a disconnected port can't go straight
+   * back to connecting (core/types/lifecycle.ts: disconnected -> available only). A port that isn't supplied, or
+   * won't connect, is left closed, and the bindings that need it are skipped.
+   */
+  async function openOptionalPorts(): Promise<void> {
+    const used = new Set<string>();
+    for (const definition of deps.bindingTable) {
+      for (const portId of portIdsUsedBy(definition.mode)) used.add(portId);
+    }
+    for (const port of deps.profile.ports) {
+      if (port.required || !used.has(port.id) || connectedPortIds.has(port.id)) continue;
+      const connection = resolvePort(port);
+      if (!connection) continue;
+      try {
+        await connection.connect();
+      } catch {
+        continue;
+      }
+      connectedPortIds.add(port.id);
+      optionalPortIds.push(port.id);
+    }
+  }
+
+  async function closeOptionalPorts(): Promise<void> {
+    for (const portId of optionalPortIds.splice(0)) {
+      const port = deps.profile.ports.find((candidate) => candidate.id === portId);
+      const connection = port && resolvePort(port);
+      await connection?.disconnect();
+      connectedPortIds.delete(portId);
+    }
   }
 
   function resolvePort(port: DevicePortProfile) {
@@ -134,6 +183,8 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
         watchForSpontaneousDisconnect(port, connection);
       }
 
+      await openOptionalPorts();
+
       if (deps.profile.setup) {
         await runDeviceSetup(deps.profile.setup, deps.ports);
       }
@@ -177,6 +228,7 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
     await modeSwitchQueue;
     clearConnectionWatchers();
     await teardownCurrentMode();
+    await closeOptionalPorts();
 
     try {
       for (const port of requiredPorts()) {
