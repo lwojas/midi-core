@@ -13,7 +13,7 @@ import { createSurfaceNavigation } from "./navigation.js";
 import { sequenceClamp } from "./paging.js";
 import type { SurfaceError } from "./types/errors.js";
 import { isValidSurfaceTransition, type SurfaceLifecycleChange, type SurfaceLifecycleState } from "./types/lifecycle.js";
-import type { SurfaceNavigationState } from "./types/navigation.js";
+import type { SurfaceModeId, SurfaceNavigationState } from "./types/navigation.js";
 import type { SurfaceBindingTable } from "./types/bindings.js";
 import type { ControlSurface } from "./types/runtime.js";
 import { runDeviceSetup } from "./setup.js";
@@ -40,6 +40,7 @@ export interface ControlSurfaceDeps {
 export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
   const navigation = createSurfaceNavigation(deps.initialNavigation, {
     clamp: sequenceClamp(deps.bindingTable, deps.profile, deps.registry),
+    canSetMode: (mode) => modeCanRun(mode),
   });
 
   let state: SurfaceLifecycleState = "detached";
@@ -68,6 +69,18 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
 
   function reportError(error: SurfaceError): void {
     for (const listener of errorListeners) listener(error);
+  }
+
+  /**
+   * Whether the surface may switch to `mode`: every port the mode requires must be connected (ECS-104). A refusal is
+   * reported, and the surface stays where it is, so a mode never runs without the ports it needs.
+   */
+  function modeCanRun(mode: SurfaceModeId): boolean {
+    const definition = deps.bindingTable.find((candidate) => candidate.mode === mode);
+    const missing = definition?.requiredPortIds?.find((portId) => !connectedPortIds.has(portId));
+    if (missing === undefined) return true;
+    reportError({ code: "port-unavailable", message: `Mode "${mode}" needs port "${missing}", which isn't connected. The surface stays in its mode.` });
+    return false;
   }
 
   function requiredPorts(): readonly DevicePortProfile[] {

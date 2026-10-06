@@ -29,16 +29,15 @@ const contract = (): SequencerContract => ({
 function connectedLaunchpad(): { devices: SequencerDevices; sent: MidiMessage[] } {
   const sent: MidiMessage[] = [];
   const output = { send: (message: MidiMessage) => sent.push(message) } as unknown as MidiOutput;
-  const connectedPortIds = LAUNCHPAD_MINI_MK3_PROFILE.ports.map((port) => port.id);
   const dawInput = createMidiInput(new MockMidiInput({ id: "daw-in", type: "input", name: "daw-in", manufacturer: null }));
-  return { devices: { outputs: { "midi-out": output, "daw-out": output }, inputs: { "daw-in": dawInput }, connectedPortIds }, sent };
+  return { devices: { outputs: { "midi-out": output, "daw-out": output }, inputs: { "daw-in": dawInput } }, sent };
 }
 
 /** The Launchpad as a device without the DAW ports: only the main pair is connected. */
 function mainPortsOnly(): { devices: SequencerDevices; sent: MidiMessage[] } {
   const sent: MidiMessage[] = [];
   const output = { send: (message: MidiMessage) => sent.push(message) } as unknown as MidiOutput;
-  return { devices: { outputs: { "midi-out": output }, inputs: {}, connectedPortIds: ["midi-in", "midi-out"] }, sent };
+  return { devices: { outputs: { "midi-out": output }, inputs: {} }, sent };
 }
 
 function modeNames(table: SurfaceBindingTable): string[] {

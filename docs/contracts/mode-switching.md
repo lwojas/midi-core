@@ -104,6 +104,14 @@ mode table. This ticket demonstrates mode switching for
 too would be a new decision for whichever ticket needs it, not this
 one's.
 
+## Required ports (ECS-104)
+
+A mode may name the ports it needs (`requiredPortIds`). A switch to that mode is refused while any of them isn't
+connected: the navigation keeps its state, nothing is unbound or bound, and a `port-unavailable` error is reported.
+The check is at the moment of the switch, against the ports the surface actually connected at attach. A port the
+application supplied but the device refused to connect therefore keeps its mode out of reach. Modes with no
+`requiredPortIds` switch as before.
+
 ## What's deliberately not here
 
 - **No reactive subscription to `navigation.onChange()`** — see above;

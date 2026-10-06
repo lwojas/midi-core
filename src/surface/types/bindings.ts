@@ -178,6 +178,11 @@ export interface SurfaceModeDefinition {
    * Only changes after attach() count. A surface's initial selection does not switch modes.
    */
   readonly activateOn?: { readonly scope: string };
+  /**
+   * Ports the mode needs (ECS-104). The surface refuses a switch to this mode while any of them isn't connected: the
+   * `port-unavailable` error is reported and the surface stays in its mode. Omitted, the mode needs no port of its own.
+   */
+  readonly requiredPortIds?: readonly string[];
 }
 
 /** The full binding table `docs/control-surface-architecture.md`'s generation step consumes: one `SurfaceModeDefinition` per mode a surface supports. */

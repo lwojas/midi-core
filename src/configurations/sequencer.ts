@@ -58,15 +58,15 @@ export const DEFAULT_SEQUENCER_COLOURS: SequencerColours = {
 };
 
 /**
- * The device connection the mixer's fader modes need (ECS-96). `outputs` are the connected output ports by profile id:
- * a mode sends its messages on the output its `sendPortId` names. `connectedPortIds` lists every port the device has, so a
- * mode whose `requiredPortIds` aren't all here is unavailable. Without this, no fader mode is built.
+ * The device ports the mixer's fader modes need (ECS-96). `outputs` and `inputs` are the ports the application has, by profile
+ * id: a mode sends its messages on the output its `sendPortId` names. A mode whose `requiredPortIds` aren't all supplied
+ * here is not built. Whether a supplied port connects is the surface's to report (ECS-104): a mode whose port fails to
+ * connect is refused when it is entered, not left running without the port.
  */
 export interface SequencerDevices {
   readonly outputs: Readonly<Record<string, MidiOutput>>;
-  /** Connected input ports by profile id, for the fader modes' own inputs (the DAW port's arrows). */
+  /** Input ports by profile id, for the fader modes' own inputs (the DAW port's arrows). */
   readonly inputs: Readonly<Record<string, MidiInput>>;
-  readonly connectedPortIds: readonly string[];
 }
 
 export interface SequencerBindings {
@@ -232,7 +232,8 @@ function faderModeDefinitions(profile: DeviceProfile, contract: SequencerContrac
   const hasControl = (controlId: string) => profile.controls.some((control) => control.id === controlId);
   const banks = (profile.modes ?? []).flatMap((mode) => {
     const send = devices.outputs[mode.sendPortId];
-    if (!send || !mode.requiredPortIds.every((portId) => devices.connectedPortIds.includes(portId))) return [];
+    const supplied = new Set([...Object.keys(devices.outputs), ...Object.keys(devices.inputs)]);
+    if (!send || !mode.requiredPortIds.every((portId) => supplied.has(portId))) return [];
     return mode.faders.banks.flatMap((bank) => {
       const template = contract.faderTemplates?.[bank.id];
       if (!template || !bank.controlIds.every(hasControl)) return [];
@@ -257,6 +258,8 @@ function faderModeDefinitions(profile: DeviceProfile, contract: SequencerContrac
     return {
       mode: modeId,
       bindings: [...navigation, ...faders],
+      // The surface refuses to enter this mode while one of its ports isn't connected (ECS-104).
+      requiredPortIds: mode.requiredPortIds,
       hooks: {
         // The layout shows only banks already set up, so the bank goes before the layout.
         onEnter: () => {

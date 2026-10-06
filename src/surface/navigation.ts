@@ -16,6 +16,11 @@ import type {
 export interface SurfaceNavigationOptions {
   /** Applied to every `pageBy()` result before it's stored, so paging can't leave the sequence (ECS-89). */
   readonly clamp?: (offset: GridOffset) => GridOffset;
+  /**
+   * Asked before `setMode()` switches to a different mode. False refuses the switch: the state stays as it was and no
+   * listener is told (ECS-104, a mode whose ports aren't connected).
+   */
+  readonly canSetMode?: (mode: SurfaceModeId) => boolean;
 }
 
 export function createSurfaceNavigation(initial: SurfaceNavigationState, options: SurfaceNavigationOptions = {}): SurfaceNavigation {
@@ -36,6 +41,7 @@ export function createSurfaceNavigation(initial: SurfaceNavigationState, options
       return state;
     },
     setMode(mode: SurfaceModeId) {
+      if (mode !== state.mode && options.canSetMode && !options.canSetMode(mode)) return;
       applyState({ ...state, mode });
     },
     pageBy(delta: GridOffset) {

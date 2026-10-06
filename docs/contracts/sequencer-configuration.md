@@ -28,12 +28,10 @@ never assumes the device's count. The Launchpad's count is 8.
 
 ## SequencerDevices
 
-The device connection the fader modes need:
+The device ports the fader modes need. These are the ports the application has, not the ones that connected:
 
-- **`outputs`** — connected output ports by profile id. A mode sends on the output its `sendPortId` names.
-- **`inputs`** — connected input ports by profile id, for a mode's own inputs (the DAW port's arrows).
-- **`connectedPortIds`** — every port the device has. A mode whose `requiredPortIds` are not all listed is
-  unavailable.
+- **`outputs`** — output ports by profile id. A mode sends on the output its `sendPortId` names.
+- **`inputs`** — input ports by profile id, for a mode's own inputs (the DAW port's arrows).
 
 Without `devices`, no fader mode is built.
 
@@ -42,9 +40,19 @@ Without `devices`, no fader mode is built.
 A fader mode is built for a profile mode and a bank when all of these hold:
 
 1. `devices.outputs` has the mode's `sendPortId`.
-2. Every id in the mode's `requiredPortIds` is in `connectedPortIds`.
-3. The contract has a `faderTemplates` entry for the bank's id.
-4. The profile has a control for each fader, named as the bank and index define it.
+2. Every id in the mode's `requiredPortIds` is in `devices.outputs` or `devices.inputs`.
+
+## Connection (ECS-104)
+
+Whether a supplied port connects is decided when the surface attaches. A port that fails to connect is left closed.
+Each fader mode carries its `requiredPortIds` into the surface's mode definition. The surface refuses to enter the
+mode while any of them isn't connected: the switch is refused, the surface stays in its mode, and a
+`port-unavailable` error is reported. No fader setup is sent to the device for a refused mode.
+
+A bank also needs both of these to get a mode:
+
+- The contract has a `faderTemplates` entry for the bank's id.
+- The profile has a control for each fader, named as the bank and index define it.
 
 Its mode id is `faders-<bankId>`. A mode button that names a `faders-` mode with no built mode is left out, and
 its button is not bound.

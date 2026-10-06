@@ -21,12 +21,14 @@ import { createSequencerBindings, type SequencerContract } from "./sequencer.js"
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(" ");
 
-function build(profile: typeof LAUNCHPAD_MINI_MK3_PROFILE = LAUNCHPAD_MINI_MK3_PROFILE) {
+function build(profile: typeof LAUNCHPAD_MINI_MK3_PROFILE = LAUNCHPAD_MINI_MK3_PROFILE, options: { dawInputFails?: boolean } = {}) {
   const portInfo = { name: "Launchpad Mini [MK3]", manufacturer: "Novation" };
   const midiIn = new MockMidiInput({ id: "midi-in", type: "input", ...portInfo });
   const midiOut = new MockMidiOutput({ id: "midi-out", type: "output", ...portInfo });
   const dawIn = new MockMidiInput({ id: "daw-in", type: "input", ...portInfo });
   const dawOut = new MockMidiOutput({ id: "daw-out", type: "output", ...portInfo });
+  // The DAW input is present on the system, but its connection is refused, so its connect() rejects (ECS-104).
+  if (options.dawInputFails) dawIn.simulateError({ code: "permission-denied", message: "DAW input refused", portId: "daw-in" });
 
   const numeric = (id: string) => createControl<NumericControlDef>({ id, label: id, kind: "number", min: 0, max: 127, default: 0 });
   const appControls = ["volume", "pan", "send"].flatMap((bank) => Array.from({ length: 8 }, (_, index) => numeric(`mixer.${bank}.${index}`)));
@@ -50,7 +52,6 @@ function build(profile: typeof LAUNCHPAD_MINI_MK3_PROFILE = LAUNCHPAD_MINI_MK3_P
   const devices = {
     outputs: { "midi-out": createMidiOutput(midiOut), "daw-out": createMidiOutput(dawOut) },
     inputs: { "daw-in": createMidiInput(dawIn) },
-    connectedPortIds: ["midi-in", "midi-out", "daw-in", "daw-out"],
   };
   const { bindings } = createSequencerBindings(createMidiInput(midiIn), profile, contract, devices);
 
@@ -234,6 +235,19 @@ describe("the mixer fader modes, end to end on the Launchpad", () => {
     expect(pages).toEqual(["right"]);
     const banksAfter = sentMain().filter((message) => message.startsWith("f0 00 20 29 02 0d 01 ")).length;
     expect(banksAfter).toBe(banksBefore + 1);
+    await surface.detach();
+  });
+
+  it("refuses a fader mode whose DAW input failed to connect: no fader setup is sent, the mode isn't entered, and the refusal is reported (ECS-104)", async () => {
+    const { surface, sentMain, pressMain } = build(undefined, { dawInputFails: true });
+    const errors: Array<{ code: string; message: string }> = [];
+    surface.onError((error) => errors.push(error));
+    await surface.attach();
+    const before = sentMain().length;
+    await pressMain(69);
+    expect(surface.navigation.state.mode).toBe("steps");
+    expect(sentMain().slice(before)).toEqual([]);
+    expect(errors.map((error) => error.code)).toEqual(["port-unavailable"]);
     await surface.detach();
   });
 

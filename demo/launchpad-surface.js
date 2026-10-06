@@ -81,12 +81,8 @@ export function createLaunchpadSurface({ input, output, app, daw, log = () => {}
   const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values(), ...app.faders.values(), app.length, app.trackCount]);
   const device = DEVICE_REGISTRY.find((entry) => entry.id === "novation.launchpad-mini-mk3");
   const devices = daw
-    ? {
-        outputs: { "midi-out": output, "daw-out": daw.output },
-        inputs: { "daw-in": daw.input },
-        connectedPortIds: ["midi-in", "midi-out", "daw-in", "daw-out"],
-      }
-    : { outputs: { "midi-out": output }, inputs: {}, connectedPortIds: ["midi-in", "midi-out"] };
+    ? { outputs: { "midi-out": output, "daw-out": daw.output }, inputs: { "daw-in": daw.input } }
+    : { outputs: { "midi-out": output }, inputs: {} };
   const sequencer = createSequencerBindings(input, device.profile, { ...CONTRACT, actions: app.actions }, devices);
   for (const role of sequencer.unresolved) log(`unresolved: ${role}`);
   const surface = createControlSurface({
