@@ -4,6 +4,15 @@ import type { DeviceProfile } from "../profile/types/profile.js";
 import { LAUNCHPAD_MINI_MK3_PROFILE } from "../profile/devices/launchpad-mini-mk3.js";
 
 /**
+ * How a device's DAW ports are named, relative to its MIDI pair (ECS-103). The DAW port's name is the MIDI port's name with
+ * `from` replaced by `to`, so the pair is found from the system's port list. Only a device that has DAW ports declares this.
+ */
+export interface DawPortNames {
+  readonly input: { readonly from: string; readonly to: string };
+  readonly output: { readonly from: string; readonly to: string };
+}
+
+/**
  * A device the sequencer knows how to drive (ECS-90): its profile, which includes its layout, and how to recognise
  * its input port. This is the one place a device's control ids are named for the sequencer.
  */
@@ -18,6 +27,8 @@ export interface DeviceEntry {
   readonly profile: DeviceProfile;
   /** Matches an input port's reported name. Web MIDI often reports no manufacturer, so the name decides. */
   readonly portName: RegExp;
+  /** The device's DAW ports, when it has any (ECS-103). A device without them leaves this out. */
+  readonly dawPortNames?: DawPortNames;
 }
 
 export const DEVICE_REGISTRY: readonly DeviceEntry[] = [
@@ -28,6 +39,7 @@ export const DEVICE_REGISTRY: readonly DeviceEntry[] = [
       "Launchpad Mini MK3: side buttons switch steps / mixer / transport. Steps: the grid is the selected pattern (rows are tracks 1-8, columns are beats); top buttons 95/96 page. Mixer: the top pad row mutes tracks 1-8. Transport: top buttons 91/92 play and stop.",
     portName: /launchpad mini (\[mk3\]|mk3)/i,
     profile: LAUNCHPAD_MINI_MK3_PROFILE,
+    dawPortNames: { input: { from: "MIDI Out", to: "DAW Out" }, output: { from: "MIDI In", to: "DAW In" } },
   },
   {
     id: EXAMPLE_GRID_8X8_PROFILE.identity.id,
@@ -43,4 +55,21 @@ export function findDevice(port: Pick<MidiPortInfo, "name">): DeviceEntry | unde
   const { name } = port;
   if (!name) return undefined;
   return DEVICE_REGISTRY.find((entry) => entry.portName.test(name));
+}
+
+/**
+ * The DAW ports that pair with a connected MIDI pair, found by name (ECS-103). `midi` holds the names of the MIDI input and
+ * output. Each result is `undefined` when the device has no DAW ports, when a name is missing, or when the system doesn't
+ * report the port. Such a device still works on its MIDI pair alone.
+ */
+export function findDawPorts(
+  entry: DeviceEntry,
+  ports: readonly MidiPortInfo[],
+  midi: { readonly input?: string | null; readonly output?: string | null },
+): { readonly input?: MidiPortInfo; readonly output?: MidiPortInfo } {
+  const names = entry.dawPortNames;
+  if (!names) return {};
+  const find = (type: MidiPortInfo["type"], midiName: string | null | undefined, rule: { readonly from: string; readonly to: string }) =>
+    midiName ? ports.find((port) => port.type === type && port.name === midiName.replace(rule.from, rule.to)) : undefined;
+  return { input: find("input", midi.input, names.input), output: find("output", midi.output, names.output) };
 }

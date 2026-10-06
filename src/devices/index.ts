@@ -1,2 +1,2 @@
-export { DEVICE_REGISTRY, findDevice } from "./registry.js";
-export type { DeviceEntry } from "./registry.js";
+export { DEVICE_REGISTRY, findDawPorts, findDevice } from "./registry.js";
+export type { DawPortNames, DeviceEntry } from "./registry.js";

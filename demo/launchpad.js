@@ -1,5 +1,6 @@
 import { createMidiInput, createMidiOutput } from "../dist/core/index.js";
 import { requestWebMidiAccess } from "../dist/adapters/web-midi/index.js";
+import { findDawPorts, findDevice } from "../dist/devices/index.js";
 import { createLaunchpadApp, createLaunchpadSurface } from "./launchpad-surface.js";
 
 const $ = (id) => document.getElementById(id);
@@ -38,13 +39,14 @@ function refreshPortOptions() {
   }
 }
 
-/** The DAW input and output of the same Launchpad, found by name from its MIDI pair; undefined when the device has no DAW pair. */
+/**
+ * The DAW input and output of the selected device's MIDI pair, found by the registry's port names (ECS-103). Undefined when
+ * the device isn't known, has no DAW ports, or the system doesn't report them.
+ */
 function dawPairFor(inputName, outputName) {
-  if (!inputName || !outputName) return undefined;
-  const ports = access.discovery.listPorts();
-  const find = (type, name) => ports.find((p) => p.type === type && p.name === name);
-  const dawInput = find("input", inputName.replace("MIDI Out", "DAW Out"));
-  const dawOutput = find("output", outputName.replace("MIDI In", "DAW In"));
+  const device = findDevice({ name: inputName });
+  if (!device || !outputName) return undefined;
+  const { input: dawInput, output: dawOutput } = findDawPorts(device, access.discovery.listPorts(), { input: inputName, output: outputName });
   if (!dawInput || !dawOutput) return undefined;
   return { input: createMidiInput(access.getInput(dawInput.id)), output: createMidiOutput(access.getOutput(dawOutput.id)) };
 }
