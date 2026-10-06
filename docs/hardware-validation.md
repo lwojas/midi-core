@@ -368,3 +368,22 @@ Run with `scripts/launchpad-live.mjs` on the device, using the demo's controls.
   webseq `f05ad0c`.
 - **Not done.** Pan and send, which webseq has no controls for yet.
 
+### ECS-96 summary
+
+**Works on the device and in webseq, without errors:**
+- Entering and leaving the mixer's DAW Fader layout from side-69, with DAW mode and the layout
+  set in the right order.
+- The three fader banks (volume, pan, send), each reporting on its own CCs.
+- Bank switches from the DAW side buttons, including leaving pan, and re-entry.
+- Fader colour feedback as the level.
+- Paging through tracks with the DAW arrows in webseq: each page turn resends the bank, and the
+  faders then show the new page's tracks.
+
+**Known issue (not fixed):** after a page turn the LEDs may not show the new page's levels until
+something changes. The device keeps its bank state, and colours are repainted on every page turn.
+The cause is not established: it may be the device's handling of colour sets after a bank
+resend, or the timing of those sends. Not pursued further, to avoid chasing Launchpad quirks.
+
+**Not built:** pan and send in webseq (it has no controls for them yet); transport on the
+Launchpad (side-69 is the mixer's, and transport has no button until its own ticket).
+
