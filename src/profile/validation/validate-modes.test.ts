@@ -87,6 +87,18 @@ describe("validateDeviceProfile: modes (ECS-96)", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({ code: "invalid-mode", path: "modes[0].faders.banks[0].colour" }));
   });
 
+  it("rejects a bank entry that leaves out a field, repeats one, or names an unknown one (ECS-99)", () => {
+    for (const bankEntry of [["index", "type", "controller"], ["index", "type", "controller", "controller"], ["index", "type", "controller", "speed"]]) {
+      const diagnostics = validateDeviceProfile(withModes([{ ...mixer, bankEntry }]));
+      expect(diagnostics).toContainEqual(expect.objectContaining({ code: "invalid-mode", path: "modes[0].bankEntry" }));
+    }
+  });
+
+  it("rejects a bank type that is not a data byte (ECS-99)", () => {
+    const diagnostics = validateDeviceProfile(withModes([{ ...mixer, bankTypes: { unipolar: 0, bipolar: 128 } }]));
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "invalid-mode", path: "modes[0].bankTypes" }));
+  });
+
   it("rejects fader controls whose ports the device lacks, since the controls would dangle", () => {
     const profile = { ...LAUNCHPAD_MINI_MK3_PROFILE, ports: LAUNCHPAD_MINI_MK3_PROFILE.ports.filter((port) => !port.id.startsWith("daw-")) };
     expect(validateDeviceProfile(profile).map((d) => d.code)).toContain("dangling-port-reference");

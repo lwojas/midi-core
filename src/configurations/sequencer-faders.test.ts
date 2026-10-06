@@ -135,6 +135,21 @@ describe("the fader modes, on a Launchpad with its DAW ports", () => {
     ]);
   });
 
+  it("writes each fader's entry in the profile's field order and bank type values (ECS-99)", async () => {
+    const { devices, sent } = connectedLaunchpad();
+    const [mode] = LAUNCHPAD_MINI_MK3_PROFILE.modes ?? [];
+    const profile = {
+      ...LAUNCHPAD_MINI_MK3_PROFILE,
+      modes: [{ ...mode!, bankEntry: ["colour", "controller", "type", "index"], bankTypes: { unipolar: 2, bipolar: 3 } }],
+    } as typeof LAUNCHPAD_MINI_MK3_PROFILE;
+    const { bindings } = createSequencerBindings(input, profile, contract(), devices);
+    await definitionOf(bindings, "faders-pan").hooks?.onEnter?.();
+    const bank = sent[1];
+    // Each fader: colour 21, its CC, bipolar type 3, then its index.
+    const entries = Array.from({ length: 8 }, (_, index) => [21, 88 + index, 3, index]).flat();
+    expect(bank?.type === "sysex" && Array.from(bank.raw)).toEqual([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x01, 0x00, 0x00, ...entries, 0xf7]);
+  });
+
   it("builds a bank's mode only when the application has a template for that bank", () => {
     const { devices } = connectedLaunchpad();
     const { bindings } = createSequencerBindings(input, LAUNCHPAD_MINI_MK3_PROFILE, { ...contract(), faderTemplates: { volume: faderTemplates.volume } }, devices);

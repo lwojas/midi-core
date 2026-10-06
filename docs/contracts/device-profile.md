@@ -127,9 +127,11 @@ interface DeviceProfile {
   `faders` (`inputPortId`/`inputChannel` for fader moves, `feedbackPortId`/`feedbackChannel`
   for fader colour, and `banks`). Each bank has `id`, `bipolar`, `colour` (1-127) and
   `controllers`, one fixed CC per fader (1 to 8). The CCs are in the profile so it can name
-  the fader controls; the sequencer sends the bank to make them live. Optional: `bankPrefix`
-  (the bank message's bytes before its per-fader entries), `modeButtons` (read on the
-  mode's own ports) and `pageButtons` (the page arrows, as actions for the application).
+  the fader controls; the sequencer sends the bank to make them live. The bank message is
+  `bankPrefix` (from F0), then one entry per fader in the order `bankEntry` lists (each of
+  `index`, `type`, `controller`, `colour` once), then F7. `bankTypes` gives the `type` byte
+  for unipolar and bipolar banks. Optional: `modeButtons` (read on the mode's own ports) and
+  `pageButtons` (the page arrows, as actions for the application).
   A fader port must be listed in `requiredPortIds`. A device without the ports has the
   mode unavailable, not an invalid profile.
 - **`layout`** — `DeviceLayout` (ECS-90): which controls play which

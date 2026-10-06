@@ -2,7 +2,7 @@ import { createAction } from "../control-api/action.js";
 import type { Action } from "../control-api/types/action.js";
 import type { MidiInput } from "../core/types/input.js";
 import type { MidiOutput } from "../core/types/output.js";
-import type { DeviceFaderBank, DeviceModeProfile } from "../profile/types/mode.js";
+import type { BankEntryField, DeviceFaderBank, DeviceModeProfile } from "../profile/types/mode.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import type { DeviceLayout } from "../profile/types/layout.js";
 import type { ControlGrid } from "../profile/types/grid.js";
@@ -293,9 +293,18 @@ function pageActionBindings(
   return unbinds;
 }
 
-/** A bank message: the profile's prefix, then each fader's index, type (0 unipolar, 1 bipolar), CC and colour, then F7. */
+/** A bank message: the profile's prefix, then each fader's entry in the profile's field order (ECS-99), then F7. */
 function bankBytes(mode: DeviceModeProfile, bank: DeviceFaderBank): number[] {
-  return [...mode.bankPrefix, ...bank.controllers.flatMap((controller, index) => [index, bank.bipolar ? 1 : 0, controller, bank.colour]), 0xf7];
+  const entries = bank.controllers.flatMap((controller, index) => {
+    const values: Record<BankEntryField, number> = {
+      index,
+      type: bank.bipolar ? mode.bankTypes.bipolar : mode.bankTypes.unipolar,
+      controller,
+      colour: bank.colour,
+    };
+    return mode.bankEntry.map((field) => values[field]);
+  });
+  return [...mode.bankPrefix, ...entries, 0xf7];
 }
 
 function sendSysEx(output: MidiOutput, bytes: readonly number[]): void {

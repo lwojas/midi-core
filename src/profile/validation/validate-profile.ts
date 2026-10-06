@@ -411,6 +411,15 @@ function checkModes(value: unknown, ports: unknown, controlIds: ReadonlySet<stri
     if (!Array.isArray(mode.bankPrefix) || mode.bankPrefix[0] !== 0xf0 || !mode.bankPrefix.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
       diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.bankPrefix`, message: "bankPrefix must start with F0 and hold bytes 0-255." });
     }
+    const entryFields = ["index", "type", "controller", "colour"];
+    const bankEntry: unknown[] = Array.isArray(mode.bankEntry) ? mode.bankEntry : [];
+    if (!Array.isArray(mode.bankEntry) || bankEntry.length !== entryFields.length || !entryFields.every((field) => bankEntry.filter((f) => f === field).length === 1)) {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.bankEntry`, message: "bankEntry must list index, type, controller and colour, each once." });
+    }
+    const isDataByte = (value: unknown) => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 127;
+    if (!isRecord(mode.bankTypes) || !isDataByte(mode.bankTypes.unipolar) || !isDataByte(mode.bankTypes.bipolar)) {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.bankTypes`, message: "bankTypes needs unipolar and bipolar, each a data byte from 0 to 127." });
+    }
     if (mode.modeButtons !== undefined) {
       if (!Array.isArray(mode.modeButtons)) {
         diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.modeButtons`, message: "modeButtons must be an array." });

@@ -155,6 +155,9 @@ export const LAUNCHPAD_MINI_MK3_MODES: readonly DeviceModeProfile[] = [
       [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x10, 0x00, 0xf7],
     ],
     bankPrefix: [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0d, 0x01, 0x00, 0x00],
+    // Each fader's entry is its index, type (0 unipolar, 1 bipolar), CC and colour, in that order.
+    bankEntry: ["index", "type", "controller", "colour"],
+    bankTypes: { unipolar: 0, bipolar: 1 },
     // In this layout the side buttons send on the DAW port, so these are the DAW-port versions of the side column.
     modeButtons: [
       { controlId: "daw-side-89", mode: "steps" },

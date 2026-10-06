@@ -25,10 +25,17 @@ export interface DeviceModeProfile {
   /** Messages sent to leave the mode. Each is a complete SysEx message, F0 to F7. */
   readonly deactivate: readonly (readonly number[])[];
   /**
-   * The SysEx bytes that open a fader bank message, from F0. The sequencer appends one entry per fader (index, type, CC,
-   * colour), then F7. The bank's orientation byte is the last byte of this prefix.
+   * The SysEx bytes that open a fader bank message, from F0. The sequencer appends one entry per fader, then F7. The
+   * bank's orientation byte is the last byte of this prefix.
    */
   readonly bankPrefix: readonly number[];
+  /**
+   * The values of one fader's entry in a bank message, in the order the device expects (ECS-99). Each field appears
+   * once. The sequencer writes the entries for a bank's faders one after another, after `bankPrefix`.
+   */
+  readonly bankEntry: readonly BankEntryField[];
+  /** The byte a fader's entry carries for a unipolar bank, and for a bipolar one (ECS-99). */
+  readonly bankTypes: { readonly unipolar: number; readonly bipolar: number };
   /**
    * The buttons that switch modes while this mode is active. They are read on this mode's own ports, because the device
    * sends them there in this layout (for the Launchpad, the DAW port, not the main one).
@@ -41,6 +48,12 @@ export interface DeviceModeProfile {
   readonly pageButtons?: DeviceModePageButtons;
   readonly faders: DeviceFaderSet;
 }
+
+/**
+ * A value in one fader's entry of a bank message (ECS-99): the fader's position in its bank (`index`), its type
+ * (`type`, from `bankTypes`), its CC (`controller`), or its colour (`colour`).
+ */
+export type BankEntryField = "index" | "type" | "controller" | "colour";
 
 /** The control ids of a mode's page arrows. Each is optional: a button left out has no binding. */
 export interface DeviceModePageButtons {
