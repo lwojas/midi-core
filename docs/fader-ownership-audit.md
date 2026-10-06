@@ -1,6 +1,6 @@
 # Audit: ownership of the ECS-96 fader work
 
-Status: Final (audit; the moves are follow-up tickets, not made here)
+Status: Closed. The moves are done (ECS-99 to ECS-104). ECS-105, the Launchpad's transport button, is a separate open decision.
 Linear: [ECS-98](https://linear.app/ecs3d/issue/ECS-98/audit-the-ecs-96-fader-work-for-domain-ownership-across-profile-midi)
 Parent: [ECS-96](https://linear.app/ecs3d/issue/ECS-96/explore-driving-the-launchpads-mixer-faders-through-the-daw-fader)
 
