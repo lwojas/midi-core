@@ -49,7 +49,7 @@ Each is a separate ticket with its own scope.
 1. [ECS-99](https://linear.app/ecs3d/issue/ECS-99): profile owns the fader bank entry format (item 1). Done: `bankEntry` and `bankTypes` on the mode.
 2. [ECS-100](https://linear.app/ecs3d/issue/ECS-100): profile declares fader control ids and bank mode ids; remove the naming convention from the sequencer (items 2, 3). Done: `modeId` and `controlIds` on each bank.
 3. [ECS-101](https://linear.app/ecs3d/issue/ECS-101): profile declares the page-turn bank resend (item 5). Done: `resendBankOnPageTurn` on the mode.
-4. [ECS-102](https://linear.app/ecs3d/issue/ECS-102): sequencer contract exposes the device's fader count; webseq drops `FADER_PAGE_SIZE` (item 6).
+4. [ECS-102](https://linear.app/ecs3d/issue/ECS-102): sequencer contract exposes the device's fader count; webseq drops `FADER_PAGE_SIZE` (item 6). Done: `sequencerFaderCount(profile)`, used by webseq.
 5. [ECS-103](https://linear.app/ecs3d/issue/ECS-103): device registry owns the DAW port pairing helper (item 8).
 6. [ECS-104](https://linear.app/ecs3d/issue/ECS-104): fader-mode availability reflects the ports the runtime actually connected (item 4 gap).
 7. [ECS-105](https://linear.app/ecs3d/issue/ECS-105): decide transport's mode button on the Launchpad (see "Also noticed").
