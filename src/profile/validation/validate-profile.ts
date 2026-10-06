@@ -423,6 +423,9 @@ function checkModes(value: unknown, ports: unknown, controlIds: ReadonlySet<stri
     if (!isRecord(mode.bankTypes) || !isDataByte(mode.bankTypes.unipolar) || !isDataByte(mode.bankTypes.bipolar)) {
       diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.bankTypes`, message: "bankTypes needs unipolar and bipolar, each a data byte from 0 to 127." });
     }
+    if (typeof mode.resendBankOnPageTurn !== "boolean") {
+      diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.resendBankOnPageTurn`, message: "resendBankOnPageTurn must be true or false." });
+    }
     if (mode.modeButtons !== undefined) {
       if (!Array.isArray(mode.modeButtons)) {
         diagnostics.push({ severity: "error", code: "invalid-mode", path: `${path}.modeButtons`, message: "modeButtons must be an array." });

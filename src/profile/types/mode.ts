@@ -46,6 +46,11 @@ export interface DeviceModeProfile {
    * application to handle, not navigation: the application owns which tracks the faders show. Read on this mode's ports.
    */
   readonly pageButtons?: DeviceModePageButtons;
+  /**
+   * True when the device forgets its fader setup on a page turn, so the bank is resent before the application moves its
+   * tracks (ECS-101). Each page arrow then sends the bank again. False, the page turn sends nothing to the device.
+   */
+  readonly resendBankOnPageTurn: boolean;
   readonly faders: DeviceFaderSet;
 }
 

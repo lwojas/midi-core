@@ -282,12 +282,14 @@ function pageActionBindings(
     const control = controlId && profile.controls.find((candidate) => candidate.id === controlId);
     const source = control && toMidiSource(control);
     if (!action || !source) continue;
-    // The device keeps its fader setup, so a page turn resends the bank before the application moves its tracks. The
-    // application only sees the page action; the bank message is midi-core's to send.
-    const turn = createAction(action.def, () => {
-      resendBank();
-      action.invoke();
-    });
+    // A device that forgets its fader setup on a page turn (the profile says so) gets the bank resent before the application
+    // moves its tracks. The application only sees the page action; the bank message is midi-core's to send (ECS-101).
+    const turn = mode.resendBankOnPageTurn
+      ? createAction(action.def, () => {
+          resendBank();
+          action.invoke();
+        })
+      : action;
     unbinds.push(bindActionTrigger(input, source, turn));
   }
   return unbinds;

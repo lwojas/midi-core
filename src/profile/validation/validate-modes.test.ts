@@ -120,6 +120,11 @@ describe("validateDeviceProfile: modes (ECS-96)", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({ code: "dangling-control-reference", path: "modes[0].faders.banks[0].controlIds[7]" }));
   });
 
+  it("rejects a page-turn resend flag that is not true or false (ECS-101)", () => {
+    const diagnostics = validateDeviceProfile(withModes([{ ...mixer, resendBankOnPageTurn: "yes" }]));
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "invalid-mode", path: "modes[0].resendBankOnPageTurn" }));
+  });
+
   it("rejects fader controls whose ports the device lacks, since the controls would dangle", () => {
     const profile = { ...LAUNCHPAD_MINI_MK3_PROFILE, ports: LAUNCHPAD_MINI_MK3_PROFILE.ports.filter((port) => !port.id.startsWith("daw-")) };
     expect(validateDeviceProfile(profile).map((d) => d.code)).toContain("dangling-port-reference");

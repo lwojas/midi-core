@@ -168,6 +168,8 @@ export const LAUNCHPAD_MINI_MK3_MODES: readonly DeviceModeProfile[] = [
     ],
     // The arrows on the DAW port: up, down, left and right, as the device sends them in this layout (CC 91-94).
     pageButtons: { pageUp: "daw-top-91", pageDown: "daw-top-92", pageLeft: "daw-top-93", pageRight: "daw-top-94" },
+    // The Launchpad keeps its bank state only until a page turn, so the bank is resent on each (hardware-validation.md).
+    resendBankOnPageTurn: true,
     faders: {
       inputPortId: "daw-in",
       inputChannel: 4,

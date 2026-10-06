@@ -8,7 +8,7 @@ import { MockMidiInput } from "../adapters/mock/mock-input.js";
 import { MockMidiOutput } from "../adapters/mock/mock-output.js";
 import { createMidiInput } from "../core/input/create-midi-input.js";
 import { createMidiOutput } from "../core/output/create-midi-output.js";
-import { LAUNCHPAD_MINI_MK3_PROFILE } from "../profile/devices/launchpad-mini-mk3.js";
+import { LAUNCHPAD_MINI_MK3_MODES, LAUNCHPAD_MINI_MK3_PROFILE } from "../profile/devices/launchpad-mini-mk3.js";
 import { generateControlMappings } from "../surface/generate.js";
 import { createControlSurface } from "../surface/runtime.js";
 import { createSequencerBindings, type SequencerContract } from "./sequencer.js";
@@ -21,7 +21,7 @@ import { createSequencerBindings, type SequencerContract } from "./sequencer.js"
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(" ");
 
-function build() {
+function build(profile: typeof LAUNCHPAD_MINI_MK3_PROFILE = LAUNCHPAD_MINI_MK3_PROFILE) {
   const portInfo = { name: "Launchpad Mini [MK3]", manufacturer: "Novation" };
   const midiIn = new MockMidiInput({ id: "midi-in", type: "input", ...portInfo });
   const midiOut = new MockMidiOutput({ id: "midi-out", type: "output", ...portInfo });
@@ -52,10 +52,10 @@ function build() {
     inputs: { "daw-in": createMidiInput(dawIn) },
     connectedPortIds: ["midi-in", "midi-out", "daw-in", "daw-out"],
   };
-  const { bindings } = createSequencerBindings(createMidiInput(midiIn), LAUNCHPAD_MINI_MK3_PROFILE, contract, devices);
+  const { bindings } = createSequencerBindings(createMidiInput(midiIn), profile, contract, devices);
 
   const surface = createControlSurface({
-    profile: { ...LAUNCHPAD_MINI_MK3_PROFILE, setup: undefined },
+    profile: { ...profile, setup: undefined },
     ports: {
       inputs: { "midi-in": createMidiInput(midiIn), "daw-in": createMidiInput(dawIn) },
       outputs: { "midi-out": createMidiOutput(midiOut), "daw-out": createMidiOutput(dawOut) },
@@ -234,6 +234,19 @@ describe("the mixer fader modes, end to end on the Launchpad", () => {
     expect(pages).toEqual(["right"]);
     const banksAfter = sentMain().filter((message) => message.startsWith("f0 00 20 29 02 0d 01 ")).length;
     expect(banksAfter).toBe(banksBefore + 1);
+    await surface.detach();
+  });
+
+  it("sends no bank on a page turn when the profile says the device keeps its fader setup (ECS-101)", async () => {
+    const profile = { ...LAUNCHPAD_MINI_MK3_PROFILE, modes: LAUNCHPAD_MINI_MK3_MODES.map((mode) => ({ ...mode, resendBankOnPageTurn: false })) };
+    const { surface, pages, sentMain, pressMain, pressDaw } = build(profile);
+    await surface.attach();
+    await pressMain(69);
+    const before = sentMain().length;
+    await pressDaw(94);
+    // The application still turns its tracks; only the device's bank message is left out.
+    expect(pages).toEqual(["right"]);
+    expect(sentMain().slice(before)).toEqual([]);
     await surface.detach();
   });
 });

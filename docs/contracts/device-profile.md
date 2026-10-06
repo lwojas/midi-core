@@ -133,7 +133,9 @@ interface DeviceProfile {
   `bankPrefix` (from F0), then one entry per fader in the order `bankEntry` lists (each of
   `index`, `type`, `controller`, `colour` once), then F7. `bankTypes` gives the `type` byte
   for unipolar and bipolar banks. Optional: `modeButtons` (read on the mode's own ports) and
-  `pageButtons` (the page arrows, as actions for the application).
+  `pageButtons` (the page arrows, as actions for the application). `resendBankOnPageTurn`
+  (required) is true when the device forgets its fader setup on a page turn, so the sequencer
+  resends the bank before the application moves its tracks.
   A fader port must be listed in `requiredPortIds`. A device without the ports has the
   mode unavailable, not an invalid profile.
 - **`layout`** — `DeviceLayout` (ECS-90): which controls play which
