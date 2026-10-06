@@ -2,6 +2,7 @@ import type { MidiPortInfo } from "../core/types/identity.js";
 import { EXAMPLE_GRID_8X8_PROFILE } from "../profile/devices/example-grid-8x8.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { LAUNCHPAD_MINI_MK3_PROFILE } from "../profile/devices/launchpad-mini-mk3.js";
+import { GENERIC_MIDI_DEVICE_PROFILE } from "../profile/generic/device-profile.js";
 
 /**
  * How a device's DAW ports are named, relative to its MIDI pair (ECS-103). The DAW port's name is the MIDI port's name with
@@ -25,8 +26,11 @@ export interface DeviceEntry {
   readonly help: string;
   /** The device profile, including the layout the sequencer uses (ECS-90). */
   readonly profile: DeviceProfile;
-  /** Matches an input port's reported name. Web MIDI often reports no manufacturer, so the name decides. */
-  readonly portName: RegExp;
+  /**
+   * Matches an input port's reported name. Web MIDI often reports no manufacturer, so the name decides. Left out on the
+   * generic entry, which is never found by name (see `resolveDevice`).
+   */
+  readonly portName?: RegExp;
   /** The device's DAW ports, when it has any (ECS-103). A device without them leaves this out. */
   readonly dawPortNames?: DawPortNames;
 }
@@ -50,11 +54,32 @@ export const DEVICE_REGISTRY: readonly DeviceEntry[] = [
   },
 ];
 
+/**
+ * The entry for a device no registry entry names. It uses the generic profile: no layout, no setup, no DAW ports, so the
+ * device connects and its messages can be seen, but nothing is bound to them. Mapping comes later (a MIDI learn step).
+ */
+export const GENERIC_DEVICE: DeviceEntry = {
+  id: GENERIC_MIDI_DEVICE_PROFILE.identity.id,
+  label: `${GENERIC_MIDI_DEVICE_PROFILE.identity.manufacturer} MIDI device`,
+  help: "No device profile matches this input, so it connects generically: no controls are bound yet, and the log shows every message it sends.",
+  profile: GENERIC_MIDI_DEVICE_PROFILE,
+};
+
 /** The registry entry for a connected input port, or `undefined` when no device is known for it. */
 export function findDevice(port: Pick<MidiPortInfo, "name">): DeviceEntry | undefined {
   const { name } = port;
   if (!name) return undefined;
-  return DEVICE_REGISTRY.find((entry) => entry.portName.test(name));
+  return DEVICE_REGISTRY.find((entry) => entry.portName?.test(name));
+}
+
+/** The entry for a connected input port: its registry entry when one names it, otherwise the generic device. */
+export function resolveDevice(port: Pick<MidiPortInfo, "name">): DeviceEntry {
+  return findDevice(port) ?? GENERIC_DEVICE;
+}
+
+/** Whether a device's profile requires an output port. A device that doesn't can connect with its input alone. */
+export function requiresOutput(entry: DeviceEntry): boolean {
+  return entry.profile.ports.some((port) => port.type === "output" && port.required);
 }
 
 /**

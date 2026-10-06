@@ -20,7 +20,8 @@ describe("GENERIC_MIDI_DEVICE_PROFILE", () => {
     }
   });
 
-  it("assumes one full-duplex port pair", () => {
+  it("assumes one port pair, with only the input required", () => {
     expect(GENERIC_MIDI_DEVICE_PROFILE.ports.map((port) => port.type)).toEqual(["input", "output"]);
+    expect(GENERIC_MIDI_DEVICE_PROFILE.ports.map((port) => port.required)).toEqual([true, false]);
   });
 });

@@ -28,10 +28,14 @@ export const GENERIC_MIDI_DEVICE_IDENTITY: DeviceIdentity = {
   model: "Generic MIDI Device",
 };
 
-/** Assumes one full-duplex port pair — the most conservative generic shape — not any vendor-specific port layout. */
+/**
+ * Assumes one port pair, not any vendor-specific port layout. The input is required: it is how the device's messages
+ * reach the app. The output is optional, because many devices only send (a pad controller whose lights are driven by its
+ * own hardware), and nothing in the generic profile needs to send to them.
+ */
 export const GENERIC_MIDI_DEVICE_PORTS: readonly DevicePortProfile[] = [
   { id: "main-in", type: "input", role: "main", required: true, messageTypes: [] },
-  { id: "main-out", type: "output", role: "main", required: true, messageTypes: [] },
+  { id: "main-out", type: "output", role: "main", required: false, messageTypes: [] },
 ];
 
 const GENERIC_MIDI_PROTOCOL_REGISTRY: ReadonlyMap<string, ProtocolFamily> = new Map([
