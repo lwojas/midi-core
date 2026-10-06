@@ -1,3 +1,4 @@
+import { createAction } from "../control-api/action.js";
 import type { Action } from "../control-api/types/action.js";
 import type { MidiInput } from "../core/types/input.js";
 import type { MidiOutput } from "../core/types/output.js";
@@ -253,7 +254,7 @@ function faderModeDefinitions(profile: DeviceProfile, contract: SequencerContrac
           for (const bytes of mode.activate) sendSysEx(send, bytes);
           sendSysEx(send, bankBytes(mode, bank));
           sendSysEx(send, mode.showLayout);
-          pageUnbinds = pageActionBindings(profile, mode, dawInput, actions);
+          pageUnbinds = pageActionBindings(profile, mode, dawInput, actions, () => sendSysEx(send, bankBytes(mode, bank)));
         },
         onExit: () => {
           for (const unbind of pageUnbinds) unbind();
@@ -271,6 +272,7 @@ function pageActionBindings(
   mode: DeviceModeProfile,
   input: MidiInput | undefined,
   actions: NonNullable<SequencerContract["faderActions"]>,
+  resendBank: () => void,
 ): Array<() => void> {
   if (!input || !mode.pageButtons) return [];
   const unbinds: Array<() => void> = [];
@@ -280,7 +282,13 @@ function pageActionBindings(
     const control = controlId && profile.controls.find((candidate) => candidate.id === controlId);
     const source = control && toMidiSource(control);
     if (!action || !source) continue;
-    unbinds.push(bindActionTrigger(input, source, action));
+    // The device keeps its fader setup, so a page turn resends the bank before the application moves its tracks. The
+    // application only sees the page action; the bank message is midi-core's to send.
+    const turn = createAction(action.def, () => {
+      resendBank();
+      action.invoke();
+    });
+    unbinds.push(bindActionTrigger(input, source, turn));
   }
   return unbinds;
 }

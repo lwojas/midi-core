@@ -224,4 +224,16 @@ describe("the mixer fader modes, end to end on the Launchpad", () => {
     expect(surface.navigation.state.gridOffset).toEqual({ row: 0, column: 0 });
     await surface.detach();
   });
+
+  it("resends the bank before the application moves its tracks, so the device's fader setup follows the page (ECS-96)", async () => {
+    const { surface, pages, sentMain, pressMain, pressDaw } = build();
+    await surface.attach();
+    await pressMain(69);
+    const banksBefore = sentMain().filter((message) => message.startsWith("f0 00 20 29 02 0d 01 ")).length;
+    await pressDaw(94);
+    expect(pages).toEqual(["right"]);
+    const banksAfter = sentMain().filter((message) => message.startsWith("f0 00 20 29 02 0d 01 ")).length;
+    expect(banksAfter).toBe(banksBefore + 1);
+    await surface.detach();
+  });
 });
