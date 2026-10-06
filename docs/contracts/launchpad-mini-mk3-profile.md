@@ -72,7 +72,8 @@ tracks eight at a time, and up and down do nothing there.
 `mixer-faders`: the DAW Fader layout, eight faders on `daw-in`/`daw-out` (channel 5 for
 fader moves, channel 6 for fader colour). It needs the DAW ports, so it is unavailable on
 a Launchpad without them. Entering sends DAW mode on, the bank, then the layout; leaving
-sends the Programmer layout and DAW mode off. The bank's CCs are set at runtime.
+sends the Programmer layout and DAW mode off. Each bank's CCs are fixed in the profile
+(volume 80-87, pan 88-95, send 102-109); the sequencer sends the bank to make them live.
 
 ## Deliberately not modeled
 

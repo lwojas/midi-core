@@ -124,11 +124,14 @@ interface DeviceProfile {
   `sendPortId` (the output its messages go to), `requiredPortIds` (the mode exists only
   when all of them are present on the device), `activate` (SysEx sent before the fader
   bank), `showLayout` (SysEx sent after the bank), `deactivate` (SysEx to leave), and
-  `faders` (`count` 1-8, `inputPortId`/`inputChannel` for fader moves,
-  `feedbackPortId`/`feedbackChannel` for fader colour). The fader CCs are set at
-  runtime, per bank, so they are not in the profile. A fader port must be listed in
-  `requiredPortIds`. A device without the ports has the mode unavailable, not an
-  invalid profile.
+  `faders` (`inputPortId`/`inputChannel` for fader moves, `feedbackPortId`/`feedbackChannel`
+  for fader colour, and `banks`). Each bank has `id`, `bipolar`, `colour` (1-127) and
+  `controllers`, one fixed CC per fader (1 to 8). The CCs are in the profile so it can name
+  the fader controls; the sequencer sends the bank to make them live. Optional: `bankPrefix`
+  (the bank message's bytes before its per-fader entries), `modeButtons` (read on the
+  mode's own ports) and `pageButtons` (the page arrows, as actions for the application).
+  A fader port must be listed in `requiredPortIds`. A device without the ports has the
+  mode unavailable, not an invalid profile.
 - **`layout`** — `DeviceLayout` (ECS-90): which controls play which
   sequencer roles, as the profile's default. `modeButtons` is an ordered list of
   `{ controlId, mode }`; `pageUp`/`pageDown`, `pageLeft`/`pageRight` and `transport`
