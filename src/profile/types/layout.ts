@@ -11,6 +11,17 @@ export interface ModeButtonRole {
   readonly controlId: string;
   /** The surface mode this button switches to. */
   readonly mode: string;
+  /**
+   * The same physical button's control id on the device's main input, when `controlId` names a control on a
+   * different port (ECS-126). Some devices can be forced back to their stock input/output pair by the user, outside
+   * any message the surface sees — the Launchpad Mini MK3's Setup-menu combo (hold Session, then the bottom
+   * side-column button) always returns Programmer mode, documented in `docs/hardware-validation.md`. That silently
+   * moves this button's reports from `controlId`'s port back to the main one, so a mode whose own exit control lives
+   * on a different port would otherwise never hear it again. Binding `recoveryControlId` too means the same button's
+   * press still reaches the surface however the device is currently reporting it, resyncing navigation instead of
+   * leaving it stuck on a mode whose own port has gone quiet.
+   */
+  readonly recoveryControlId?: string;
 }
 
 export interface TransportRoles {

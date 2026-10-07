@@ -159,12 +159,17 @@ export const LAUNCHPAD_MINI_MK3_MODES: readonly DeviceModeProfile[] = [
     bankEntry: ["index", "type", "controller", "colour"],
     bankTypes: { unipolar: 0, bipolar: 1 },
     // In this layout the side buttons send on the DAW port, so these are the DAW-port versions of the side column.
+    // Each also names its main-port twin as recoveryControlId (ECS-126): the device's own Setup-menu combo (hold
+    // Session, then the bottom side-column button, side-19 — see docs/hardware-validation.md) always forces
+    // Programmer mode without sending anything the surface can see, which moves these buttons' reports from the DAW
+    // port back to the main one. Binding both means the surface still hears the same button and resyncs its mode,
+    // whichever port the device happens to be reporting it on.
     modeButtons: [
-      { controlId: "daw-side-89", mode: "steps" },
-      { controlId: "daw-side-79", mode: "mixer" },
-      { controlId: "daw-side-69", mode: "faders-volume" },
-      { controlId: "daw-side-59", mode: "faders-pan" },
-      { controlId: "daw-side-49", mode: "faders-send" },
+      { controlId: "daw-side-89", mode: "steps", recoveryControlId: "side-89" },
+      { controlId: "daw-side-79", mode: "mixer", recoveryControlId: "side-79" },
+      { controlId: "daw-side-69", mode: "faders-volume", recoveryControlId: "side-69" },
+      { controlId: "daw-side-59", mode: "faders-pan", recoveryControlId: "side-59" },
+      { controlId: "daw-side-49", mode: "faders-send", recoveryControlId: "side-49" },
     ],
     // The arrows on the DAW port: up, down, left and right, as the device sends them in this layout (CC 91-94).
     pageButtons: { pageUp: "daw-top-91", pageDown: "daw-top-92", pageLeft: "daw-top-93", pageRight: "daw-top-94" },

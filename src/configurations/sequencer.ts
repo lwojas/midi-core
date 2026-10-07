@@ -348,7 +348,16 @@ function faderModeDefinitions(
     let pageUnbinds: Array<() => void> = [];
     const navigation: NavigationBinding[] = (mode.modeButtons ?? [])
       .filter((button) => button.mode !== modeId && reachable.has(button.mode) && hasControl(button.controlId))
-      .map((button) => ({ kind: "navigate", physicalControlId: button.controlId, role: `mode: ${button.mode}`, navigate: { kind: "set-mode", mode: button.mode } }));
+      .flatMap((button): NavigationBinding[] => {
+        const target = { kind: "set-mode", mode: button.mode } as const;
+        const bindings: NavigationBinding[] = [{ kind: "navigate", physicalControlId: button.controlId, role: `mode: ${button.mode}`, navigate: target }];
+        // ECS-126: also bind the button's main-port twin, so a press still reaches the surface after the device's own
+        // Setup-menu combo has silently forced it back to Programmer mode (see recoveryControlId's doc comment).
+        if (button.recoveryControlId && hasControl(button.recoveryControlId)) {
+          bindings.push({ kind: "navigate", physicalControlId: button.recoveryControlId, role: `mode: ${button.mode} (recovery)`, navigate: target });
+        }
+        return bindings;
+      });
     const faders: ControlBinding[] = bank.controllers.map((_, index) => ({
       kind: "control",
       physicalControlId: controlIds[index]!,

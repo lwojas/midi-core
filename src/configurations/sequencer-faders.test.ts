@@ -106,12 +106,28 @@ describe("the fader modes, on a Launchpad with its DAW ports", () => {
       "daw-side-79": "mixer",
       "daw-side-59": "faders-pan",
       "daw-side-49": "faders-send",
+      // ECS-126: each DAW-port exit control's main-port twin, bound to the same target.
+      "side-89": "steps",
+      "side-79": "mixer",
+      "side-59": "faders-pan",
+      "side-49": "faders-send",
     });
 
     const steps = setModeTargets(definitionOf(bindings, "steps").bindings);
     expect(steps["side-69"]).toBe("faders-volume");
     expect(steps["side-59"]).toBe("faders-pan");
     expect(steps["side-49"]).toBe("faders-send");
+  });
+
+  it("resyncs a fader mode from the main side buttons too, so the Setup-menu hardware recovery (ECS-126) isn't a dead end", async () => {
+    // docs/hardware-validation.md: the Launchpad's own Setup-menu combo (hold Session, then the bottom side-column
+    // button) always forces Programmer mode, outside anything the surface can see. That moves the DAW-side exit
+    // buttons' reports from the DAW port back to the main one, so the surface needs to hear them there too.
+    const { devices } = connectedLaunchpad();
+    const { bindings } = createSequencerBindings(input, LAUNCHPAD_MINI_MK3_PROFILE, contract(), devices);
+    const volume = definitionOf(bindings, "faders-volume");
+    const recovery = (volume.bindings ?? []).find((binding) => binding.kind === "navigate" && binding.physicalControlId === "side-89");
+    expect(recovery).toMatchObject({ kind: "navigate", navigate: { kind: "set-mode", mode: "steps" } });
   });
 
   it("sends the mode's activate messages, then the bank, then the layout on enter, and the deactivate messages on exit", async () => {

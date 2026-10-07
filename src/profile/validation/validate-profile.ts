@@ -434,8 +434,17 @@ function checkModes(value: unknown, ports: unknown, controlIds: ReadonlySet<stri
           const buttonPath = `${path}.modeButtons[${buttonIndex}]`;
           if (!isRecord(button) || typeof button.controlId !== "string" || typeof button.mode !== "string") {
             diagnostics.push({ severity: "error", code: "invalid-mode", path: buttonPath, message: "A mode button needs a string controlId and mode." });
-          } else if (!controlIds.has(button.controlId)) {
+            return;
+          }
+          if (!controlIds.has(button.controlId)) {
             diagnostics.push({ severity: "error", code: "dangling-control-reference", path: `${buttonPath}.controlId`, message: `Mode button references control "${button.controlId}", which isn't declared in controls.` });
+          }
+          if (button.recoveryControlId !== undefined) {
+            if (typeof button.recoveryControlId !== "string") {
+              diagnostics.push({ severity: "error", code: "invalid-mode", path: `${buttonPath}.recoveryControlId`, message: "recoveryControlId must be a string when present." });
+            } else if (!controlIds.has(button.recoveryControlId)) {
+              diagnostics.push({ severity: "error", code: "dangling-control-reference", path: `${buttonPath}.recoveryControlId`, message: `Mode button references recovery control "${button.recoveryControlId}", which isn't declared in controls.` });
+            }
           }
         });
       }

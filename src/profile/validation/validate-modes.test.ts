@@ -66,6 +66,18 @@ describe("validateDeviceProfile: modes (ECS-96)", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({ code: "invalid-mode", path: "modes[0].activate[0]" }));
   });
 
+  it("rejects a mode button's recoveryControlId that isn't a declared control (ECS-126)", () => {
+    const diagnostics = validateDeviceProfile(
+      withModes([{ ...mixer, modeButtons: [{ controlId: "daw-side-89", mode: "steps", recoveryControlId: "nope" }] }]),
+    );
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "dangling-control-reference", path: "modes[0].modeButtons[0].recoveryControlId" }));
+  });
+
+  it("accepts a mode button with no recoveryControlId, since it's optional", () => {
+    const diagnostics = validateDeviceProfile(withModes([{ ...mixer, modeButtons: [{ controlId: "daw-side-89", mode: "steps" }] }]));
+    expect(diagnostics).toEqual([]);
+  });
+
   it("rejects a fader bank of more than eight faders", () => {
     const [volume] = mixer.faders.banks;
     const nine = { ...volume!, controllers: [...volume!.controllers, 120] };
