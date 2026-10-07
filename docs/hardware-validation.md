@@ -387,3 +387,102 @@ resend, or the timing of those sends. Not pursued further, to avoid chasing Laun
 **Not built:** pan and send in webseq (it has no controls for them yet); transport on the
 Launchpad (side-69 is the mixer's, and transport has no button until its own ticket).
 
+## ECS-126: DAW mode hardware recovery
+
+Linear: [ECS-126](https://linear.app/ecs3d/issue/ECS-126/ensure-launchpad-daw-mode-has-reliable-hardware-recovery),
+parent [ECS-125](https://linear.app/ecs3d/issue/ECS-125/improve-launchpad-mode-recovery-step-feedback-and-keyboard-transport).
+
+**The question.** Entering the mixer's DAW Fader layout (ECS-96) remaps the physical Session and
+Custom-mode buttons to their DAW functions. Does that leave the user with no reliable way back to
+Programmer/custom control?
+
+### Findings (hardware, this device)
+
+**Layout codes**, confirmed against the manual
+(`midi-profiler/research/novation-launchpad-mini-mk3/programmers-reference-manual.pdf`) and readback
+on hardware:
+
+- `00h`: Session (only selectable in DAW mode)
+- `04h`: Custom mode 1 (Drum Rack by factory default)
+- `05h`: Custom mode 2 (Keys by factory default)
+- `06h`: Custom mode 3 (Lighting mode in Drum Rack layout by factory default)
+- `0Dh`: DAW Faders (only selectable in DAW mode)
+- `7Fh`: Programmer mode
+
+DAW mode (the `10h` SysEx) is a flag separate from layout. Programmer mode can be, and was, reached
+on hardware with the flag still on — the two are independent.
+
+**Raw Live mode (DAW mode off), Session/Custom pressed.** Switching layout this way is silent: zero
+MIDI messages on either port, confirmed with an independent MIDI monitor as well as this project's own
+scripts. Once inside a Custom mode, the side/top-row buttons' addressing is not fixed: one pass
+produced a side-column CC's number back on a *top-row* CC, and a separate stray note-on, the reverse
+mapping on another pass. This matches Custom modes being arbitrary, user-programmable via Novation
+Components (ECS-126 probe: `scripts/launchpad-side-button-probe.mjs`,
+`scripts/launchpad-session-vs-custom-probe.mjs`) — there is no fixed control here midi-core could bind
+an escape to, because the mapping is whatever the loaded Custom mode happens to define, not a firmware
+constant.
+
+**midi-core's own DAW mode (flag on, layout `0D`, as ECS-96 leaves it).** Pressing Session and the
+other side/top-row buttons here produced ordinary CCs on `daw-out`, exactly the already-modeled
+`daw-side-*`/`daw-top-*` addresses — nothing silent, nothing cross-mapped (`scripts/launchpad-daw-session-button-probe.mjs`).
+The DAW mode flag stayed on throughout. The layout itself did drift, from `0D` to `00` (Session) after
+pressing Session, independent of the app's own knowledge — a visual-feedback desync (midi-core keeps
+believing it's showing the fader layout and painting fader LEDs) rather than a lockout, since the exit
+buttons kept reporting normally regardless.
+
+**The documented Setup-menu combo.** The manual: "access it from the setup menu (hold Session, then
+press bottom Scene Launch button)", and separately, the Setup entry "(holding down Session for half a
+second)" is disabled once Programmer mode has been selected via SysEx, "until switched back to Live
+mode." Tested from layout `00` with DAW mode on (`scripts/launchpad-setup-menu-probe.mjs`): hold
+Session (~0.5s+), tap the bottom side-column button (`side-19`, CC 19) — readback confirmed the layout
+flipped to `7F` (Programmer), and the button echoes visibly moved from `DAW Out` to `MIDI Out`. This is
+a firmware-level escape: independent of midi-core's own state, of whatever a Custom mode happens to
+have remapped, and of any SysEx round-trip. It is live exactly when needed (any Live-mode variant) and
+dormant exactly when not (once software selects Programmer mode, the combo disables itself, so it
+can't fight the app once the app is already in control).
+
+### Decision
+
+Acceptance criterion 1 ("DAW mode can always be exited through a reliable exposed hardware
+interaction") is already satisfied by the device's own firmware — the Setup-menu combo above. Nothing
+to build; documented here so it isn't re-investigated.
+
+Acceptance criterion 2 ("Session/Custom controls cannot leave the user permanently trapped in DAW
+mappings") needed one real gap closed: once the Setup-menu combo silently forces Programmer mode on
+the device, the surface's own navigation state can still believe it is in a fader submode, whose exit
+buttons (`daw-side-*`) are scoped to the DAW port — which goes quiet the moment the device leaves the
+DAW Fader layout. Fix: each fader mode's exit button also binds its main-port twin (`side-*`) to the
+same navigation target, so the same physical press reaches the surface however the device currently
+reports it, and navigation resyncs instead of staying stuck.
+
+Not pursued: preventing the Setup-menu combo or Custom-mode entry (not midi-core's to control — it's
+the device's own stock gesture); detecting a silent layout switch (no message exists to detect it);
+software-side forced-recovery UI (ruled out by the ticket's "without ... adding unnecessary UI").
+
+### Implementation
+
+- `ModeButtonRole.recoveryControlId?` (optional, `src/profile/types/layout.ts`): the same physical
+  button's control id on the device's main input.
+- Launchpad profile (`src/profile/devices/launchpad-mini-mk3.ts`): each of the mixer-faders mode's five
+  `modeButtons` entries now also names its `side-*` twin.
+- `faderModeDefinitions` (`src/configurations/sequencer.ts`): binds both `controlId` and, when present
+  and declared, `recoveryControlId`, to the same navigate target.
+- Validation (`src/profile/validation/validate-profile.ts`): `recoveryControlId`, when present, must be
+  a string naming a declared control (`dangling-control-reference`), same as `controlId`.
+- Tests: `src/configurations/sequencer-faders.test.ts` (both controls land in the binding table,
+  targeting the right mode), `src/profile/validation/validate-modes.test.ts` (a dangling
+  `recoveryControlId` is rejected; omitting it is fine).
+- A device without this port duality simply omits `recoveryControlId`; midi-core stays agnostic to the
+  Launchpad's two-port quirk.
+
+### Scripts used for this investigation
+
+- `scripts/launchpad-custom-mode-recovery.mjs` — forces Programmer mode via SysEx from any state; used
+  to reset the device between probes.
+- `scripts/launchpad-setup-menu-probe.mjs` — confirms the Setup-menu combo forces Programmer mode, as
+  documented in the manual.
+- `scripts/launchpad-logo-probe.mjs`, `scripts/launchpad-side-button-probe.mjs`,
+  `scripts/launchpad-session-vs-custom-probe.mjs`, `scripts/launchpad-daw-session-button-probe.mjs` —
+  compared button behaviour across Programmer mode, raw Live-mode Session/Custom, and midi-core's own
+  DAW mode; findings folded into the summary above.
+
