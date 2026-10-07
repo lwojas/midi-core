@@ -20,6 +20,17 @@ export interface TransportRoles {
   readonly clear?: string;
 }
 
+/**
+ * Bank buttons (ECS-114). `previous` and `next` step through the banks; `select` has one button per bank, keyed by the
+ * bank's index (0 = A). A button left out has no binding. A device sends these as a note or a CC; the profile's own
+ * `input` says which, and the application never sees the difference.
+ */
+export interface BankRoles {
+  readonly previous?: string;
+  readonly next?: string;
+  readonly select?: Readonly<Record<number, string>>;
+}
+
 export interface DeviceLayout {
   /** Mode buttons, in order. Each switches the surface to its mode and is available in every mode. */
   readonly modeButtons?: readonly ModeButtonRole[];
@@ -33,4 +44,6 @@ export interface DeviceLayout {
   readonly pageDown?: string;
   /** Transport buttons. A button left out has no binding. */
   readonly transport?: TransportRoles;
+  /** Bank buttons (ECS-114). A device with none has no bank binding. */
+  readonly bank?: BankRoles;
 }

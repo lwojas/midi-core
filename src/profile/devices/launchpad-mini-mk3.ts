@@ -334,6 +334,8 @@ export const LAUNCHPAD_MINI_MK3_LAYOUT: DeviceLayout = {
   pageLeft: "top-93",
   pageRight: "top-94",
   transport: { play: "side-59", stop: "side-49", record: "side-39", clear: "side-29" },
+  // ECS-114: the four top-row buttons after the arrows (CC 95-98) select banks A-D. They're free in every layout here.
+  bank: { select: { 0: "top-95", 1: "top-96", 2: "top-97", 3: "top-98" } },
 };
 
 

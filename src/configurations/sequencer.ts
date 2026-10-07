@@ -8,7 +8,7 @@ import type { DeviceLayout } from "../profile/types/layout.js";
 import type { ControlGrid } from "../profile/types/grid.js";
 import { bindActionTrigger } from "../surface/action-binding.js";
 import { toMidiSource } from "../surface/generate.js";
-import type { ControlBinding, ModeBinding, NavigationBinding, SurfaceBindingTable, SurfaceModeDefinition } from "../surface/types/bindings.js";
+import type { ControlBinding, ModeBinding, NavigationBinding, SurfaceBindingTable, SurfaceModeDefinition, SurfaceModeHooks } from "../surface/types/bindings.js";
 import type { MidiSource, RgbColour } from "../mapping/types/address.js";
 import type { GridOffset } from "../surface/types/navigation.js";
 
@@ -34,14 +34,26 @@ export interface SequencerContract {
    */
   readonly faderActions?: { readonly pageUp?: Action; readonly pageDown?: Action; readonly pageLeft?: Action; readonly pageRight?: Action };
   /**
-   * Application control per fader, keyed by bank id (ECS-96). `{index}` is filled with the fader's position in its bank,
-   * 0 to 7, left to right. The application decides which track a position means, so its controls can page with the
-   * mixer. A bank with no template has no bindings, and its mode still shows the layout.
+   * Application control per fader, keyed by a fader mode's bank id (ECS-96): `volume`, `pan`, `send` on the Launchpad.
+   * That key names the mode's group of CCs, not a group of application tracks; the application's own banks (A-D) are
+   * `bankActions` and `bankControl` (ECS-114). `{index}` is filled with the fader's position in its bank, 0 to 7, left to
+   * right. The application decides which track a position means, so its controls can page with the mixer. A bank with no
+   * template has no bindings, and its mode still shows the layout.
    */
   readonly faderTemplates?: Readonly<Record<string, string>>;
   /**
-   * The lit colours of steps and track mutes on an RGB device (ECS-95). Left out, each takes its default
-   * (`DEFAULT_SEQUENCER_COLOURS`): steps blue, mutes red. A device without RGB ignores them.
+   * Actions for the application's own banks (ECS-114): previous and next step through them, and `select[n]` selects bank
+   * n (0 = A). The device's button for each comes from its profile's `layout.bank`. An action left out has no binding.
+   */
+  readonly bankActions?: { readonly previous?: Action; readonly next?: Action; readonly select?: Readonly<Record<number, Action>> };
+  /**
+   * Application control (a number) holding the active bank, 0 to 3 (ECS-114). A `select` button is lit while its own bank
+   * is the active one, so the device shows where it is. Left out, the select buttons are not lit.
+   */
+  readonly bankControl?: string;
+  /**
+   * The lit colours of steps, track mutes and bank buttons on an RGB device (ECS-95, ECS-114). Left out, each takes its
+   * default (`DEFAULT_SEQUENCER_COLOURS`): steps blue, mutes red, banks green. A device without RGB ignores them.
    */
   readonly colours?: Partial<SequencerColours>;
 }
@@ -49,13 +61,32 @@ export interface SequencerContract {
 export interface SequencerColours {
   readonly steps: RgbColour;
   readonly mutes: RgbColour;
+  /** The colour of the lit bank select button (ECS-114). */
+  readonly banks: RgbColour;
 }
 
-/** The colours a sequencer uses when its contract names none: a lit step is blue, a muted track red (ECS-95). */
+/** The colours a sequencer uses when its contract names none: a lit step is blue, a muted track red (ECS-95), a lit bank green (ECS-114). */
 export const DEFAULT_SEQUENCER_COLOURS: SequencerColours = {
   steps: { red: 0, green: 0, blue: 127 },
   mutes: { red: 127, green: 0, blue: 0 },
+  banks: { red: 0, green: 127, blue: 0 },
 };
+
+const bankLetter = (index: number) => String.fromCharCode("A".charCodeAt(0) + index);
+
+/** Runs several mode hook sets as one: each set's `onEnter` in order, then each set's `onExit` in order (ECS-114). */
+function joinHooks(...sets: Array<SurfaceModeHooks | undefined>): SurfaceModeHooks | undefined {
+  const present = sets.filter((hooks): hooks is SurfaceModeHooks => hooks !== undefined);
+  if (present.length === 0) return undefined;
+  return {
+    onEnter: async () => {
+      for (const hooks of present) await hooks.onEnter?.();
+    },
+    onExit: async () => {
+      for (const hooks of present) await hooks.onExit?.();
+    },
+  };
+}
 
 /**
  * The device ports the mixer's fader modes need (ECS-96). `outputs` and `inputs` are the ports the application has, by profile
@@ -107,7 +138,53 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   const grid: ControlGrid | undefined = profile.grids?.find((candidate) => candidate.paging);
   if (!grid) unresolved.push("step grid (a grid with paging)");
 
-  const faderModes = devices ? faderModeDefinitions(profile, contract, devices) : [];
+  // Bank buttons (ECS-114): previous, next, and one select button per bank. Their presses are triggers bound on the device
+  // input while each mode is shown, as transport's are, and each select button shows the active bank as an indicator.
+  const bankRoles = layout.bank ?? {};
+  const bankTriggers: Array<{ source: MidiSource; action: Action }> = [];
+  const bindBankAction = (role: string, controlId: string | undefined, action: Action | undefined) => {
+    if (controlId === undefined || !action) return;
+    const control = profile.controls.find((candidate) => candidate.id === controlId);
+    const source = control && toMidiSource(control);
+    if (!source) {
+      unresolved.push(`bank: ${role} (control ${controlId})`);
+      return;
+    }
+    bankTriggers.push({ source, action });
+  };
+  bindBankAction("previous", bankRoles.previous, contract.bankActions?.previous);
+  bindBankAction("next", bankRoles.next, contract.bankActions?.next);
+  for (const [index, controlId] of Object.entries(bankRoles.select ?? {})) {
+    bindBankAction(`select ${bankLetter(Number(index))}`, controlId, contract.bankActions?.select?.[Number(index)]);
+  }
+  const bankControl = contract.bankControl;
+  const bankIndicators: ModeBinding[] =
+    bankControl === undefined
+      ? []
+      : Object.entries(bankRoles.select ?? {}).map(([index, controlId]): ModeBinding => ({
+          kind: "indicator",
+          physicalControlId: controlId,
+          role: `bank ${bankLetter(Number(index))} lit`,
+          resolve: { kind: "static", controlId: bankControl },
+          lit: Number(index),
+          colour: colours.banks,
+        }));
+  // Each mode gets its own bank hooks, bound and unbound as the mode is entered and left, the way transport's are.
+  const bankHooks = (): SurfaceModeHooks | undefined => {
+    if (bankTriggers.length === 0) return undefined;
+    let unbinds: Array<() => void> = [];
+    return {
+      onEnter: () => {
+        unbinds = bankTriggers.map(({ source, action }) => bindActionTrigger(input, source, action));
+      },
+      onExit: () => {
+        for (const unbind of unbinds) unbind();
+        unbinds = [];
+      },
+    };
+  };
+
+  const faderModes = devices ? faderModeDefinitions(profile, contract, devices, { bankIndicators, bankHooks }) : [];
   const faderModeIds = new Set(faderModes.map((definition) => definition.mode));
   const declaredFaderModeIds = new Set((profile.modes ?? []).flatMap((mode) => mode.faders.banks.map((bank) => bank.modeId)));
 
@@ -205,20 +282,33 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   let transportUnbinds: Array<() => void> = [];
 
   const bindings: SurfaceBindingTable = [
-    { mode: "steps", bindings: [...modeBindings, ...stepPages, ...stepBindings], activateOn: { scope: "step" } },
-    { mode: "mixer", bindings: [...modeBindings, ...mixerPages, ...muteBindings], activateOn: { scope: "track" } },
+    {
+      mode: "steps",
+      bindings: [...modeBindings, ...stepPages, ...stepBindings, ...bankIndicators],
+      hooks: joinHooks(bankHooks()),
+      activateOn: { scope: "step" },
+    },
+    {
+      mode: "mixer",
+      bindings: [...modeBindings, ...mixerPages, ...muteBindings, ...bankIndicators],
+      hooks: joinHooks(bankHooks()),
+      activateOn: { scope: "track" },
+    },
     {
       mode: "transport",
-      bindings: modeBindings.filter((binding) => !transportControlIds.has(binding.physicalControlId)),
-      hooks: {
-        onEnter: () => {
-          transportUnbinds = transportSources.map(({ source, action }) => bindActionTrigger(input, source, action));
+      bindings: [...modeBindings.filter((binding) => !transportControlIds.has(binding.physicalControlId)), ...bankIndicators],
+      hooks: joinHooks(
+        {
+          onEnter: () => {
+            transportUnbinds = transportSources.map(({ source, action }) => bindActionTrigger(input, source, action));
+          },
+          onExit: () => {
+            for (const unbind of transportUnbinds) unbind();
+            transportUnbinds = [];
+          },
         },
-        onExit: () => {
-          for (const unbind of transportUnbinds) unbind();
-          transportUnbinds = [];
-        },
-      },
+        bankHooks(),
+      ),
     },
     ...faderModes,
   ];
@@ -227,7 +317,12 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
 }
 
 /** The fader mode for each bank the device can run (ECS-96). A mode exists only for a bank the application has a template for, on a device with the mode's ports. */
-function faderModeDefinitions(profile: DeviceProfile, contract: SequencerContract, devices: SequencerDevices): SurfaceModeDefinition[] {
+function faderModeDefinitions(
+  profile: DeviceProfile,
+  contract: SequencerContract,
+  devices: SequencerDevices,
+  shared: { bankIndicators: readonly ModeBinding[]; bankHooks: () => SurfaceModeHooks | undefined },
+): SurfaceModeDefinition[] {
   const actions = contract.faderActions ?? {};
   const hasControl = (controlId: string) => profile.controls.some((control) => control.id === controlId);
   const banks = (profile.modes ?? []).flatMap((mode) => {
@@ -257,23 +352,26 @@ function faderModeDefinitions(profile: DeviceProfile, contract: SequencerContrac
     }));
     return {
       mode: modeId,
-      bindings: [...navigation, ...faders],
+      bindings: [...navigation, ...faders, ...shared.bankIndicators],
       // The surface refuses to enter this mode while one of its ports isn't connected (ECS-104).
       requiredPortIds: mode.requiredPortIds,
-      hooks: {
-        // The layout shows only banks already set up, so the bank goes before the layout.
-        onEnter: () => {
-          for (const bytes of mode.activate) sendSysEx(send, bytes);
-          sendSysEx(send, bankBytes(mode, bank));
-          sendSysEx(send, mode.showLayout);
-          pageUnbinds = pageActionBindings(profile, mode, dawInput, actions, () => sendSysEx(send, bankBytes(mode, bank)));
+      hooks: joinHooks(
+        {
+          // The layout shows only banks already set up, so the bank goes before the layout.
+          onEnter: () => {
+            for (const bytes of mode.activate) sendSysEx(send, bytes);
+            sendSysEx(send, bankBytes(mode, bank));
+            sendSysEx(send, mode.showLayout);
+            pageUnbinds = pageActionBindings(profile, mode, dawInput, actions, () => sendSysEx(send, bankBytes(mode, bank)));
+          },
+          onExit: () => {
+            for (const unbind of pageUnbinds) unbind();
+            pageUnbinds = [];
+            for (const bytes of mode.deactivate) sendSysEx(send, bytes);
+          },
         },
-        onExit: () => {
-          for (const unbind of pageUnbinds) unbind();
-          pageUnbinds = [];
-          for (const bytes of mode.deactivate) sendSysEx(send, bytes);
-        },
-      },
+        shared.bankHooks(),
+      ),
     };
   });
 }

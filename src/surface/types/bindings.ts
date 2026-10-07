@@ -126,8 +126,22 @@ export interface WindowedControlBinding extends ModeBindingBase {
   readonly rowCountControl?: string;
 }
 
-/** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, or a window onto a grid of controls. */
-export type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding;
+/**
+ * A button that shows whether the application is at one value (ECS-114): lit while the number control `resolve` names holds
+ * `lit`, dark otherwise. It only sends feedback. The button's own presses are bound elsewhere (a bank action), so a press
+ * never writes this control. Painted on enter and cleared on exit, like any LED.
+ */
+export interface IndicatorBinding extends ModeBindingBase {
+  readonly kind: "indicator";
+  readonly resolve: ControlIdResolution;
+  /** The control value that lights the button. */
+  readonly lit: number;
+  /** The colour the LED shows while lit, on an RGB LED (ECS-95). Omitted means white. */
+  readonly colour?: RgbColour;
+}
+
+/** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, a window onto a grid of controls, or an indicator of one value. */
+export type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding | IndicatorBinding;
 
 /**
  * The two genuine escape valves a declarative `bindings` list can't

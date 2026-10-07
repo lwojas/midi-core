@@ -1,5 +1,5 @@
 import { createAction } from "../control-api/action.js";
-import type { BooleanControlDef, Control, ControlDef, ControlValue } from "../control-api/types/control.js";
+import type { BooleanControlDef, Control, ControlDef, ControlValue, NumericControlDef } from "../control-api/types/control.js";
 import type { SurfaceContext } from "../control-api/types/context.js";
 import type { ControlRegistry } from "../control-api/types/registry.js";
 import type { Unsubscribe } from "../core/types/discovery.js";
@@ -16,6 +16,7 @@ import { resolveControlId } from "./types/bindings.js";
 import type {
   ControlBinding,
   ControlPress,
+  IndicatorBinding,
   ModeBinding,
   NavigationBinding,
   SurfaceBindingTable,
@@ -60,6 +61,10 @@ function isNavigationBinding(binding: ModeBinding): binding is NavigationBinding
 
 function isWindowedBinding(binding: ModeBinding): binding is WindowedControlBinding {
   return binding.kind === "window";
+}
+
+function isIndicatorBinding(binding: ModeBinding): binding is IndicatorBinding {
+  return binding.kind === "indicator";
 }
 
 /**
@@ -235,6 +240,26 @@ export async function bindSurfaceMode(
     );
     unsubscribes.push(handle.unsubscribe);
     if (handle.painter) painters.push(handle.painter);
+  }
+
+  // An indicator lights its button while its number control holds the binding's value (ECS-114). Feedback only: nothing is
+  // bound from the button, so a press never writes the control.
+  for (const binding of bindings.filter(isIndicatorBinding)) {
+    const physical = deps.profile.controls.find((candidate) => candidate.id === binding.physicalControlId);
+    const target = physical && toMidiTarget(physical);
+    const output = physical && deps.ports.outputs[physical.feedbackPortId ?? physical.portId];
+    const controlId = resolveControlId(binding.resolve, deps.context);
+    const control = controlId !== undefined ? deps.registry.getControl(controlId) : undefined;
+    if (!physical || !target || !output || !control || control.def.kind !== "number") continue;
+
+    const number = control as Control<NumericControlDef>;
+    const def: BooleanControlDef = { id: `indicator.${binding.physicalControlId}`, label: physical.label, kind: "boolean", default: false };
+    const send = (on: boolean) => {
+      const message = buildFeedbackMessage(target, def, on, binding.colour);
+      if (message !== undefined) output.send(message);
+    };
+    unsubscribes.push(number.onChange((value) => send(value === binding.lit)));
+    painters.push({ paint: () => send(number.getValue() === binding.lit), clear: () => send(false) });
   }
 
   const navigation = deps.navigation;

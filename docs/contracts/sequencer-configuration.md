@@ -17,8 +17,30 @@ doc comments.
   An arrow left out has no binding. The configuration resends the bank before the application's action runs.
 - **`faderTemplates`** — `Record<bankId, string>`. The application control for each fader in a bank, where
   `{index}` is the fader's position in its bank, 0 to 7, left to right. A bank with no template has no fader mode,
-  and its mode button is not shown on that device.
-- **`colours`** — `Partial<{ steps, mutes }>` (ECS-95). Left out, each takes `DEFAULT_SEQUENCER_COLOURS`.
+  and its mode button is not shown on that device. The key is a fader mode's bank id (`volume`, `pan`, `send`), a
+  group of CCs on the device. It is not an application bank: the application's own banks A-D are `bankActions` and
+  `bankControl` (ECS-114).
+- **`colours`** — `Partial<{ steps, mutes, banks }>` (ECS-95, ECS-114). Left out, each takes `DEFAULT_SEQUENCER_COLOURS`.
+
+## Bank buttons (ECS-114)
+
+The application's banks (A-D, 16 tracks each) are chosen with buttons the device maps itself. Each profile says which
+of its controls is which, in `layout.bank`, and midi-core binds them whatever the wire format: a note on one device, a
+CC on another.
+
+- **`layout.bank`** — `{ previous?, next?, select?: Record<bankIndex, controlId> }`. `select` has one button per bank,
+  keyed by its index (0 = A).
+- **`bankActions`** — `{ previous?, next?, select?: Record<bankIndex, Action> }`, the application's side. An action
+  left out has no binding.
+- **`bankControl`** — the application control (a number, 0 to 3) holding the active bank. A `select` button is lit while
+  its own bank is active. Left out, no button is lit.
+
+Bank buttons are bound in every mode (steps, mixer, transport and each fader mode), on the device's main input, as
+transport buttons are: each mode binds them on enter and unbinds them on leave. A press writes no control: the bank
+change is the application's, through its action. The lit state is an `indicator` binding, which sends feedback only.
+A button's profile control must have `feedback` to be lit.
+
+The Launchpad's `select` buttons are the top-row buttons CC 95-98 (banks A-D). They are free in every layout.
 
 ## Fader count (ECS-102)
 
