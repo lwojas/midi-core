@@ -9,6 +9,8 @@ import type { MidiSource, MidiTarget, RgbColour } from "../mapping/types/address
 import type { ControlMapping } from "../mapping/types/mapping.js";
 import { bindControlMapping } from "../mapping/bind.js";
 import { buildFeedbackMessage } from "../mapping/value.js";
+import type { PhysicalControl } from "../profile/types/control.js";
+import type { GridCell } from "../profile/types/grid.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActionTrigger } from "./action-binding.js";
 import { toMidiSource, toMidiTarget } from "./generate.js";
@@ -155,6 +157,143 @@ function fillTemplate(template: string, row: number, column: number): string {
     .join(String(row + 1));
 }
 
+/**
+ * A `"toggle"` window cell whose LED composes more than its own control's on/off (ECS-127, ECS-131), in place of
+ * `bindToggle`'s plain single-colour feedback: the cell's own `template` control (active, full `colour`), an
+ * earlier active cell's duration reaching this one on the current page (continuation, `continuationColour`), and
+ * the shared playhead column (always painted last, so it's the one thing never obscured by the other two). A
+ * press still only ever toggles this cell's own `template` control — duration and the playhead are feedback-only
+ * signals this cell merely reads, the same "a press never writes a control it doesn't own" rule `IndicatorBinding`
+ * and the bank-select buttons already follow.
+ *
+ * Re-subscribes its predecessor and playhead controls on every navigation change, since a page turn changes which
+ * application controls those virtual positions actually name — the same reason `createWindowedControl` retargets
+ * its own control on `navigation.onChange()`.
+ */
+function bindStepFeedback(
+  binding: WindowedControlBinding,
+  physical: PhysicalControl,
+  cell: GridCell,
+  deps: BindSurfaceModeDeps,
+  navigation: SurfaceNavigation,
+  input: MidiInput,
+  source: MidiSource,
+): { unsubscribe: Unsubscribe; painter?: FeedbackPainter } {
+  const ownDef: BooleanControlDef = { id: `window.${binding.gridId}.${cell.row}.${cell.column}`, label: physical.label, kind: "boolean", default: false };
+  const own = createWindowedControl(
+    ownDef,
+    () => {
+      const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
+      const [row, column] = windowPosition(binding, cell, offset);
+      const control = deps.registry.getControl(fillTemplate(binding.template, row, column));
+      return control?.def.kind === "boolean" ? (control as Control<BooleanControlDef>) : undefined;
+    },
+    navigation,
+  );
+  const pressAction = createAction({ id: `toggle.${ownDef.id}`, label: physical.label }, () => own.setValue(!own.getValue()));
+  const unbindPress = bindActionTrigger(input, source, pressAction);
+
+  const target = toMidiTarget(physical);
+  const output = target ? deps.ports.outputs[physical.feedbackPortId ?? physical.portId] : undefined;
+  if (!target || !output) {
+    return {
+      unsubscribe: () => {
+        unbindPress();
+        own.dispose();
+      },
+    };
+  }
+
+  const send = (on: boolean, colour: RgbColour | undefined) => {
+    const message = buildFeedbackMessage(target, ownDef, on, colour);
+    if (message !== undefined) output.send(message);
+  };
+
+  /** The active/duration controls one page-relative physical `column` to the left names, at this cell's row. */
+  const predecessorAt = (physicalColumn: number): { active?: Control<BooleanControlDef>; duration?: Control<NumericControlDef> } => {
+    const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
+    const [row, column] = windowPosition(binding, { row: cell.row, column: physicalColumn }, offset);
+    const active = deps.registry.getControl(fillTemplate(binding.template, row, column));
+    const duration = binding.durationTemplate !== undefined ? deps.registry.getControl(fillTemplate(binding.durationTemplate, row, column)) : undefined;
+    return {
+      active: active?.def.kind === "boolean" ? (active as Control<BooleanControlDef>) : undefined,
+      duration: duration?.def.kind === "number" ? (duration as Control<NumericControlDef>) : undefined,
+    };
+  };
+
+  const paint = () => {
+    const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
+    const [, column] = windowPosition(binding, cell, offset);
+
+    if (binding.playheadControl !== undefined) {
+      const playhead = deps.registry.getControl(binding.playheadControl);
+      if (playhead?.def.kind === "number" && (playhead as Control<NumericControlDef>).getValue() === column) {
+        send(true, binding.playheadColour);
+        return;
+      }
+    }
+
+    if (own.getValue()) {
+      send(true, binding.colour);
+      return;
+    }
+
+    if (binding.durationTemplate !== undefined) {
+      // Nearest predecessor first: an overlapping earlier span still reads as "this cell is covered" either way,
+      // but checking from the closest one out keeps the scan proportional to the distance that actually matters.
+      for (let j = cell.column - 1; j >= 0; j--) {
+        const { active, duration } = predecessorAt(j);
+        if (active?.getValue() === true && duration !== undefined && duration.getValue() > cell.column - j) {
+          send(true, binding.continuationColour);
+          return;
+        }
+      }
+    }
+
+    send(false, undefined);
+  };
+
+  let predecessorUnsubscribes: Unsubscribe[] = [];
+  let playheadUnsubscribe: Unsubscribe | undefined;
+  const resubscribe = () => {
+    for (const unsubscribe of predecessorUnsubscribes) unsubscribe();
+    predecessorUnsubscribes = [];
+    playheadUnsubscribe?.();
+    playheadUnsubscribe = undefined;
+
+    if (binding.durationTemplate !== undefined) {
+      for (let j = 0; j < cell.column; j++) {
+        const { active, duration } = predecessorAt(j);
+        if (active) predecessorUnsubscribes.push(active.onChange(paint));
+        if (duration) predecessorUnsubscribes.push(duration.onChange(paint));
+      }
+    }
+    if (binding.playheadControl !== undefined) {
+      const playhead = deps.registry.getControl(binding.playheadControl);
+      if (playhead) playheadUnsubscribe = playhead.onChange(paint);
+    }
+  };
+
+  resubscribe();
+  const unbindOwn = own.onChange(paint);
+  const unbindNavigation = navigation.onChange(() => {
+    resubscribe();
+    paint();
+  });
+
+  return {
+    unsubscribe: () => {
+      unbindPress();
+      unbindOwn();
+      unbindNavigation();
+      for (const unsubscribe of predecessorUnsubscribes) unsubscribe();
+      playheadUnsubscribe?.();
+      own.dispose();
+    },
+    painter: { paint, clear: () => send(false, undefined) },
+  };
+}
+
 function painterFor(
   target: MidiTarget,
   control: Control<ControlDef>,
@@ -286,6 +425,15 @@ export async function bindSurfaceMode(
     const source = physical && toMidiSource(physical);
     const input = physical && deps.ports.inputs[physical.portId];
     if (!navigation || !physical || !grid || !cell || !source || !input) continue;
+
+    // ECS-127 / ECS-131: a toggle step carrying duration and/or playhead feedback owns its LED alone, composing all
+    // three signals into one colour rather than racing a second, independent feedback path against the same pad.
+    if (binding.press === "toggle" && (binding.durationTemplate !== undefined || binding.playheadControl !== undefined)) {
+      const handle = bindStepFeedback(binding, physical, cell, deps, navigation, input, source);
+      unsubscribes.push(handle.unsubscribe);
+      if (handle.painter) painters.push(handle.painter);
+      continue;
+    }
 
     const def: BooleanControlDef = {
       id: `window.${binding.gridId}.${cell.row}.${cell.column}`,

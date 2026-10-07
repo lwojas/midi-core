@@ -124,6 +124,34 @@ export interface WindowedControlBinding extends ModeBindingBase {
    * Paging stops at the first row and at the last window that still shows the last row. Omitted means no upper bound.
    */
   readonly rowCountControl?: string;
+  /**
+   * An application control (a number) holding how many cells this step's duration spans, at the same virtual
+   * position `template` names — `{row}`/`{column}` fill the same way (ECS-127). A cell whose own `template`
+   * control is off, but which falls within a nearer active cell's span, is a continuation of that cell rather than
+   * a step of its own: painted `continuationColour` instead of `colour`, so a one-bar note's pads read as one
+   * occupied span rather than several independent ones. The scan for a covering cell is bounded to this binding's
+   * own row on the *current page*: a duration whose owning step is on an earlier, now-unpaged page is not
+   * reconstructed from off-page state, by design (no pattern or sequencer data is duplicated here to make that
+   * possible). Omitted, no duration feedback: the window behaves exactly as it did before ECS-127. Only takes
+   * effect on a `"toggle"`-press window — a `"hold"` window ignores it, since nothing yet needs continuation
+   * feedback on a held control.
+   */
+  readonly durationTemplate?: string;
+  /** The colour a continuation cell shows (ECS-127), in place of `colour`. Meaningless without `durationTemplate`. */
+  readonly continuationColour?: RgbColour;
+  /**
+   * An application control (a number) holding the virtual column currently playing (ECS-131) — compared against
+   * every cell this binding covers, regardless of the cell's row, so a whole page of tracks scans together as
+   * playback moves through time. A value matching no cell on the current page (e.g. a sentinel the application
+   * sets when stopped) lights nothing: that *is* this binding's stopped state, with no separate "is playing" flag
+   * to check and no second, hardware-side clock driving it — the pad only ever follows this control's own changes.
+   * Painted over `colour`/`continuationColour` at the matching column, so the playhead is always the one thing
+   * visible there. Omitted, no playhead feedback: the window behaves exactly as it did before ECS-131. Only takes
+   * effect on a `"toggle"`-press window, for the same reason `durationTemplate` does.
+   */
+  readonly playheadControl?: string;
+  /** The colour the playhead's cell shows (ECS-131), overriding every other colour this binding would paint there. Meaningless without `playheadControl`. */
+  readonly playheadColour?: RgbColour;
 }
 
 /**

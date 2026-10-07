@@ -90,6 +90,30 @@ second one) against that pad's declared feedback address.
   decision for whichever ticket first needs playhead feedback driven
   declaratively (ECS-77 or later), not invented here to keep this
   ticket's scope to what it was asked to demonstrate.
+
+  **Resolved by ECS-131, and not with this primitive.** The sequencer's
+  playhead ended up as an extension of `WindowedControlBinding`
+  (`durationTemplate`'s sibling fields `playheadControl`/
+  `playheadColour`, `src/surface/types/bindings.ts`) rather than a third,
+  event-driven `ModeBinding` kind built on `bindEventFeedback()`. Two
+  concrete requirements this ticket's one-hardcoded-step demo didn't have
+  to meet forced that: "leave a sensible stopped state" and "resume
+  reflecting the actual transport position on re-entry" both need a
+  *paintable* current value on mode entry, which a pure one-shot
+  `SurfaceEvent` (nothing retained, per `createSurfaceEventSource()`)
+  can't supply without a second, parallel "last known position" cache.
+  Modeling the playhead's column as a plain numeric application control
+  instead reuses the paint-on-enter/clear-on-exit machinery every other
+  feedback-bearing binding already has, for free. It also sidesteps a
+  real hazard `bindEventFeedback()` would have reintroduced here: ECS-127
+  (duration continuation pads) and the playhead both light the *same*
+  pad, and two independent feedback paths racing to send the last word to
+  one LED is exactly the kind of bug a single owner avoids — see
+  `bindStepFeedback()` in `src/surface/bindings.ts`, which composes both
+  into one colour per pad instead. `bindEventFeedback()` itself is
+  unchanged and still available for a genuinely momentary occurrence with
+  nothing to read back (a one-shot trigger flash); the playhead turned
+  out not to be that case.
 - **No transport button feedback** — buttons stay input-only; nothing
   in this ticket's required proof set (track volume, transport
   *status*, active steps, playhead) needed a button LED, so none was

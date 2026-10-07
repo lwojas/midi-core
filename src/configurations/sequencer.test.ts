@@ -104,6 +104,60 @@ describe("createSequencerBindings on the Launchpad", () => {
     expect(bindingsOf(bindings, "mixer").find((binding) => binding.kind === "window")).toMatchObject({ colour: { red: 0, green: 127, blue: 0 } });
   });
 
+  it("shows no duration or playhead feedback when the contract names neither (ECS-127, ECS-131)", () => {
+    const windows = bindingsOf(table, "steps").filter((binding) => binding.kind === "window");
+    for (const window of windows) {
+      expect(window).not.toHaveProperty("durationTemplate");
+      expect(window).not.toHaveProperty("playheadControl");
+    }
+  });
+
+  it("carries a duration template and a dimmed continuation colour on every step when the contract names one (ECS-127)", () => {
+    const { bindings } = createSequencerBindings(input, launchpad.profile, { ...contract(), stepDurationTemplate: "step.{row}.{column}.duration" });
+    const windows = bindingsOf(bindings, "steps").filter((binding) => binding.kind === "window");
+    expect(windows).toHaveLength(64);
+    for (const window of windows) {
+      expect(window).toMatchObject({ durationTemplate: "step.{row}.{column}.duration", continuationColour: { red: 0, green: 0, blue: 32 } });
+    }
+    // Mutes never show duration feedback: only steps have a per-step duration.
+    for (const mute of bindingsOf(bindings, "mixer").filter((binding) => binding.kind === "window")) {
+      expect(mute).not.toHaveProperty("durationTemplate");
+    }
+  });
+
+  it("dims whatever colour the app names for steps, not a fixed default (ECS-127)", () => {
+    const { bindings } = createSequencerBindings(input, launchpad.profile, {
+      ...contract(),
+      stepDurationTemplate: "step.{row}.{column}.duration",
+      colours: { steps: { red: 100, green: 0, blue: 0 } },
+    });
+    const window = bindingsOf(bindings, "steps").find((binding) => binding.kind === "window");
+    expect(window).toMatchObject({ colour: { red: 100, green: 0, blue: 0 }, continuationColour: { red: 25, green: 0, blue: 0 } });
+  });
+
+  it("carries a playhead control and the playhead colour on every step when the contract names one (ECS-131)", () => {
+    const { bindings } = createSequencerBindings(input, launchpad.profile, { ...contract(), playheadControl: "transport.playhead" });
+    const windows = bindingsOf(bindings, "steps").filter((binding) => binding.kind === "window");
+    expect(windows).toHaveLength(64);
+    for (const window of windows) {
+      expect(window).toMatchObject({ playheadControl: "transport.playhead", playheadColour: { red: 127, green: 127, blue: 127 } });
+    }
+    // Mutes never show the playhead: it only moves through time steps, not tracks.
+    for (const mute of bindingsOf(bindings, "mixer").filter((binding) => binding.kind === "window")) {
+      expect(mute).not.toHaveProperty("playheadControl");
+    }
+  });
+
+  it("takes the playhead colour the app names in its contract (ECS-131)", () => {
+    const { bindings } = createSequencerBindings(input, launchpad.profile, {
+      ...contract(),
+      playheadControl: "transport.playhead",
+      colours: { playhead: { red: 127, green: 127, blue: 0 } },
+    });
+    const window = bindingsOf(bindings, "steps").find((binding) => binding.kind === "window");
+    expect(window).toMatchObject({ playheadColour: { red: 127, green: 127, blue: 0 } });
+  });
+
   it("transport sits on the side column, clear of the arrows", () => {
     expect(launchpadLayout.transport).toEqual({ play: "side-59", stop: "side-49", record: "side-39", clear: "side-29" });
     expect(launchpadLayout.pageUp).toBe("top-91");

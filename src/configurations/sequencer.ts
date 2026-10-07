@@ -52,10 +52,25 @@ export interface SequencerContract {
    */
   readonly bankControl?: string;
   /**
-   * The lit colours of steps, track mutes and bank buttons on an RGB device (ECS-95, ECS-114). Left out, each takes its
-   * default (`DEFAULT_SEQUENCER_COLOURS`): steps blue, mutes red, banks green. A device without RGB ignores them.
+   * The lit colours of steps, track mutes, bank buttons and the playhead on an RGB device (ECS-95, ECS-114, ECS-131).
+   * Left out, each takes its default (`DEFAULT_SEQUENCER_COLOURS`): steps blue, mutes red, banks green, playhead
+   * white. A device without RGB ignores them. A step's duration continuation pads (ECS-127) are not configured here:
+   * they're always a dimmed `steps`, so they read as part of the same note however `steps` itself is set.
    */
   readonly colours?: Partial<SequencerColours>;
+  /**
+   * Application control (a number) holding a step's duration, in steps, at the same virtual position `stepTemplate`
+   * names — `{row}`/`{column}` fill the same way (ECS-127). Omitted, steps show no duration feedback: every active
+   * step lights exactly one pad, as before this ticket.
+   */
+  readonly stepDurationTemplate?: string;
+  /**
+   * Application control (a number) holding the virtual column currently playing (ECS-131), matched against every
+   * step regardless of its track row, so a whole page of tracks shows the same moving column. A value matching no
+   * step on the current page (e.g. a sentinel the application sets while stopped) lights nothing — the sequencer's
+   * own responsibility, not a flag this contract tracks. Omitted, steps show no playhead feedback.
+   */
+  readonly playheadControl?: string;
 }
 
 export interface SequencerColours {
@@ -63,14 +78,24 @@ export interface SequencerColours {
   readonly mutes: RgbColour;
   /** The colour of the lit bank select button (ECS-114). */
   readonly banks: RgbColour;
+  /** The colour of the playhead's pad (ECS-131), overriding every other colour a step would otherwise show there. */
+  readonly playhead: RgbColour;
 }
 
-/** The colours a sequencer uses when its contract names none: a lit step is blue, a muted track red (ECS-95), a lit bank green (ECS-114). */
+/** The colours a sequencer uses when its contract names none: a lit step is blue, a muted track red (ECS-95), a lit bank green (ECS-114), the playhead white (ECS-131). */
 export const DEFAULT_SEQUENCER_COLOURS: SequencerColours = {
   steps: { red: 0, green: 0, blue: 127 },
   mutes: { red: 127, green: 0, blue: 0 },
   banks: { red: 0, green: 127, blue: 0 },
+  playhead: { red: 127, green: 127, blue: 127 },
 };
+
+/** How much a step's own colour dims for a duration continuation pad (ECS-127): a quarter intensity reads as clearly part of the same note, never mistaken for an active step. */
+const CONTINUATION_DIM_FACTOR = 0.25;
+
+function dimColour(colour: RgbColour, factor: number): RgbColour {
+  return { red: Math.round(colour.red * factor), green: Math.round(colour.green * factor), blue: Math.round(colour.blue * factor) };
+}
 
 const bankLetter = (index: number) => String.fromCharCode("A".charCodeAt(0) + index);
 
@@ -245,6 +270,10 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         columnCountControl: contract.lengthControl,
         rowCountControl: contract.trackCountControl,
         colour: colours.steps,
+        ...(contract.stepDurationTemplate !== undefined
+          ? { durationTemplate: contract.stepDurationTemplate, continuationColour: dimColour(colours.steps, CONTINUATION_DIM_FACTOR) }
+          : {}),
+        ...(contract.playheadControl !== undefined ? { playheadControl: contract.playheadControl, playheadColour: colours.playhead } : {}),
       }))
     : [];
 
