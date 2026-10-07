@@ -35,7 +35,8 @@ CC on another.
 - **`bankControl`** — the application control (a number, 0 to 3) holding the active bank. A `select` button is lit while
   its own bank is active. Left out, no button is lit.
 
-Bank buttons are bound in every mode (steps, mixer, transport and each fader mode), on the device's main input, as
+Bank buttons are bound in every mode (steps, mixer, transport and each fader mode), on the input their control is on (the
+main input, or the DAW input for a fader layout's arrows, which need `SequencerDevices.inputs`), as
 transport buttons are: each mode binds them on enter and unbinds them on leave. A press writes no control: the bank
 change is the application's, through its action. The lit state is an `indicator` binding, which sends feedback only.
 A button's profile control must have `feedback` to be lit.

@@ -141,16 +141,21 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   // Bank buttons (ECS-114): previous, next, and one select button per bank. Their presses are triggers bound on the device
   // input while each mode is shown, as transport's are, and each select button shows the active bank as an indicator.
   const bankRoles = layout.bank ?? {};
-  const bankTriggers: Array<{ source: MidiSource; action: Action }> = [];
+  // A bank button is bound on the input its control is on: the main input for most, but a fader layout's arrows arrive on the
+  // DAW input (ECS-114). A profile without a main input declared binds everything on the main input.
+  const mainInputPortId = profile.ports?.find((port) => port.type === "input" && port.role === "main")?.id;
+  const inputFor = (portId: string) => (mainInputPortId === undefined || portId === mainInputPortId ? input : devices?.inputs[portId]);
+  const bankTriggers: Array<{ input: MidiInput; source: MidiSource; action: Action }> = [];
   const bindBankAction = (role: string, controlId: string | undefined, action: Action | undefined) => {
     if (controlId === undefined || !action) return;
     const control = profile.controls.find((candidate) => candidate.id === controlId);
     const source = control && toMidiSource(control);
-    if (!source) {
+    const triggerInput = control && inputFor(control.portId);
+    if (!source || !triggerInput) {
       unresolved.push(`bank: ${role} (control ${controlId})`);
       return;
     }
-    bankTriggers.push({ source, action });
+    bankTriggers.push({ input: triggerInput, source, action });
   };
   bindBankAction("previous", bankRoles.previous, contract.bankActions?.previous);
   bindBankAction("next", bankRoles.next, contract.bankActions?.next);
@@ -175,7 +180,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
     let unbinds: Array<() => void> = [];
     return {
       onEnter: () => {
-        unbinds = bankTriggers.map(({ source, action }) => bindActionTrigger(input, source, action));
+        unbinds = bankTriggers.map(({ input: triggerInput, source, action }) => bindActionTrigger(triggerInput, source, action));
       },
       onExit: () => {
         for (const unbind of unbinds) unbind();
