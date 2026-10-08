@@ -4,6 +4,7 @@ import { createMidiInput } from "../core/input/create-midi-input.js";
 import { MockMidiInput } from "../adapters/mock/mock-input.js";
 import { DEVICE_REGISTRY, findDevice, type DeviceEntry } from "../devices/registry.js";
 import { EXAMPLE_GRID_8X8_PROFILE } from "../profile/devices/example-grid-8x8.js";
+import { PUSH_MK1_PROFILE } from "../profile/devices/push-mk1.js";
 import { validateDeviceProfile } from "../profile/validation/validate-profile.js";
 import type { ModeBinding, SurfaceBindingTable } from "../surface/types/bindings.js";
 import type { DeviceLayout } from "../profile/types/layout.js";
@@ -191,6 +192,50 @@ describe("createSequencerBindings on the example grid", () => {
   it("binds its page buttons to the grid's paging", () => {
     const pages = bindingsOf(table, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page");
     expect(pages.map((binding) => binding.physicalControlId)).toEqual(["button-page-left", "button-page-right"]);
+  });
+});
+
+describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, no Push-specific code in this module)", () => {
+  const push = DEVICE_REGISTRY.find((entry) => entry.id === PUSH_MK1_PROFILE.identity.id) as DeviceEntry;
+  const { bindings: table, unresolved } = createSequencerBindings(input, push.profile, contract());
+
+  it("validates its profile, and resolves every role its layout actually names", () => {
+    expect(validateDeviceProfile(PUSH_MK1_PROFILE)).toEqual([]);
+    expect(unresolved).toEqual([]);
+  });
+
+  it("builds the same three modes, switched by Note/Session/Stop Clip rather than any Launchpad-specific control", () => {
+    expect(table.map((definition) => definition.mode)).toEqual(["steps", "mixer", "transport"]);
+    const modeButtons = bindingsOf(table, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode");
+    expect(modeButtons.map((binding) => binding.physicalControlId)).toEqual(["button-note", "button-session", "button-stop-clip"]);
+  });
+
+  it("windows its own 8x8 pad grid onto the sequence, and mutes from the grid's top row (notes 92-99)", () => {
+    const windows = bindingsOf(table, "steps").filter((binding) => binding.kind === "window");
+    expect(windows).toHaveLength(64);
+    expect(windows.every((binding) => binding.kind === "window" && binding.gridId === "pads")).toBe(true);
+    const mutes = bindingsOf(table, "mixer").filter((binding) => binding.kind === "window");
+    expect(mutes.map((binding) => binding.physicalControlId)).toEqual(["pad-92", "pad-93", "pad-94", "pad-95", "pad-96", "pad-97", "pad-98", "pad-99"]);
+  });
+
+  it("pages with the dedicated Arrow buttons", () => {
+    const pages = bindingsOf(table, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page");
+    expect(pages.map((binding) => binding.physicalControlId)).toEqual(["button-arrow-up", "button-arrow-down", "button-arrow-left", "button-arrow-right"]);
+  });
+
+  it("reaches transport mode via Stop Clip, and builds it from Play/Record alone: Stop/Clear have no assigned action button and are silently absent, not reported", () => {
+    expect(push.profile.layout?.transport).toEqual({ play: "button-play", record: "button-record" });
+    const toTransport = bindingsOf(table, "steps").find(
+      (binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode" && binding.navigate.mode === "transport",
+    );
+    expect(toTransport?.physicalControlId).toBe("button-stop-clip");
+    expect(table.find((definition) => definition.mode === "transport")?.hooks).toBeDefined();
+  });
+
+  it("has no bank role: bank buttons/indicators are simply absent, with nothing to report", () => {
+    expect(push.profile.layout?.bank).toBeUndefined();
+    const indicators = bindingsOf(table, "steps").filter((binding) => binding.kind === "indicator");
+    expect(indicators).toHaveLength(0);
   });
 });
 

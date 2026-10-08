@@ -52,6 +52,12 @@ describe("findDevice", () => {
     expect(findDevice({ name: "Launchpad Mini [MK3] MIDI Out" })).toBe(launchpad);
   });
 
+  it("recognises the Push mk1 by its User Port's name, but not its Live Port (a different, unmodeled protocol)", () => {
+    const push = DEVICE_REGISTRY.find((entry) => entry.id === "ableton.push-mk1")!;
+    expect(findDevice({ name: "Ableton Push User Port" })).toBe(push);
+    expect(findDevice({ name: "Ableton Push Live Port" })).toBeUndefined();
+  });
+
   it("returns entries whose DAW names are declared on their own, not inherited", () => {
     const declared = DEVICE_REGISTRY.filter((entry: DeviceEntry) => entry.dawPortNames !== undefined);
     expect(declared.map((entry) => entry.id)).toEqual(["novation.launchpad-mini-mk3"]);

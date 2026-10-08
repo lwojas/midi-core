@@ -1,0 +1,284 @@
+import type { PhysicalControl } from "../types/control.js";
+import type { ControlGrid } from "../types/grid.js";
+import type { DeviceIdentity } from "../types/identity.js";
+import type { DeviceLayout } from "../types/layout.js";
+import type { DevicePortProfile } from "../types/port.js";
+import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "../types/profile.js";
+import type { DeviceSysExProfile } from "../types/sysex.js";
+
+/**
+ * ECS-91: this project's second real-device `DeviceProfile` — the Ableton
+ * Push 1 (Mk1), chosen per ECS-79's own criteria against the Launchpad Mini
+ * MK3: it differs in periphery (encoders, a touch strip, an LCD, utility
+ * buttons laid out around an 8x8 grid rather than a top row/side column),
+ * not grid size, which is enough to exercise the role-based configuration
+ * path (ECS-90) against controls the Launchpad doesn't have.
+ *
+ * Transcribed, not hand-authored: every id/address/label below reproduces
+ * midi-profiler's generated document exactly (`profiles/push-mk1/generate-
+ * input.json` in that repo, `profiles/push-mk1/report.json` — zero
+ * validation diagnostics), re-expressed as generator functions the same
+ * way `launchpad-mini-mk3.ts` already does.
+ *
+ * **Round 2 correction**: about half the "Bottom & Layout Selection
+ * Blocks"/"Right Column" button labels in midi-profiler's original research
+ * doc turned out to be wrong (it looks conflated with Push 2's layout in
+ * places) — caught when this profile's first `layout` used CC 58/59 for
+ * "Note"/"Session" and a live hardware check (`scripts/push-mk1-live.mjs`)
+ * showed CC 58 actually printed "Scales". Every label in that doc section
+ * was re-checked by lighting one CC at a time and reading what's actually
+ * printed on it; see `research/push-mk1/verification/VERIFICATION.md`'s
+ * "Round 2" section (midi-profiler repo) for the full table. The real
+ * Note/Session pair is CC 50/51, not 58/59 — CC 59 is the hardcoded
+ * Live/User mode toggle, not a normal button.
+ *
+ * **Two things this profile deliberately does not model, both from
+ * midi-profiler's own `unresolved` list**:
+ * - **No `setup`.** Unlike the Launchpad, there's no verified Device
+ *   Inquiry reply for this device, and User Mode itself is a physical
+ *   toggle (the User button), not a SysEx switch this profile can safely
+ *   automate — the one documented SysEx that forces it (`sysex-mapping.md`
+ *   section 3) was deliberately never sent during verification, to avoid
+ *   dropping the port mid-session. Automating an unverified mode-forcing
+ *   command on every `attach()` would be inventing a handshake this
+ *   project has no evidence actually works, so it's left out; the device
+ *   must already be in User Mode (User button held) before connecting.
+ * - **No `modes`.** No DAW Fader-style layout is documented for Push 1's
+ *   User Mode the way the Launchpad's DAW port has one — only the single
+ *   `user-port-in`/`user-port-out` pair this profile addresses.
+ *
+ * **`layout` is a usage default, not a hardware fact** (same disclaimer
+ * `launchpad-mini-mk3.ts` makes about its own): Push 1 doesn't have
+ * dedicated "mode" buttons the way the Launchpad's side column does, so
+ * `Note`/`Session` (CC 50/51, confirmed by hands-on reading, not the doc's
+ * original wrong CC 58/59) — real buttons, functionally generic to this
+ * surface — were chosen to stand in for the sequencer's `steps`/`mixer`
+ * modes, and the
+ * dedicated `Arrow` buttons for paging. `transport.stop`/`transport.clear`
+ * have no assigned button: nothing in either research doc documents a
+ * dedicated Stop or Clear button, so those roles are left unresolved
+ * rather than guessed at.
+ */
+
+export const PUSH_MK1_IDENTITY: DeviceIdentity = {
+  id: "ableton.push-mk1",
+  manufacturer: "Ableton",
+  model: "Push",
+};
+
+/**
+ * Only the User Port is modeled: the device's other port pair ("Ableton Push Live Port") runs Ableton's own internal
+ * Live control-surface protocol, which neither research doc covers and which is out of scope for a User Mode profile.
+ */
+export const PUSH_MK1_PORTS: readonly DevicePortProfile[] = [
+  {
+    id: "user-port-in",
+    type: "input",
+    role: "main",
+    required: true,
+    messageTypes: ["note-on", "note-off", "control-change", "poly-pressure", "channel-pressure", "pitch-bend", "sysex"],
+  },
+  {
+    id: "user-port-out",
+    type: "output",
+    role: "main",
+    required: true,
+    messageTypes: ["note-on", "note-off", "control-change", "sysex"],
+  },
+];
+
+/** The 8 parameter encoders plus Master, Swing and Tempo: each a CC (relative turn) and a Note (capacitive touch). */
+const ENCODERS = [
+  { id: "encoder-1", label: "Encoder 1 (leftmost)", cc: 71, touchNote: 0 },
+  { id: "encoder-2", label: "Encoder 2", cc: 72, touchNote: 1 },
+  { id: "encoder-3", label: "Encoder 3", cc: 73, touchNote: 2 },
+  { id: "encoder-4", label: "Encoder 4", cc: 74, touchNote: 3 },
+  { id: "encoder-5", label: "Encoder 5", cc: 75, touchNote: 4 },
+  { id: "encoder-6", label: "Encoder 6", cc: 76, touchNote: 5 },
+  { id: "encoder-7", label: "Encoder 7", cc: 77, touchNote: 6 },
+  { id: "encoder-8", label: "Encoder 8", cc: 78, touchNote: 7 },
+  { id: "encoder-master", label: "Master Encoder (rightmost)", cc: 79, touchNote: 8 },
+  { id: "encoder-swing", label: "Swing Encoder", cc: 15, touchNote: 9 },
+  { id: "encoder-tempo", label: "Tempo Encoder", cc: 14, touchNote: 10 },
+] as const;
+
+export const PUSH_MK1_ENCODERS: readonly PhysicalControl[] = ENCODERS.flatMap(({ id, label, cc, touchNote }) => [
+  {
+    id,
+    label: `${label} (CC ${cc}, relative turn)`,
+    kind: "encoder",
+    portId: "user-port-in",
+    input: { address: { type: "control-change", controller: cc }, channel: 0 },
+    valueMode: "relative",
+  },
+  {
+    id: `${id}-touch`,
+    label: `${label} touch (Note ${touchNote})`,
+    kind: "button",
+    portId: "user-port-in",
+    input: { address: { type: "note", note: touchNote }, channel: 0 },
+  },
+]);
+
+/** The touch strip: a pitch-bend wheel plus its own capacitive tap (Note 12), independent of the bend stream. */
+export const PUSH_MK1_TOUCH_STRIP: readonly PhysicalControl[] = [
+  {
+    id: "touch-strip",
+    label: "Touch strip (pitch bend)",
+    kind: "wheel",
+    portId: "user-port-in",
+    input: { address: { type: "pitch-bend" }, channel: 0 },
+  },
+  {
+    id: "touch-strip-tap",
+    label: "Touch strip tap (Note 12)",
+    kind: "button",
+    portId: "user-port-in",
+    input: { address: { type: "note", note: 12 }, channel: 0 },
+  },
+];
+
+/** Bottom-left-origin, row-major note numbering (notes 36-99): row 0 (bottom) is 36-43, row 7 (top) is 92-99. */
+function padControl(rowFromBottom: number, column: number): PhysicalControl {
+  const note = 36 + rowFromBottom * 8 + column;
+  return {
+    id: `pad-${note}`,
+    label: `Pad (note ${note})`,
+    kind: "pad",
+    portId: "user-port-in",
+    input: { address: { type: "note", note }, channel: 0 },
+    feedback: { kind: "velocity-color-led", address: { address: { type: "note", note }, channel: 0 }, paletteSize: 128 },
+    feedbackPortId: "user-port-out",
+  };
+}
+
+export const PUSH_MK1_PADS: readonly PhysicalControl[] = Array.from({ length: 8 }, (_, rowFromBottom) => rowFromBottom).flatMap((rowFromBottom) =>
+  Array.from({ length: 8 }, (_, column) => padControl(rowFromBottom, column)),
+);
+
+/** Utility, navigation and mode-select buttons: all CC-addressed, with simple on/off LED feedback (no documented color palette, unlike the pads). */
+const UTILITY_BUTTONS = [
+  ["display-1", "Display row button 1 (above screen, leftmost)", 20],
+  ["display-2", "Display row button 2", 21],
+  ["display-3", "Display row button 3", 22],
+  ["display-4", "Display row button 4", 23],
+  ["display-5", "Display row button 5", 24],
+  ["display-6", "Display row button 6", 25],
+  ["display-7", "Display row button 7", 26],
+  ["display-8", "Display row button 8 (above screen, rightmost)", 27],
+  ["upper-1", "Upper control row button 1 (leftmost)", 102],
+  ["upper-2", "Upper control row button 2", 103],
+  ["upper-3", "Upper control row button 3", 104],
+  ["upper-4", "Upper control row button 4", 105],
+  ["upper-5", "Upper control row button 5", 106],
+  ["upper-6", "Upper control row button 6", 107],
+  ["upper-7", "Upper control row button 7", 108],
+  ["upper-8", "Upper control row button 8 (rightmost)", 109],
+  ["tap-tempo", "Tap Tempo", 3],
+  ["metronome", "Metronome", 9],
+  ["master", "Master", 28],
+  ["stop-clip", "Stop", 29], // doc said "Stop Clip"; actually prints "Stop" (round 2)
+  ["shift", "Shift", 49], // doc said "Mute" (wrong); actually "Shift" (round 2)
+  ["note", "Note", 50], // doc said "Solo" (wrong); actually the REAL "Note" button (round 2)
+  ["session", "Session", 51], // doc said "Record Arm" (wrong); actually the REAL "Session" button (round 2)
+  ["arrow-up", "Arrow Up", 46],
+  ["arrow-down", "Arrow Down", 47],
+  ["arrow-left", "Arrow Left", 44],
+  ["arrow-right", "Arrow Right", 45],
+  ["select", "Select", 34], // unconfirmed in round 2 -- different doc section, not re-checked
+  ["shift-nav", "Shift", 35], // unconfirmed in round 2; distinct id from the confirmed CC 49 "Shift" -- can't both be right
+  ["play", "Play", 85],
+  ["record", "Record", 86],
+  ["new", "New", 87],
+  ["duplicate", "Duplicate", 88],
+  ["automation", "Automation", 89],
+  ["fixed-length", "Fixed Length", 90],
+  ["volume", "Volume", 114],
+  ["pan-send", "Pan / Send", 115],
+  ["devices", "Devices", 110], // doc said "Device"; actually "Devices" (round 2)
+  ["browse", "Browse", 111],
+  ["track", "Track", 112], // doc said "Clip" (wrong); actually the REAL "Track" button (round 2)
+  ["scales", "Scales", 58], // doc said "Note" (wrong); actually "Scales" (round 2)
+  // REMOVED: the doc's CC 116 "Track" claim -- unconfirmed, and redundant with the real Track at CC 112.
+  // REMOVED: the doc's CC 59 "Session" claim -- that's the hardcoded User-mode toggle (round 2), not a normal
+  // mappable button; same control the doc separately (and correctly) called "hardcoded, unmappable".
+] as const;
+
+export const PUSH_MK1_UTILITY_BUTTONS: readonly PhysicalControl[] = UTILITY_BUTTONS.map(([id, label, cc]) => ({
+  id: `button-${id}`,
+  label: `${label} (CC ${cc})`,
+  kind: "button",
+  portId: "user-port-in",
+  input: { address: { type: "control-change", controller: cc }, channel: 0 },
+  feedback: { kind: "monochrome-led", address: { address: { type: "control-change", controller: cc }, channel: 0 } },
+  feedbackPortId: "user-port-out",
+}));
+
+/** 129 controls total: 11 encoders + 11 touch notes, the touch strip + its tap, 64 pads, 41 utility/nav/mode buttons. */
+export const PUSH_MK1_CONTROLS: readonly PhysicalControl[] = [
+  ...PUSH_MK1_ENCODERS,
+  ...PUSH_MK1_TOUCH_STRIP,
+  ...PUSH_MK1_PADS,
+  ...PUSH_MK1_UTILITY_BUTTONS,
+];
+
+export const PUSH_MK1_PAD_GRID: ControlGrid = {
+  id: "pads",
+  label: "8x8 pad grid",
+  rows: 8,
+  columns: 8,
+  cells: PUSH_MK1_PADS.map((pad, index) => {
+    const rowFromBottom = Math.floor(index / 8);
+    const column = index % 8;
+    return { row: 7 - rowFromBottom, column, controlId: pad.id }; // row 0 = top, matching the Launchpad's own convention
+  }),
+  paging: { rows: 8, columns: 8 },
+};
+
+/**
+ * Vendor SysEx (F0 47 7F ...) is used for the LCD text display and global configuration (aftertouch mode, Live/User
+ * mode force) -- confirmed hands-on for the display and the aftertouch-mode toggle. Normal pad/button/encoder
+ * operation doesn't depend on any of it; the LCD is the only feedback with no Note/CC alternative, and this profile
+ * doesn't model text-display feedback as a `PhysicalControl` (there's no control kind for a multi-line text display).
+ */
+export const PUSH_MK1_SYSEX: DeviceSysExProfile = {
+  manufacturerId: [0x47, 0x7f],
+  required: false,
+  notes:
+    "F0 47 7F 15 {line} 00 45 00 [68 ASCII bytes] F7 rewrites one of the 4 LCD lines (confirmed hands-on). " +
+    "F0 47 7F 15 5C 00 01 {00|01} F7 forces polyphonic/monophonic aftertouch (confirmed hands-on). " +
+    "F0 47 7F 15 62 00 01 {00|01} F7 forces Live/User mode (documented, not sent during verification).",
+};
+
+/**
+ * ECS-90: the sequencer's roles on this device. `Note`/`Session` (CC 50/51, round-2-corrected -- see the file doc
+ * comment above) stand in for steps/mixer mode; the dedicated Arrow buttons page; Play/Record cover two of the four
+ * transport actions. `Stop` (CC 29, otherwise unused) is the transport mode's own switch -- without a button naming
+ * it, "transport" mode is built by
+ * `createSequencerBindings` but unreachable, so Play/Record could never actually fire (found during the ECS-91 live
+ * hardware check: a raw Play press decoded fine but the app's action never triggered, since nothing had switched the
+ * surface into transport mode). No bank roles: nothing documented on this device groups buttons into bank select
+ * A-D the way the Launchpad's top row does.
+ */
+export const PUSH_MK1_LAYOUT: DeviceLayout = {
+  modeButtons: [
+    { controlId: "button-note", mode: "steps" },
+    { controlId: "button-session", mode: "mixer" },
+    { controlId: "button-stop-clip", mode: "transport" },
+  ],
+  pageUp: "button-arrow-up",
+  pageDown: "button-arrow-down",
+  pageLeft: "button-arrow-left",
+  pageRight: "button-arrow-right",
+  transport: { play: "button-play", record: "button-record" },
+};
+
+export const PUSH_MK1_PROFILE: DeviceProfile = {
+  schemaVersion: DEVICE_PROFILE_SCHEMA_VERSION,
+  identity: PUSH_MK1_IDENTITY,
+  ports: PUSH_MK1_PORTS,
+  controls: PUSH_MK1_CONTROLS,
+  grids: [PUSH_MK1_PAD_GRID],
+  sysex: PUSH_MK1_SYSEX,
+  layout: PUSH_MK1_LAYOUT,
+};

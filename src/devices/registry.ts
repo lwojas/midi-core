@@ -2,6 +2,7 @@ import type { MidiPortInfo } from "../core/types/identity.js";
 import { EXAMPLE_GRID_8X8_PROFILE } from "../profile/devices/example-grid-8x8.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { LAUNCHPAD_MINI_MK3_PROFILE } from "../profile/devices/launchpad-mini-mk3.js";
+import { PUSH_MK1_PROFILE } from "../profile/devices/push-mk1.js";
 import { GENERIC_MIDI_DEVICE_PROFILE } from "../profile/generic/device-profile.js";
 
 /**
@@ -44,6 +45,18 @@ export const DEVICE_REGISTRY: readonly DeviceEntry[] = [
     portName: /launchpad mini (\[mk3\]|mk3)/i,
     profile: LAUNCHPAD_MINI_MK3_PROFILE,
     dawPortNames: { input: { from: "MIDI Out", to: "DAW Out" }, output: { from: "MIDI In", to: "DAW In" } },
+  },
+  {
+    id: PUSH_MK1_PROFILE.identity.id,
+    label: `${PUSH_MK1_PROFILE.identity.manufacturer} ${PUSH_MK1_PROFILE.identity.model}`,
+    help:
+      "Push 1 (User Mode, User button held): Note/Session switch steps/mixer, Stop switches to transport. " +
+      "Steps: the 8x8 grid is the selected pattern (rows are tracks, columns are beats); the Arrow buttons page. " +
+      "Mixer: the top pad row mutes tracks. Transport: Play/Record are bound; Stop/Clear have no dedicated button.",
+    // Matches only the User Port, not the Live Port: this profile models User Mode's note/CC addressing, which the
+    // Live Port doesn't speak (Ableton's own internal Live control-surface protocol, out of scope here).
+    portName: /ableton push.*user port/i,
+    profile: PUSH_MK1_PROFILE,
   },
   {
     id: EXAMPLE_GRID_8X8_PROFILE.identity.id,
