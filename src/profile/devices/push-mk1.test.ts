@@ -7,11 +7,11 @@ describe("PUSH_MK1_PROFILE", () => {
     expect(validateDeviceProfile(PUSH_MK1_PROFILE)).toEqual([]);
   });
 
-  it("has 11 encoders (22 controls: a CC and a touch-note each), 64 pads, 41 utility/nav/mode buttons: 129 controls", () => {
+  it("has 11 encoders (22 controls: a CC and a touch-note each), 64 pads, 39 utility/nav/mode buttons: 127 controls", () => {
     expect(PUSH_MK1_ENCODERS).toHaveLength(22);
     expect(PUSH_MK1_PADS).toHaveLength(64);
-    expect(PUSH_MK1_UTILITY_BUTTONS).toHaveLength(41);
-    expect(PUSH_MK1_CONTROLS).toHaveLength(129);
+    expect(PUSH_MK1_UTILITY_BUTTONS).toHaveLength(39);
+    expect(PUSH_MK1_CONTROLS).toHaveLength(127);
   });
 
   it("every control id is unique", () => {

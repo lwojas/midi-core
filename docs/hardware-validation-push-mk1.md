@@ -103,16 +103,76 @@ noted here rather than chased — not clear whether it's software (a timing
 window in the playhead poll) or hardware (a dropped message), and there's
 nothing to act on from a single, non-reproducing occurrence.
 
+## ECS-136 gate verification: Shift disambiguation and relative-encoder resolution (2026-10-09)
+
+[ECS-136](https://linear.app/ecs3d/issue/ECS-136/define-minimum-midi-contract-extensions-and-review-architecture)'s
+architecture proposal listed two hardware-unverified "remaining decisions"
+blocking its review gate. Both resolved live on this unit, using
+[`scripts/push-mk1-contract-probe.mjs`](../scripts/push-mk1-contract-probe.mjs)
+(see [docs/hardware-verification-methodology.md](./hardware-verification-methodology.md)
+for the reusable technique — identify a control via its own feedback, wait
+for a quiet period rather than a countdown, one action per run).
+
+**F8: `button-shift` (CC 49) is the only real Shift button; `button-select`
+(CC 34) and the doc's second "Shift" (CC 35) do not exist on this unit
+(fixed in the profile).** `midi-usermode-mapping.md`'s "Right Side
+Navigation Pad" section (CC 34 "Select", CC 35 "Shift") was never
+re-checked in Round 2 — only the "Bottom & Layout Selection Blocks" and
+"Right Column Master Utilities" sections were. Lighting CC 34 and CC 35 in
+turn (`shift34`/`shift35` steps) produced no visible LED anywhere on the
+device, across three independent runs; lighting CC 49 reliably lit a
+button that pressed back as CC 49, twice. Independent cross-check:
+midi-profiler's own `AbletonPushUserModeHack.png` diagram (used to correct
+the Round 2 CCs) shows the nav-pad diamond as exactly four buttons (CC
+44/45/46/47, up/down/left/right) with no Select/Shift pair beside it —
+consistent with the same Push-2-layout-conflation pattern Round 2 already
+found and fixed in two other sections of this doc. `button-select` and
+`button-shift-nav` are removed from `push-mk1.ts` (129 → 127 controls);
+`button-shift` (CC 49) is the real, only Shift/modifier control.
+
+**F9: relative encoders use signed 7-bit two's-complement deltas, confirmed
+on Encoder 1 (CC 71).** Turning clockwise produced raw CC values `1` (and
+occasionally `2` on a faster turn); counter-clockwise produced `127`, `126`,
+`125`, down to `124` on a faster turn — i.e. `value < 64 ? value :
+value - 128`, a small signed delta per detent, not an offset-from-64
+("binary offset") scheme centered on a resting value. Only Encoder 1 was
+independently turned under this methodology; the other 10 encoders (same
+physical component family — see `push-mk1.ts`'s `ENCODERS` table) are
+assumed, not independently confirmed, to share this encoding.
+
+**Two contract-level questions from ECS-136, resolved by reading code, not
+hardware:**
+- `NumericControlDef` (`src/control-api/types/control.ts`) already carries
+  plain `min`/`max`/`step` numbers — sufficient for a relative-delta mapper
+  to do `clamp(current + decode(raw), min, max)` with no new fields.
+- `DeviceSysExProfile` (`src/profile/types/sysex.ts`) models no byte
+  template today — only `manufacturerId`, `required`, and a free-text
+  `notes` string. The LCD format lives only as prose in `push-mk1.ts`'s own
+  doc comment (abbreviated `{line}`), which omits the actual line-id byte
+  values and caused a real bug partway through this verification (below).
+  A `DisplayDefinition.sysexTemplate` (ECS-136's Extension 3) has no
+  existing structured shape to reuse — ECS-137 is designing it from
+  scratch, now against a concrete, re-verified example instead of an
+  abstract one.
+
+**A bug found in the process, not hidden: the LCD line-id byte.** An
+earlier version of the probe script sent line id `0x00` (reading
+`push-mk1.ts`'s abbreviated `{line}` placeholder as "0-3"), which is not a
+valid line id — the screen showed nothing, and was first mistaken for the
+device not being in User Mode. The real values, confirmed in
+`research/push-mk1/sysex-mapping.md` and independently re-confirmed
+hands-on in its `VERIFICATION.md`, are `0x18`/`0x19`/`0x1a`/`0x1b` for
+lines 1-4. Fixed in the script; `PUSH_MK1_SYSEX.notes`'s own text already
+cited the real doc, which the bug came from not reading closely enough.
+
 ## What's still unverified
 
-- Encoders 2-8 and the Master Encoder (only Encoder 1, Tempo, Swing
-  independently pressed)
+- Encoders 2-8 and the Master Encoder's exact relative-encoding bytes
+  (assumed identical to Encoder 1's two's-complement scheme per F9, not
+  independently turned under this methodology)
 - The remaining ~60 pads (grid formula confirmed at 4 points, not
   exhaustively)
 - CC 113, CC 116, and a block of paired buttons right of the pad grid
   (roughly CC 48-57, 60-63) — likely where the real Mute/Solo/Clip-
   equivalent buttons actually live, since the doc's claims for those CCs
   (49/50/112) turned out to belong to different buttons entirely
-- CC 34/35 ("Select"/"Shift") — inherited from the same now-partly-
-  discredited doc section, not re-checked (see
-  `research/push-mk1/verification/VERIFICATION.md`)

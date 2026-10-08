@@ -58,6 +58,20 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * have no assigned button: nothing in either research doc documents a
  * dedicated Stop or Clear button, so those roles are left unresolved
  * rather than guessed at.
+ *
+ * **ECS-136 gate verification (2026-10-09)**: the doc's "Select"/"Shift"
+ * pair (CC 34/35, "Right Side Navigation Pad" section) was never re-checked
+ * in Round 2 and is now confirmed absent from this unit — lighting both
+ * CCs (`scripts/push-mk1-contract-probe.mjs shift34`/`shift35`) produced no
+ * visible LED anywhere on the device, across three independent runs, and
+ * midi-profiler's own independent cross-check diagram
+ * (`AbletonPushUserModeHack.png`) shows the nav-pad diamond as only four
+ * buttons (CC 44/45/46/47) with no Select/Shift pair beside it — consistent
+ * with the doc's own admission of Push 2 layout conflation. Both ids are
+ * removed below rather than kept as unmappable placeholders. `button-shift`
+ * (CC 49) is the one real Shift/modifier button: lit and pressed back
+ * correctly, twice, in the same session — see
+ * `docs/push-contract-gap-analysis.md` for the full verification record.
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {
@@ -178,15 +192,13 @@ const UTILITY_BUTTONS = [
   ["metronome", "Metronome", 9],
   ["master", "Master", 28],
   ["stop-clip", "Stop", 29], // doc said "Stop Clip"; actually prints "Stop" (round 2)
-  ["shift", "Shift", 49], // doc said "Mute" (wrong); actually "Shift" (round 2)
+  ["shift", "Shift", 49], // doc said "Mute" (wrong); actually "Shift" (round 2); the real/only Shift -- see ECS-136 gate note above
   ["note", "Note", 50], // doc said "Solo" (wrong); actually the REAL "Note" button (round 2)
   ["session", "Session", 51], // doc said "Record Arm" (wrong); actually the REAL "Session" button (round 2)
   ["arrow-up", "Arrow Up", 46],
   ["arrow-down", "Arrow Down", 47],
   ["arrow-left", "Arrow Left", 44],
   ["arrow-right", "Arrow Right", 45],
-  ["select", "Select", 34], // unconfirmed in round 2 -- different doc section, not re-checked
-  ["shift-nav", "Shift", 35], // unconfirmed in round 2; distinct id from the confirmed CC 49 "Shift" -- can't both be right
   ["play", "Play", 85],
   ["record", "Record", 86],
   ["new", "New", 87],
@@ -202,6 +214,9 @@ const UTILITY_BUTTONS = [
   // REMOVED: the doc's CC 116 "Track" claim -- unconfirmed, and redundant with the real Track at CC 112.
   // REMOVED: the doc's CC 59 "Session" claim -- that's the hardcoded User-mode toggle (round 2), not a normal
   // mappable button; same control the doc separately (and correctly) called "hardcoded, unmappable".
+  // REMOVED: the doc's CC 34 "Select" and CC 35 "Shift" claims (ECS-136 gate, 2026-10-09) -- neither CC lit any
+  // button on this unit across three live checks, and midi-profiler's independent cross-check diagram shows no
+  // Select/Shift pair near the nav pad. Likely the same Push 2 layout conflation already found in this section.
 ] as const;
 
 export const PUSH_MK1_UTILITY_BUTTONS: readonly PhysicalControl[] = UTILITY_BUTTONS.map(([id, label, cc]) => ({
@@ -214,7 +229,7 @@ export const PUSH_MK1_UTILITY_BUTTONS: readonly PhysicalControl[] = UTILITY_BUTT
   feedbackPortId: "user-port-out",
 }));
 
-/** 129 controls total: 11 encoders + 11 touch notes, the touch strip + its tap, 64 pads, 41 utility/nav/mode buttons. */
+/** 127 controls total: 11 encoders + 11 touch notes, the touch strip + its tap, 64 pads, 39 utility/nav/mode buttons. */
 export const PUSH_MK1_CONTROLS: readonly PhysicalControl[] = [
   ...PUSH_MK1_ENCODERS,
   ...PUSH_MK1_TOUCH_STRIP,
