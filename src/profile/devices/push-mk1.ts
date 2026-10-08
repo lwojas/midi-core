@@ -18,7 +18,13 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * midi-profiler's generated document exactly (`profiles/push-mk1/generate-
  * input.json` in that repo, `profiles/push-mk1/report.json` — zero
  * validation diagnostics), re-expressed as generator functions the same
- * way `launchpad-mini-mk3.ts` already does.
+ * way `launchpad-mini-mk3.ts` already does. The canonical reference for
+ * this device is `research/push-mk1/midi-usermode-mapping-verified.md`
+ * (midi-profiler repo), which explicitly supersedes the original
+ * `midi-usermode-mapping.md`'s button-label claims and is itself checked
+ * against `AbletonPushUserModeHack.png`, an independent, named-author
+ * diagram — read the verified doc and the diagram, not the original, when
+ * extending this profile.
  *
  * **Round 2 correction**: about half the "Bottom & Layout Selection
  * Blocks"/"Right Column" button labels in midi-profiler's original research
@@ -71,7 +77,23 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * removed below rather than kept as unmappable placeholders. `button-shift`
  * (CC 49) is the one real Shift/modifier button: lit and pressed back
  * correctly, twice, in the same session — see
- * `docs/push-contract-gap-analysis.md` for the full verification record.
+ * `docs/hardware-validation-push-mk1.md`'s "ECS-136 gate verification"
+ * section for the full verification record.
+ *
+ * **Full Push-2-contamination audit (2026-10-09)**: every control below was
+ * re-checked by hand against `AbletonPushUserModeHack.png` (the one source
+ * in this chain independently authored, not derived from the original
+ * doc). Every encoder, the touch strip, all 64 pads, both utility-button
+ * rows (CC 20-27, CC 102-109), the left-column utility and modes/
+ * sequencing buttons, Master/Stop (CC 28/29), Note/Session (CC 50/51) and
+ * the nav diamond (CC 44-47) all match the diagram's own numbering. CC
+ * 34/35 (removed above) was the only contaminated entry still present;
+ * nothing else in this profile needed to change. One pre-existing, already
+ * -flagged gap the diagram reiterates: the paired-button block beside the
+ * pad grid (diagram shows CC 48-57/60-63 unlabeled) includes CC 48, right
+ * next to the confirmed-real CC 49 Shift — never tested on hardware, not
+ * in this profile, not newly discovered here but worth re-surfacing since
+ * it sits directly beside a control this pass did re-verify.
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {

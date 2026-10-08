@@ -3,7 +3,9 @@
 Status: Final
 Linear: [ECS-91](https://linear.app/ecs3d/issue/ECS-91/add-a-second-device-profile-to-test-the-device-independent-sequencer)
 Device profile: [`src/profile/devices/push-mk1.ts`](../src/profile/devices/push-mk1.ts)
-Research/evidence: `research/push-mk1/` (midi-profiler repo)
+Research/evidence: `research/push-mk1/midi-usermode-mapping-verified.md` (midi-profiler repo) — the canonical
+reference, checked against the independent `AbletonPushUserModeHack.png` diagram; supersedes
+`midi-usermode-mapping.md`'s original button-label claims, parts of which were conflated with the Push 2 layout
 Source of truth: [`demo/push-mk1-surface.js`](../demo/push-mk1-surface.js), [`scripts/push-mk1-live.mjs`](../scripts/push-mk1-live.mjs)
 
 ## Purpose
@@ -129,16 +131,28 @@ consistent with the same Push-2-layout-conflation pattern Round 2 already
 found and fixed in two other sections of this doc. `button-select` and
 `button-shift-nav` are removed from `push-mk1.ts` (129 → 127 controls);
 `button-shift` (CC 49) is the real, only Shift/modifier control.
+**Independently re-confirmed** against a second, separate MIDI monitor
+app (not this project's own tooling): CC 49, channel 1, `127` on press /
+`0` on release.
 
 **F9: relative encoders use signed 7-bit two's-complement deltas, confirmed
-on Encoder 1 (CC 71).** Turning clockwise produced raw CC values `1` (and
-occasionally `2` on a faster turn); counter-clockwise produced `127`, `126`,
-`125`, down to `124` on a faster turn — i.e. `value < 64 ? value :
-value - 128`, a small signed delta per detent, not an offset-from-64
-("binary offset") scheme centered on a resting value. Only Encoder 1 was
-independently turned under this methodology; the other 10 encoders (same
-physical component family — see `push-mk1.ts`'s `ENCODERS` table) are
-assumed, not independently confirmed, to share this encoding.
+on Encoder 1 (CC 71) and independently re-confirmed on the Tempo encoder
+(CC 14).** Turning clockwise produced raw CC values `1` (and occasionally
+`2` on a faster turn); counter-clockwise produced `127`, `126`, `125`,
+down to `124` on a faster turn — i.e. `value < 64 ? value : value - 128`,
+a small signed delta per detent, not an offset-from-64 ("binary offset")
+scheme centered on a resting value. A second, separate MIDI monitor app
+run against the Tempo encoder (CC 14) independently reproduced the same
+pattern — clockwise `1` repeated, counter-clockwise `127` repeated — and
+its touch Note On/Off at A♯-2 (MIDI note 10) matches `encoder-tempo`'s
+declared touch note exactly. Two of 11 encoders (different physical units
+on the device, cross-checked by two independent tools) now agree; the
+remaining 9 (same physical component family — see `push-mk1.ts`'s
+`ENCODERS` table) are assumed, not independently confirmed, to share this
+encoding. The touch strip was independently re-confirmed too: Note On/Off
+at C-1 (MIDI note 12) matches `touch-strip-tap`, and a Pitch Wheel stream
+settling back to `0` on release matches `touch-strip`'s `pitch-bend`
+address — no change needed, both already correct in the profile.
 
 **Two contract-level questions from ECS-136, resolved by reading code, not
 hardware:**
@@ -165,14 +179,46 @@ hands-on in its `VERIFICATION.md`, are `0x18`/`0x19`/`0x1a`/`0x1b` for
 lines 1-4. Fixed in the script; `PUSH_MK1_SYSEX.notes`'s own text already
 cited the real doc, which the bug came from not reading closely enough.
 
+## Full Push-2-contamination audit (2026-10-09)
+
+Prompted by F8: if one section of the original research doc was conflated
+with the Push 2 layout, is anything else in this profile also
+contaminated? Every control in `push-mk1.ts` was re-checked by hand
+against `AbletonPushUserModeHack.png` — the one source in this whole
+chain that's independently authored (Julien Bayle), not derived from or
+cross-checked only against midi-profiler's own original doc. Also checked:
+midi-profiler's own `midi-usermode-mapping-verified.md`, which already
+supersedes the original and — without commentary — simply omits
+Select/Shift entirely, independently agreeing with this pass's CC 34/35
+removal.
+
+**Result: clean.** Every encoder (CC 71-79, touch notes 0-8), the touch
+strip (pitch bend + Note 12), all 64 pads (note formula), both labeled
+utility-button rows (display row CC 20-27, upper control row CC 102-109),
+the left-column utilities (Tap Tempo 3, Metronome 9) and modes/sequencing
+buttons (Play 85 through Fixed Length 90), Master/Stop (CC 28/29),
+Note/Session (CC 50/51), and the nav diamond (CC 44-47) all match the
+diagram's own numbering exactly. CC 34/35 (F8, already removed) was the
+only contaminated entry found anywhere in the current profile — nothing
+else needed to change.
+
+**Re-surfaced, not new: CC 48.** The diagram's unlabeled paired-button
+block beside the pad grid (already flagged below as CC 48-57/60-63,
+untested) includes CC 48 directly paired with the confirmed-real CC 49
+Shift. Not a contamination finding — it was never claimed by the
+contaminated doc section either — just worth calling out since it sits
+immediately next to a control this pass did re-verify, and remains the
+nearest concrete next hardware check if someone picks this back up.
+
 ## What's still unverified
 
 - Encoders 2-8 and the Master Encoder's exact relative-encoding bytes
-  (assumed identical to Encoder 1's two's-complement scheme per F9, not
-  independently turned under this methodology)
+  (assumed identical to Encoder 1's and the Tempo encoder's confirmed
+  two's-complement scheme per F9, not independently turned)
 - The remaining ~60 pads (grid formula confirmed at 4 points, not
   exhaustively)
 - CC 113, CC 116, and a block of paired buttons right of the pad grid
-  (roughly CC 48-57, 60-63) — likely where the real Mute/Solo/Clip-
-  equivalent buttons actually live, since the doc's claims for those CCs
-  (49/50/112) turned out to belong to different buttons entirely
+  (roughly CC 48-57, 60-63, including CC 48 paired with the confirmed
+  CC 49 Shift) — likely where the real Mute/Solo/Clip-equivalent buttons
+  actually live, since the doc's claims for those CCs (49/50/112) turned
+  out to belong to different buttons entirely
