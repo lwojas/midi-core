@@ -266,6 +266,32 @@ already a plain transport control, untouched by this ticket). The automated test
 (`src/configurations/sequencer.test.ts`, `src/configurations/sequencer-faders.test.ts`) already cover the
 generalized binding/exclusivity logic itself; this closes the "device does what the code expects" gap for Play/Stop.
 
+## ECS-147: step-duration continuation feedback restored across a page boundary (2026-10-09)
+
+**Bug.** Paging to the next set of steps, a long note whose active step was on the page just left
+no longer showed its remaining span as a dimly-illuminated continuation pad on the new page — the
+pads it should still cover looked simply inactive, as if the note ended at the page boundary. Root
+cause: `bindStepFeedback()`'s predecessor scan in `src/surface/bindings.ts` was bounded to physical
+columns `[0, cell.column-1]` on the current page only — a duration whose owning step had scrolled
+onto an earlier, now-unpaged page could never be found. This was shared code (ECS-127), so it
+affected the Launchpad too, not just Push mk1.
+
+**Fix, in two rounds.** The first version (commit `adc019d`) let the scan's physical-column argument
+go negative, reaching back exactly one page boundary (`grid.paging.columns` worth of virtual
+columns). Real-hardware testing on this unit with a genuine two-bar note found that undershoots: its
+continuation pads went dark again on the *second* page back, since that page is two page turns from
+the originating step and the scan could only reach one. Commit `c08d189` replaced the one-page bound
+with the duration control's own declared `max` — no duration can ever be set past it, so nothing
+further away could ever cover a cell regardless of its value, which is both necessary and sufficient
+rather than a guessed distance.
+
+**Hardware check (2026-10-09), via webseq.** Confirmed on a real Push mk1: a note whose duration
+spans two full page turns shows its continuation colour correctly on both the immediately following
+page and the one after that, matching the fix's two commits in order — the first round's fix (one
+page back) was insufficient and this second round (bounded by the duration's own `max`) corrected
+it. `sequencer-step-feedback.test.ts` carries two new regression tests: one duration crossing a
+single page boundary, one crossing two.
+
 ## What's still unverified
 
 - Encoders 2-8 and the Master Encoder's exact relative-encoding bytes
