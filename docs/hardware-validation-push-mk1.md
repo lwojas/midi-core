@@ -245,6 +245,27 @@ automated transition/state-feedback tests (`src/surface/bindings.test.ts`, `src/
 `src/profile/devices/push-mk1.test.ts`) already covered the binding logic; this closes the one remaining gap
 between "the code sends the byte we expect" and "the device does what we expect when it receives that byte."
 
+## ECS-146: transport mode button removed, Play/Stop/Record bound everywhere (2026-10-09)
+
+**Decision.** `button-stop-clip` (CC 29) used to be the Push mk1's only way to *reach* the `transport` mode — the
+one mode where Play/Record's bindings existed — so pressing Play meant giving up the steps/mixer grid first, and
+Stop itself was never wired to `contract.actions.stop` at all (it only switched modes). `button-stop-clip` is now
+`layout.transport.stop` instead: a plain transport control, alongside `button-play`/`button-record`, that
+`createSequencerBindings`' generalized transport-binding mechanism (ECS-146) binds in every mode this profile has
+(`steps`, `mixer`), with no mode switch required. No button on this profile names `transport` any more — it's
+simply unreachable, the same way `mixer` already is since ECS-138. **This supersedes the ECS-138 entry above**
+where `button-stop-clip` opted into `indicator: true` as the `transport` mode's own button: that mode-button role,
+and its LED feedback, are gone along with the mode switch.
+
+**Hardware check (2026-10-09), via webseq rather than the raw `scripts/push-mk1-live.mjs` demo.** The live script
+gives no useful visual signal here — `bindActionTrigger` never sends LED feedback for an `Action`, so Play/Stop/
+Record stay unlit on the device whether or not the binding is correct, which isn't a failure mode, just an
+uninformative one. Confirmed instead against the real app: **Play and Stop both fire correctly from webseq, with
+no mode switch needed.** Record was not separately exercised on hardware (no change to its own binding; it was
+already a plain transport control, untouched by this ticket). The automated tests
+(`src/configurations/sequencer.test.ts`, `src/configurations/sequencer-faders.test.ts`) already cover the
+generalized binding/exclusivity logic itself; this closes the "device does what the code expects" gap for Play/Stop.
+
 ## What's still unverified
 
 - Encoders 2-8 and the Master Encoder's exact relative-encoding bytes
