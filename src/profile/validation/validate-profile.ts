@@ -240,6 +240,26 @@ function checkControls(value: unknown, portIds: Set<string>, controlIds: Set<str
         });
       }
     }
+
+    // colourPalette (ECS-150) entries are raw native bytes/channels, same range every other raw value in this
+    // schema is held to; a malformed entry would silently never match a lit colour rather than fail here.
+    if (isRecord(control.feedback) && control.feedback.colourPalette !== undefined) {
+      const palette = control.feedback.colourPalette;
+      const inByteRange = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 127;
+      const valid =
+        Array.isArray(palette) &&
+        palette.every(
+          (entry) => isRecord(entry) && inByteRange(entry.velocity) && isRecord(entry.colour) && inByteRange(entry.colour.red) && inByteRange(entry.colour.green) && inByteRange(entry.colour.blue),
+        );
+      if (!valid) {
+        diagnostics.push({
+          severity: "error",
+          code: "invalid-colour-palette",
+          path: `${path}.feedback.colourPalette`,
+          message: `Control "${String(control.id)}"'s feedback.colourPalette entries each need a colour (red/green/blue, 0-127) and a velocity, 0-127.`,
+        });
+      }
+    }
   });
 
   return diagnostics;

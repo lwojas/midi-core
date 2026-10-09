@@ -279,6 +279,31 @@ describe("buildFeedbackMessage — dim/full two-tier feedback (ECS-145)", () => 
   });
 });
 
+describe("buildFeedbackMessage — note with colourPalette (ECS-150)", () => {
+  const teal = { red: 0, green: 70, blue: 100 };
+  const target: MidiTarget = {
+    address: { type: "note", note: 36 },
+    channel: 0,
+    colourPalette: [{ colour: teal, velocity: 36 }],
+  };
+
+  it("sends the matching entry's velocity when lit with that exact colour", () => {
+    expect(buildFeedbackMessage(target, muted, true, teal)).toEqual({ type: "note-on", channel: 0, note: 36, velocity: 36 });
+  });
+
+  it("falls back to plain on/off when lit with a colour not in the palette", () => {
+    expect(buildFeedbackMessage(target, muted, true, { red: 0, green: 0, blue: 127 })).toEqual({ type: "note-on", channel: 0, note: 36, velocity: 127 });
+  });
+
+  it("falls back to plain on/off when lit with no colour at all", () => {
+    expect(buildFeedbackMessage(target, muted, true)).toEqual({ type: "note-on", channel: 0, note: 36, velocity: 127 });
+  });
+
+  it("never applies the palette to the off state, even when lit with the matching colour", () => {
+    expect(buildFeedbackMessage(target, muted, false, teal)).toEqual({ type: "note-off", channel: 0, note: 36, velocity: 0 });
+  });
+});
+
 describe("buildFeedbackMessage — rgb-led (ECS-95)", () => {
   const lamp: BooleanControlDef = { id: "lamp", label: "Lamp", kind: "boolean", default: false };
   const target: MidiTarget = {

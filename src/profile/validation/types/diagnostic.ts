@@ -34,6 +34,7 @@ export type ProfileDiagnosticCode =
   | "unknown-feedback-kind"
   | "invalid-rgb-prefix"
   | "invalid-dim-value"
+  | "invalid-colour-palette"
   | "duplicate-control-id"
   | "dangling-port-reference"
   | "invalid-grid"

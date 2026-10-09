@@ -150,7 +150,7 @@ describe("createSequencerBindings on the Launchpad", () => {
     const windows = bindingsOf(bindings, "steps").filter((binding) => binding.kind === "window");
     expect(windows).toHaveLength(64);
     for (const window of windows) {
-      expect(window).toMatchObject({ playheadControl: "transport.playhead", playheadColour: { red: 127, green: 127, blue: 127 } });
+      expect(window).toMatchObject({ playheadControl: "transport.playhead", playheadColour: { red: 0, green: 70, blue: 100 } });
     }
     // Mutes never show the playhead: it only moves through time steps, not tracks.
     for (const mute of bindingsOf(bindings, "mixer").filter((binding) => binding.kind === "window")) {

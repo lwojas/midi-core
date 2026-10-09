@@ -125,7 +125,7 @@ Writing a `SurfaceBindingTable` by hand, per device, would mean re-deriving "whi
 | `playheadControl` | `"transport.playhead"` | which virtual column is currently playing |
 | `bankControl` / `bankActions` | `"bank.active"` + actions | the app's own A–D track banks (device-agnostic) |
 | `faderTemplates` | `{ volume: "mixer.volume.{index}" }` | one numeric control per fader, per bank |
-| `colours` | `Partial<SequencerColours>` | overrides `DEFAULT_SEQUENCER_COLOURS` (steps blue, mutes red, banks green, playhead white) |
+| `colours` | `Partial<SequencerColours>` | overrides `DEFAULT_SEQUENCER_COLOURS` (steps blue, mutes red, banks green, playhead greenish-blue/teal — ECS-150) |
 
 This is the key decoupling point: **the sequencer never sees pads, CCs, notes or SysEx** — it
 only ever names `step.2.5` or `transport.play`. Swap the Launchpad for any other profile with an
@@ -164,7 +164,7 @@ just its audio state) ends up painted on the Launchpad's grid. Three independent
 composited onto one pad, in `bindStepFeedback()` (`src/surface/bindings.ts`), evaluated in this
 priority order on every repaint:
 
-1. **Playhead** (`binding.playheadColour`, white by default) — if this pad's virtual column
+1. **Playhead** (`binding.playheadColour`, greenish-blue/teal by default — ECS-150) — if this pad's virtual column
    equals the sequencer's `transport.playhead` control's current value, this always wins,
    regardless of the step underneath it. webseq computes `transport.playhead` by polling the
    same `Transport` clock the on-screen playhead already reads (`requestAnimationFrame`, not a

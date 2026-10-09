@@ -137,6 +137,12 @@ export function buildFeedbackMessage<D extends ControlDef>(
     case "note": {
       if (def.kind !== "boolean") return undefined;
       const on = value as unknown as boolean;
+      if (on && lit !== undefined && target.colourPalette !== undefined) {
+        const match = target.colourPalette.find((entry) => coloursEqual(entry.colour, lit));
+        if (match !== undefined) {
+          return { type: "note-on", channel: target.channel, note: target.address.note, velocity: match.velocity };
+        }
+      }
       if (target.dimValue !== undefined) {
         return { type: "note-on", channel: target.channel, note: target.address.note, velocity: on ? 127 : target.dimValue };
       }
@@ -148,6 +154,11 @@ export function buildFeedbackMessage<D extends ControlDef>(
       };
     }
   }
+}
+
+/** Exact per-channel match (ECS-150) — `colourPalette` entries are discrete confirmed points, not a continuous scale to find the nearest of. */
+function coloursEqual(a: RgbColour, b: RgbColour): boolean {
+  return a.red === b.red && a.green === b.green && a.blue === b.blue;
 }
 
 /** An RGB LED with no colour of its own is lit white. Off is black. */

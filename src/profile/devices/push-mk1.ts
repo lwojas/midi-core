@@ -115,6 +115,13 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * button family at all -- see `MUTE_STRIP_BUTTONS`'s own doc comment -- so it's a separate export now,
  * `velocity-color-led` like the pads, with no `dimValue`. See `docs/hardware-validation-push-mk1.md`'s ECS-145
  * section for the full probe results and what's still only assumed, not individually confirmed.
+ *
+ * **ECS-150**: the sequencer's playhead (ECS-131) now reaches this device's real colour, not just a plain on/off.
+ * `PUSH_MK1_PAD_COLOUR_PALETTE`'s own doc comment has the hands-on finding -- one raw velocity, hands-on confirmed
+ * to show greenish-blue/teal on a real pad, declared on `PUSH_MK1_PADS`' `feedback.colourPalette`
+ * (`ControlFeedback.colourPalette`, new this ticket). No other colour is covered: steps/mutes/banks still render
+ * as plain on/off here exactly as before, since this ticket's own scope is the playhead only, not the pads' full
+ * bright/standard/dim RGB tiers (still ECS-135's gap, not reopened here).
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {
@@ -200,6 +207,21 @@ export const PUSH_MK1_TOUCH_STRIP: readonly PhysicalControl[] = [
   },
 ];
 
+/**
+ * ECS-150: the one confirmed (colour, velocity) correspondence on this device's pad LEDs, hands-on probed with
+ * `scripts/push-mk1-pad-color-probe.mjs` (new for this ticket -- the note-addressed sibling of ECS-145's
+ * `push-mk1-led-level-probe.mjs`, needed because the pads are note- not CC-addressed): raw velocity 36 shows a
+ * clear greenish-blue/teal on a real pad, following the same white-then-reds-then-rest-of-the-palette ramp
+ * ECS-145 already found on the mute strip (CC 102) -- not independently re-probed on the mute strip itself, only
+ * the pads. The colour below must match `DEFAULT_SEQUENCER_COLOURS.playhead` (`src/configurations/sequencer.ts`)
+ * exactly, byte for byte -- that's the app-level colour this entry exists to recognise, kept as a literal here
+ * rather than an import to keep this device-facing profile independent of that app-level configuration module, the
+ * same direction-of-dependency `docs/contracts/device-profile.md` already holds profiles to. No general RGB-to-
+ * velocity scheme is confirmed beyond this one entry -- see `ControlFeedback.colourPalette`'s own doc comment for
+ * why an unmatched colour still renders as plain on/off, not a guessed byte.
+ */
+const PUSH_MK1_PAD_COLOUR_PALETTE = [{ colour: { red: 0, green: 70, blue: 100 }, velocity: 36 }] as const;
+
 /** Bottom-left-origin, row-major note numbering (notes 36-99): row 0 (bottom) is 36-43, row 7 (top) is 92-99. */
 function padControl(rowFromBottom: number, column: number): PhysicalControl {
   const note = 36 + rowFromBottom * 8 + column;
@@ -209,7 +231,12 @@ function padControl(rowFromBottom: number, column: number): PhysicalControl {
     kind: "pad",
     portId: "user-port-in",
     input: { address: { type: "note", note }, channel: 0 },
-    feedback: { kind: "velocity-color-led", address: { address: { type: "note", note }, channel: 0 }, paletteSize: 128 },
+    feedback: {
+      kind: "velocity-color-led",
+      address: { address: { type: "note", note }, channel: 0 },
+      paletteSize: 128,
+      colourPalette: PUSH_MK1_PAD_COLOUR_PALETTE,
+    },
     feedbackPortId: "user-port-out",
   };
 }

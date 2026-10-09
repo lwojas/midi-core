@@ -98,12 +98,20 @@ export interface SequencerColours {
   readonly playhead: RgbColour;
 }
 
-/** The colours a sequencer uses when its contract names none: a lit step is blue, a muted track red (ECS-95), a lit bank green (ECS-114), the playhead white (ECS-131). */
+/**
+ * The colours a sequencer uses when its contract names none: a lit step is blue, a muted track red (ECS-95), a lit
+ * bank green (ECS-114), the playhead a greenish-blue/teal (ECS-131, recoloured from white by ECS-150) --
+ * distinguishable from every other colour here, including the pure blue steps already use. On the Launchpad
+ * (`rgb-led`) this renders exactly, as any `RgbColour` does. On the Push mk1 (`velocity-color-led`), it only
+ * renders as this colour because `push-mk1.ts`'s `PUSH_MK1_PAD_COLOUR_PALETTE` declares the matching, hands-on
+ * confirmed velocity (36) for this exact triplet -- the two must stay byte-for-byte identical, kept as separate
+ * literals rather than a shared import across the app/profile boundary (see that constant's own doc comment).
+ */
 export const DEFAULT_SEQUENCER_COLOURS: SequencerColours = {
   steps: { red: 0, green: 0, blue: 127 },
   mutes: { red: 127, green: 0, blue: 0 },
   banks: { red: 0, green: 127, blue: 0 },
-  playhead: { red: 127, green: 127, blue: 127 },
+  playhead: { red: 0, green: 70, blue: 100 },
 };
 
 /** How much a step's own colour dims for a duration continuation pad (ECS-127): a quarter intensity reads as clearly part of the same note, never mistaken for an active step. */

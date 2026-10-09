@@ -158,6 +158,16 @@ export interface ControlFeedback {
    * on versus merely assumed from the same component family.
    */
   readonly dimValue?: number;
+  /**
+   * For "velocity-color-led" (ECS-150): known (colour, raw velocity) correspondences, each hands-on confirmed on
+   * real hardware one value at a time — not a general RGB-to-velocity encoding, since no continuous scheme is
+   * confirmed for this feedback kind (same "declare only the confirmed fact" stance `dimValue` already takes). A
+   * colour with no matching entry here renders exactly as before this field existed: the boolean on/off native
+   * value, not a best-effort guess at an unconfirmed byte. A separate, local colour shape rather than mapping's own
+   * `RgbColour` — the same "profile and mapping don't depend on each other" boundary `RelativeEncoding` above
+   * already keeps; `src/surface/generate.ts` carries this across to `MidiTarget.colourPalette`.
+   */
+  readonly colourPalette?: readonly { readonly colour: { readonly red: number; readonly green: number; readonly blue: number }; readonly velocity: number }[];
 }
 
 /**

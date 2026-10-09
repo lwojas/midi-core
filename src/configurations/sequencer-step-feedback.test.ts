@@ -222,15 +222,15 @@ describe("playhead feedback on the Launchpad (ECS-131)", () => {
     await surface.detach();
   });
 
-  it("lights the playhead's column in white, distinguishable from an inactive step, and moves as playback progresses", async () => {
+  it("lights the playhead's column in its teal colour (ECS-150), distinguishable from an inactive step, and moves as playback progresses", async () => {
     const { surface, playhead, sent } = build();
     await surface.attach();
     playhead.setValue(0);
-    expect(lastLed(sent(), padNote(0))).toBe(rgb(padNote(0), 127, 127, 127));
+    expect(lastLed(sent(), padNote(0))).toBe(rgb(padNote(0), 0, 70, 100));
 
     playhead.setValue(3); // playback advances: the old pad returns to its correct (inactive) state, not just "off" by coincidence
     expect(lastLed(sent(), padNote(0))).toBe(rgb(padNote(0), 0, 0, 0));
-    expect(lastLed(sent(), padNote(3))).toBe(rgb(padNote(3), 127, 127, 127));
+    expect(lastLed(sent(), padNote(3))).toBe(rgb(padNote(3), 0, 70, 100));
     await surface.detach();
   });
 
@@ -241,7 +241,7 @@ describe("playhead feedback on the Launchpad (ECS-131)", () => {
     expect(lastLed(sent(), padNote(5))).toBe(rgb(padNote(5), 0, 0, 127));
 
     playhead.setValue(5);
-    expect(lastLed(sent(), padNote(5))).toBe(rgb(padNote(5), 127, 127, 127));
+    expect(lastLed(sent(), padNote(5))).toBe(rgb(padNote(5), 0, 70, 100));
 
     playhead.setValue(-1); // stopping restores the step's own colour, since nothing clears the step itself
     expect(lastLed(sent(), padNote(5))).toBe(rgb(padNote(5), 0, 0, 127));
@@ -256,7 +256,7 @@ describe("playhead feedback on the Launchpad (ECS-131)", () => {
     expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 0, 32)); // continuation, before the playhead reaches it
 
     playhead.setValue(2);
-    expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 127, 127, 127));
+    expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 70, 100));
 
     playhead.setValue(3);
     expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 0, 32)); // moved on: back to its continuation colour
@@ -279,13 +279,13 @@ describe("playhead feedback on the Launchpad (ECS-131)", () => {
     const { surface, playhead, pageRight, sent } = build({ playhead: true }, 16);
     await surface.attach();
     playhead.setValue(3);
-    expect(lastLed(sent(), padNote(3))).toBe(rgb(padNote(3), 127, 127, 127));
+    expect(lastLed(sent(), padNote(3))).toBe(rgb(padNote(3), 0, 70, 100));
 
     await pageRight(); // offset.column: 0 -> 8; column 3 is no longer on this page
     expect(lastLed(sent(), padNote(3))).toBe(rgb(padNote(3), 0, 0, 0));
 
     playhead.setValue(11); // column 11 is pad-4 on this page (offset 8 + column 3)
-    expect(lastLed(sent(), padNote(3))).toBe(rgb(padNote(3), 127, 127, 127));
+    expect(lastLed(sent(), padNote(3))).toBe(rgb(padNote(3), 0, 70, 100));
     await surface.detach();
   });
 

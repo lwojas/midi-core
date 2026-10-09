@@ -92,6 +92,15 @@ export interface MidiTarget {
    * means a boolean `false` renders at the native minimum exactly as before — see `buildFeedbackMessage()`.
    */
   readonly dimValue?: number;
+  /**
+   * For a note-addressed boolean control with no `rgbPrefix` (ECS-150): known (colour, raw velocity)
+   * correspondences this target's device profile declares, each hands-on confirmed — mapping's own copy of
+   * `profile/types/control.ts`'s `ControlFeedback.colourPalette`, carried across the profile/mapping boundary the
+   * same way `rgbPrefix`/`dimValue` already are. Omitted (every target before this field existed), or no entry
+   * matching the colour a caller lights with, means `lit` is ignored exactly as before — see
+   * `buildFeedbackMessage()`.
+   */
+  readonly colourPalette?: readonly { readonly colour: RgbColour; readonly velocity: number }[];
 }
 
 /** An RGB LED colour, each channel 0-127 (ECS-95). */

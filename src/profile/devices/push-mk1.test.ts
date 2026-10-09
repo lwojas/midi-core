@@ -134,6 +134,13 @@ describe("PUSH_MK1_PROFILE", () => {
     for (const encoder of relativeEncoders) expect(encoder.relativeEncoding).toBe("twos-complement-7bit");
   });
 
+  it("ECS-150: every pad declares the hands-on confirmed greenish-blue/teal colour palette entry, matching the app-level playhead colour", () => {
+    for (const pad of PUSH_MK1_PADS) {
+      expect(pad.feedback?.kind, pad.id).toBe("velocity-color-led");
+      expect(pad.feedback?.colourPalette, pad.id).toEqual([{ colour: { red: 0, green: 70, blue: 100 }, velocity: 36 }]);
+    }
+  });
+
   it("declares the LCD as a 4-line display, routed to user-port-out (ECS-137)", () => {
     const display = PUSH_MK1_PROFILE.displays?.[0];
     expect(display?.portId).toBe("user-port-out");

@@ -7,7 +7,8 @@ Research/evidence: `research/push-mk1/midi-usermode-mapping-verified.md` (midi-p
 reference, checked against the independent `AbletonPushUserModeHack.png` diagram; supersedes
 `midi-usermode-mapping.md`'s original button-label claims, parts of which were conflated with the Push 2 layout
 Source of truth: [`demo/push-mk1-surface.js`](../demo/push-mk1-surface.js), [`scripts/push-mk1-live.mjs`](../scripts/push-mk1-live.mjs),
-[`scripts/push-mk1-led-level-probe.mjs`](../scripts/push-mk1-led-level-probe.mjs) (ECS-145)
+[`scripts/push-mk1-led-level-probe.mjs`](../scripts/push-mk1-led-level-probe.mjs) (ECS-145),
+[`scripts/push-mk1-pad-color-probe.mjs`](../scripts/push-mk1-pad-color-probe.mjs) (ECS-150)
 
 ## Purpose
 
@@ -355,6 +356,34 @@ treatment as every other `UTILITY_BUTTONS` entry, assumed from the same confirme
 individually turned on this unit. In practice its dim state is rarely visible today regardless: `steps` is the
 only reachable mode on this profile (ECS-138/146 removed `mixer`/`transport`), so its `ModeIndicatorBinding`
 almost always evaluates active (full), not dim.
+
+## ECS-150: the playhead's colour, confirmed on a real pad (2026-10-10)
+
+**No published or previously-confirmed velocity-to-colour byte table exists for this device's pads.** ECS-145's own
+research already looked for one (Ableton never published it for Push 1; the only community references found cover
+Push 2, a different protocol) and came up empty; the one prior hands-on data point (ECS-145's mute-strip probe,
+CC 102) only confirmed a qualitative ramp — "orange/yellow/green/pink/turquoise at higher values" — not an exact
+byte for a specific hue, and on a different control family (CC-addressed, not note-addressed) besides.
+
+**Hands-on probe, by hand, one value at a time** (`scripts/push-mk1-pad-color-probe.mjs`, new for this ticket — the
+note-addressed sibling of ECS-145's `push-mk1-led-level-probe.mjs`, needed because the pads send/receive note-on,
+not control-change). Driving pad note 36 (bottom-left pad) and stepping the raw velocity by hand reproduced the
+same ramp family ECS-145 already saw on the mute strip — off, then dim white, then brighter white shades, then
+red — confirming the pads are the same `velocity-color-led` component family the mute strip belongs to, not an
+independently-behaving control. **Raw velocity 36 shows a clear greenish-blue/teal on the pad**, hands-on confirmed
+on this unit.
+
+That one (colour, velocity) correspondence is now declared on `PUSH_MK1_PADS`' `feedback.colourPalette`
+(`PUSH_MK1_PAD_COLOUR_PALETTE` in `push-mk1.ts`), matched exactly against `DEFAULT_SEQUENCER_COLOURS.playhead`
+(`src/configurations/sequencer.ts`), which this ticket also recoloured from white to the same greenish-blue/teal
+triplet. `buildFeedbackMessage()` (`src/mapping/value.ts`) now resolves a note-addressed target's `colourPalette`
+before falling back to its existing plain on/off behaviour — additive and opt-in, same as `dimValue`/`rgbPrefix`
+already are: every other colour (steps blue, mutes red, banks green) has no palette entry, so it keeps rendering as
+plain on/off on this device, unchanged.
+
+**Not covered, deliberately out of this ticket's scope**: the pads' full bright/standard/dim RGB tiers remain
+ECS-135's own gap, not reopened here — this ticket adds exactly one confirmed colour (the playhead's), not a
+general RGB-to-velocity encoding.
 
 ## What's still unverified
 
