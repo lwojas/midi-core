@@ -105,8 +105,8 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * `PUSH_MK1_LAYOUT`'s own doc comment for the full decision and its reasoning. `button-note`/`button-stop-clip`
  * (steps/transport) now light while their own mode is active (`indicator: true`), and the upper control row
  * (CC 102-109, `PUSH_MK1_MUTE_STRIP_GRID`) is a dedicated, always-available mute strip in place of the removed
- * mode's grid takeover. Neither is confirmed on real hardware yet -- flagged in `PUSH_MK1_LAYOUT`'s own comment,
- * not repeated here.
+ * mode's grid takeover. Both confirmed hands-on -- see `PUSH_MK1_LAYOUT`'s own comment and
+ * `docs/hardware-validation-push-mk1.md`.
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {
@@ -364,13 +364,10 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
  * devices (the Launchpad still reaches it from `side-79`) -- this is a profile-level routing choice, not a change
  * to shared code, and it costs nothing: with no button naming `mixer`, that mode is simply never reachable on this
  * device, the same way an unresolved mode/page/transport role already works elsewhere in this layout.
- * **Not done here**: real-hardware verification of the new LED traffic this decision adds (`indicator: true` below
- * lights `Note`/`Stop`; the mute strip lights CC 102-109 whenever a track is muted) -- no physical unit was
- * available for this change. Both reuse the exact `monochrome-led`/CC feedback shape every utility button on this
- * profile already sends, the same shape ECS-114's bank indicators already proved correct on hardware for the
- * Launchpad, but that reuse has not itself been confirmed against *this* unit. Record a hands-on check here (the
- * same "Verification" section every other dated entry in `docs/hardware-validation-push-mk1.md` uses) before
- * trusting these two LEDs sight-unseen.
+ * **Confirmed hands-on (2026-10-09)**: the new LED traffic this decision adds -- `indicator: true` below lights
+ * `Note`/`Stop` according to the surface's actual active mode, and the mute strip (CC 102-109) lights and toggles
+ * mute correctly, live in `steps` with no mode switch. See `docs/hardware-validation-push-mk1.md`'s ECS-138 section
+ * for the full record.
  */
 export const PUSH_MK1_LAYOUT: DeviceLayout = {
   modeButtons: [

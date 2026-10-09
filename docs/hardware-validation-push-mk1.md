@@ -212,7 +212,7 @@ nearest concrete next hardware check if someone picks this back up.
 
 ## ECS-138: mixer mode removed, mute moved to the upper control row (2026-10-09)
 
-**Decision, made at the code/contract level, not yet confirmed on this unit.** The dedicated `mixer` mode (`Session`,
+**Decision, confirmed hands-on on this unit (2026-10-09).** The dedicated `mixer` mode (`Session`,
 CC 51) previously took over the entire pad grid to show mute — a worse trade on this device than on the Launchpad,
 which has nothing equivalent to Push mk1's upper control row (CC 102-109, directly above the pads). `Session` no
 longer selects a mode; it's free, the same "left unresolved rather than guessed at" treatment `transport.stop`/
@@ -238,14 +238,12 @@ code, not by a hardware loopback test — this device's own User Mode has no doc
 either (`PUSH_MK1_SYSEX`'s notes), so there's no device-side mechanism this profile knows of that could loop a sent
 LED byte back as a received press.
 
-**Not done here: a real-hardware check of either new LED behavior.** No physical unit was available for this
-change. Automated transition/state-feedback tests cover the binding logic (`src/surface/bindings.test.ts`,
-`src/configurations/sequencer.test.ts`, `src/profile/devices/push-mk1.test.ts`), and nothing here introduces a new
-protocol shape — but "the code sends the byte we expect" and "the device does what we expect when it receives that
-byte" are different claims, and only the first one is verified. Record a hands-on check of both before trusting
-them sight-unseen: confirm CC 50 and CC 29 actually light/clear as `steps`/`transport` are entered and left, and
-confirm CC 102-109 actually light/clear as the mute strip's underlying tracks toggle — the same "light it, read
-what's actually on/off" methodology `docs/hardware-verification-methodology.md` already describes.
+**Hardware check, both behaviors (2026-10-09).** Confirmed on a real Push mk1: `button-note`/`button-stop-clip`
+light correctly as `steps`/`transport` are entered and left, matching the surface's actual active mode; the upper
+control row (CC 102-109) correctly lights and toggles a track's mute, live in `steps` without a mode switch. The
+automated transition/state-feedback tests (`src/surface/bindings.test.ts`, `src/configurations/sequencer.test.ts`,
+`src/profile/devices/push-mk1.test.ts`) already covered the binding logic; this closes the one remaining gap
+between "the code sends the byte we expect" and "the device does what we expect when it receives that byte."
 
 ## What's still unverified
 
@@ -259,6 +257,3 @@ what's actually on/off" methodology `docs/hardware-verification-methodology.md` 
   CC 49 Shift) — likely where the real Mute/Solo/Clip-equivalent buttons
   actually live, since the doc's claims for those CCs (49/50/112) turned
   out to belong to different buttons entirely
-- ECS-138's two new LED behaviors (the `steps`/`transport` mode indicators on `button-note`/`button-stop-clip`, and
-  the mute strip's lighting on CC 102-109) — reuse an already hardware-proven feedback shape, but have not
-  themselves been confirmed against this unit
