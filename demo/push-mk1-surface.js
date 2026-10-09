@@ -38,6 +38,7 @@ export function createPushMk1App({ onChange = () => {} } = {}) {
   };
   const actions = {
     play: createAction({ id: "transport.play", label: "Play" }, () => setStatus("playing")),
+    stop: createAction({ id: "transport.stop", label: "Stop" }, () => setStatus("stopped")),
     record: createAction({ id: "transport.record", label: "Record" }, () => setStatus("recording")),
   };
   const litSteps = () => [...steps.values()].filter((control) => control.getValue()).length;
