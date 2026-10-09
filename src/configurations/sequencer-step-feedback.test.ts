@@ -45,7 +45,7 @@ function build(options: { duration?: boolean; playhead?: boolean } = { duration:
     createControl<BooleanControlDef>({ id: `step.0.${column}`, label: `Step ${column}`, kind: "boolean", default: false }),
   );
   const durations = Array.from({ length }, (_, column) =>
-    createControl<NumericControlDef>({ id: `step.0.${column}.duration`, label: `Step ${column} duration`, kind: "number", min: 0, max: 16, default: 0 }),
+    createControl<NumericControlDef>({ id: `step.0.${column}.duration`, label: `Step ${column} duration`, kind: "number", min: 0, max: 1024, default: 0 }),
   );
   const playhead = createControl<NumericControlDef>({ id: "transport.playhead", label: "Playhead", kind: "number", min: -1, max: 1024, default: -1 });
   const registry = createControlRegistry([
@@ -183,6 +183,20 @@ describe("step duration feedback on the Launchpad (ECS-127)", () => {
     expect(lastLed(sent(), padNote(0))).toBe(rgb(padNote(0), 0, 0, 32)); // virtual column 8: steps[6]'s duration still reaches here
     expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 32)); // virtual column 9: last covered column
     expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 0, 0)); // virtual column 10: outside the 4-step span
+    await surface.detach();
+  });
+
+  it("keeps showing continuation feedback two page turns after the originating note, for a note long enough to span both boundaries (ECS-147 follow-up)", async () => {
+    const { surface, steps, durations, pageRight, sent } = build({ duration: true }, 32);
+    steps[0]!.setValue(true); // virtual column 0
+    durations[0]!.setValue(20); // covers virtual columns 1-19, spanning the page 0/1 boundary (8) and the page 1/2 boundary (16)
+    await surface.attach();
+
+    await pageRight(); // offset.column: 0 -> 8
+    await pageRight(); // offset.column: 8 -> 16; pad-81..88 now show virtual columns 16-23, two pages from the note's own
+    expect(lastLed(sent(), padNote(0))).toBe(rgb(padNote(0), 0, 0, 32)); // virtual column 16: still within the 20-step span
+    expect(lastLed(sent(), padNote(3))).toBe(rgb(padNote(3), 0, 0, 32)); // virtual column 19: last covered column
+    expect(lastLed(sent(), padNote(4))).toBe(rgb(padNote(4), 0, 0, 0)); // virtual column 20: outside the 20-step span
     await surface.detach();
   });
 

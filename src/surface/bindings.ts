@@ -216,13 +216,6 @@ function bindStepFeedback(
   source: MidiSource,
   shouldApply?: () => boolean,
 ): { unsubscribe: Unsubscribe; painter?: FeedbackPainter } {
-  // ECS-147: the predecessor scan below is allowed to cross exactly one page boundary behind the current page (i.e.
-  // read `grid.paging.columns` worth of virtual columns that lie on the page just left), reusing the same
-  // `predecessorAt()`/virtual-position lookup as the current-page case rather than a second mechanism — no pattern
-  // or sequencer data is duplicated to do this. One page back is a deliberate, minimal choice, not a derived limit:
-  // whether a note's continuation should keep being reconstructed across two or more page turns (for a duration long
-  // enough to span that far) is left open by ECS-147 itself and isn't decided here.
-  const lookback = grid.paging?.columns ?? 0;
   const ownDef: BooleanControlDef = { id: `window.${binding.gridId}.${cell.row}.${cell.column}`, label: physical.label, kind: "boolean", default: false };
   const own = createWindowedControl(
     ownDef,
@@ -268,6 +261,22 @@ function bindStepFeedback(
     };
   };
 
+  /**
+   * How far back (in virtual columns) the predecessor scan below can reach: bounded by the duration control's own
+   * declared `max` (every position sharing `durationTemplate` resolves to the same `NumericControlDef` shape, so this
+   * cell's own duration control is a representative sample) rather than a fixed number of pages. ECS-147 shipped
+   * first with a flat one-page bound, but a real multi-bar note on a real device showed that undershoots: a step
+   * whose owning note is two or more page turns behind the page being viewed needs exactly the same reach, just
+   * further out, and no duration can ever be set past its own `max` — so nothing further away than that could ever
+   * cover this cell regardless of its value. Falls back to one page's width (`grid.paging.columns`) when no duration
+   * control resolves yet, so the scan still has *some* bound rather than becoming truly unbounded.
+   */
+  const lookback = (): number => {
+    if (binding.durationTemplate === undefined) return 0;
+    const sample = predecessorAt(cell.column).duration;
+    return sample ? Math.max(0, sample.def.max - 1) : (grid.paging?.columns ?? 0);
+  };
+
   const paint = () => {
     const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
     const [, column] = windowPosition(binding, cell, offset);
@@ -288,9 +297,9 @@ function bindStepFeedback(
     if (binding.durationTemplate !== undefined) {
       // Nearest predecessor first: an overlapping earlier span still reads as "this cell is covered" either way,
       // but checking from the closest one out keeps the scan proportional to the distance that actually matters.
-      // Bounded at -lookback (ECS-147), not 0: physicalColumn going negative lands predecessorAt() on the previous
+      // Bounded at -lookback() (ECS-147), not 0: physicalColumn going negative lands predecessorAt() on an earlier
       // page's virtual columns, since windowPosition() only ever adds the offset without clamping.
-      for (let j = cell.column - 1; j >= -lookback; j--) {
+      for (let j = cell.column - 1; j >= -lookback(); j--) {
         const { active, duration } = predecessorAt(j);
         if (active?.getValue() === true && duration !== undefined && duration.getValue() > cell.column - j) {
           send(true, binding.continuationColour);
@@ -311,7 +320,7 @@ function bindStepFeedback(
     playheadUnsubscribe = undefined;
 
     if (binding.durationTemplate !== undefined) {
-      for (let j = -lookback; j < cell.column; j++) {
+      for (let j = -lookback(); j < cell.column; j++) {
         const { active, duration } = predecessorAt(j);
         if (active) predecessorUnsubscribes.push(active.onChange(paint));
         if (duration) predecessorUnsubscribes.push(duration.onChange(paint));
