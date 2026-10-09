@@ -6,7 +6,8 @@ Device profile: [`src/profile/devices/push-mk1.ts`](../src/profile/devices/push-
 Research/evidence: `research/push-mk1/midi-usermode-mapping-verified.md` (midi-profiler repo) — the canonical
 reference, checked against the independent `AbletonPushUserModeHack.png` diagram; supersedes
 `midi-usermode-mapping.md`'s original button-label claims, parts of which were conflated with the Push 2 layout
-Source of truth: [`demo/push-mk1-surface.js`](../demo/push-mk1-surface.js), [`scripts/push-mk1-live.mjs`](../scripts/push-mk1-live.mjs)
+Source of truth: [`demo/push-mk1-surface.js`](../demo/push-mk1-surface.js), [`scripts/push-mk1-live.mjs`](../scripts/push-mk1-live.mjs),
+[`scripts/push-mk1-led-level-probe.mjs`](../scripts/push-mk1-led-level-probe.mjs) (ECS-145)
 
 ## Purpose
 
@@ -292,6 +293,69 @@ page back) was insufficient and this second round (bounded by the duration's own
 it. `sequencer-step-feedback.test.ts` carries two new regression tests: one duration crossing a
 single page boundary, one crossing two.
 
+## ECS-145: monochrome button LEDs get a dim/full two-tier, confirmed on hardware (2026-10-09)
+
+**Research first, per the ticket's own instruction.** Neither `midi-usermode-mapping.md`/`-verified.md` nor
+`VERIFICATION.md` (midi-profiler repo) document anything beyond on/off for this device's CC-addressed monochrome
+utility buttons -- only the 64-pad RGB velocity-color table has documented brightness tiers, and even that only
+hands-on confirmed for "standard" brightness. A web search for a Push 1 (not Push 2 -- Push 2's LED protocol is
+fully, officially documented and is a different device) User Mode button-LED byte table came up empty: Ableton
+never published one for Push 1, and the community references found (Sonic Pi forum, Julien Bayle's site, the
+various Push *2* Python/node wrappers) either explicitly say "no standard, device-specific" or only cover Push 2.
+The ticket's premise -- don't assume a dim tier exists, confirm on real hardware -- held: there was genuinely
+nothing to find, so the value had to come from the device itself.
+
+**Hands-on probe, by hand, one value at a time** (`scripts/push-mk1-led-level-probe.mjs`, new for this ticket --
+same "identify a control via its own feedback, let a human read the real LED" technique
+`docs/hardware-verification-methodology.md` already names, except here the probe drives the *LED* and a human
+reads it, rather than the probe reading a press). Stepped the raw CC value by hand against three different
+physical buttons:
+
+| CC | Button | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7-127 |
+|---|---|---|---|---|---|---|---|---|---|
+| 85 | Play | off | dim, steady | dim, slow blink | dim, fast blink | full, steady | full, slow blink | full, fast blink | full, steady (clamped) |
+| 49 | Shift | off | dim, steady | dim, slow blink | dim, fast blink | full, steady | (not re-checked past 4) | | |
+| 102 | Upper row button 1 ("mute strip") | -- | **white** | brighter white | brighter still | bright white | bright red | red | orange/yellow/green/pink/turquoise at higher values |
+
+**Finding 1: a real dim tier exists, confirmed identically on two independent monochrome buttons.** Play (CC 85)
+and Shift (CC 49) -- different physical buttons, different functions -- both show the exact same four-value
+pattern: `0`=off, `1`=dim/steady, `2`-`3`=dim/blinking (increasingly fast), `4`=full/steady, `5`-`6`=full/blinking,
+`7` and up clamp to full/steady (`40`, `50`, `127` all read identically to `4` on CC 85). Only the two steady
+states are used by this ticket -- blinking is a real device capability with no modeled feedback level to use it
+for, left alone rather than invented a use for. `PUSH_MK1_DIM_VALUE = 1` in `push-mk1.ts`, applied to every control
+in `PUSH_MK1_UTILITY_BUTTONS` (confirmed on 2 of 31; the rest assumed from the same CC-addressed monochrome-button
+component family, the same "declare the fact, flag the unconfirmed extent" stance this profile already takes for
+its encoders).
+
+**Finding 2, a real research correction: the mute strip (CC 102-109) is not a monochrome button at all.** Probing
+CC 102 the same way showed a value-selected *colour* -- white, orange, red, yellow, green, pink, turquoise at
+different raw values -- not a brightness ramp. This row was declared `monochrome-led` in the profile only because
+the original `UTILITY_BUTTONS` loop blanket-applied that feedback kind to every CC-addressed button; it had never
+been individually checked before this ticket. It's actually the same `velocity-color-led` family the 64 pads
+already declare. Per the ticket's own scoping ("pads['] own bright/standard/dim RGB tiers are a separate,
+already-flagged gap [ECS-135], not this ticket's"), the mute strip turns out to belong to that excluded family
+too -- giving it a `dimValue` would mean picking an arbitrary colour and calling it "dim," not declaring a
+confirmed brightness fact. Moved to its own `PUSH_MK1_MUTE_STRIP_BUTTONS` export, `velocity-color-led`,
+`paletteSize: 128`, no `dimValue` -- same shape as `PUSH_MK1_PADS`. **This also means the ticket's acceptance
+line "applies to... the mute strip" doesn't hold as written**: the mute strip is excluded from this ticket's dim/
+full extension, for the same reason the pads already are, not merely unimplemented.
+
+**Shift (CC 49) also gained real LED feedback for the first time.** It had `feedback` declared on its
+`PhysicalControl` since this profile's first version, but nothing ever bound it to send anything --
+`bindModifierState()` (`src/surface/bindings.ts`) only ever tracked its held/released state for `when`-conditional
+dispatch, never lit it. `PUSH_MK1_LAYOUT.modifier: "button-shift"` is new (ECS-145); `bindModifierState()` now also
+paints dim/full from that same held state when the modifier control resolves a feedback target and output, purely
+additive -- a profile with a modifier but no feedback declared on it (or none declared at all, every profile
+before this field existed) behaves exactly as before.
+
+**Not independently re-hardware-checked: the mode indicator (`button-note`, CC 50).** The ticket named it as one
+of three representative controls; time was spent instead confirming the dim *value* itself (the genuinely unknown
+fact) on two buttons plus the mute-strip correction. `button-note` gets the same `monochrome-led`/`dimValue: 1`
+treatment as every other `UTILITY_BUTTONS` entry, assumed from the same confirmed component family, not
+individually turned on this unit. In practice its dim state is rarely visible today regardless: `steps` is the
+only reachable mode on this profile (ECS-138/146 removed `mixer`/`transport`), so its `ModeIndicatorBinding`
+almost always evaluates active (full), not dim.
+
 ## What's still unverified
 
 - Encoders 2-8 and the Master Encoder's exact relative-encoding bytes
@@ -304,3 +368,10 @@ single page boundary, one crossing two.
   CC 49 Shift) — likely where the real Mute/Solo/Clip-equivalent buttons
   actually live, since the doc's claims for those CCs (49/50/112) turned
   out to belong to different buttons entirely
+- (ECS-145) 29 of 31 `UTILITY_BUTTONS` entries' dim value — confirmed on
+  Play (CC 85) and Shift (CC 49) only; assumed, not individually turned,
+  for the rest of the monochrome-button family, including the mode
+  indicator (`button-note`, CC 50) the ticket specifically asked for
+- (ECS-145) whether the blink states (CC values 2/3/5/6) are worth a
+  third/fourth feedback level for a future ticket — real and confirmed,
+  just unused: nothing in this contract models "blinking" today
