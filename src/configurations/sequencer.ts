@@ -31,6 +31,20 @@ export interface SequencerContract {
   /** Transport actions the application supports. An action left out has no binding, and its device button does nothing. */
   readonly actions: { readonly play?: Action; readonly stop?: Action; readonly record?: Action; readonly clear?: Action };
   /**
+   * Application control (a number: `1` while playing, `0` otherwise) whose live value drives the transport `play`
+   * button's own LED persistently (ECS-145 follow-up): full while playing, dim otherwise, for as long as that
+   * state holds -- not just while the button is physically held. Reuses `IndicatorBinding` exactly as
+   * `bankControl`'s own select-button indicators already do below, so it gets ECS-145's dim/full rendering for
+   * free from a profile's confirmed `dimValue`, with no new rendering code.
+   *
+   * Named, this *replaces* `play`'s plain momentary held/release feedback `transportHooksFor` gives every other
+   * transport role -- never both: two independent writers racing to send the last word to the same LED is exactly
+   * the hazard `src/surface/bindings.ts`'s `bindStepFeedback()` doc comment already flags for pads, so `play`'s LED
+   * has exactly one owner, chosen by whether this field is set. Omitted (the only behavior before this field
+   * existed): `play` behaves exactly like `stop`/`record`, momentary only.
+   */
+  readonly isPlayingControl?: string;
+  /**
    * Actions for the fader modes' page arrows (ECS-96). The application decides which tracks the faders show: a page
    * turn is a request to the application, not a surface navigation. An arrow left out has no binding.
    */
@@ -224,6 +238,23 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
     .filter((button) => button.indicator && hasControl(button.controlId))
     .map((button): ModeBinding => ({ kind: "mode-indicator", physicalControlId: button.controlId, role: `mode indicator: ${button.mode}`, mode: button.mode }));
 
+  // ECS-145 follow-up: `isPlayingControl`'s own IndicatorBinding, included unconditionally everywhere like
+  // modeIndicators/bankIndicators -- see that field's doc comment for why it replaces, not joins, play's
+  // momentary feedback in transportHooksFor above. Silently absent (not unresolved) when the device's layout
+  // names no `play` control at all: there's nothing to indicate on a device without one.
+  const playIndicator: ModeBinding[] =
+    contract.isPlayingControl !== undefined && layout.transport?.play !== undefined && hasControl(layout.transport.play)
+      ? [
+          {
+            kind: "indicator",
+            physicalControlId: layout.transport.play,
+            role: "transport: play (isPlaying)",
+            resolve: { kind: "static", controlId: contract.isPlayingControl },
+            lit: 1,
+          },
+        ]
+      : [];
+
   // Dedicated mute controls (ECS-138): the same "horizontal window" shape as the step grid's own top-row mute
   // cells below, just sourced from a separate, always-available grid instead of the step grid's top row -- so mute
   // stays visible and controllable without taking over the pad grid, in every mode (steps, mixer, transport and
@@ -274,6 +305,11 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
    * `feedbackPortId ?? portId` convention `bindSurfaceMode()` uses. A caller with no `devices`, or none of its
    * outputs matching a transport control's own port, gets exactly the previous behavior: the action fires, no LED
    * (this was already true for every caller before this field existed, e.g. the Node demo scripts).
+   *
+   * `play`'s own momentary LED is suppressed here when `contract.isPlayingControl` is set -- its press still
+   * fires `contract.actions.play` exactly as every other transport role's does, but `playIndicator` below owns
+   * its LED instead, so this momentary mechanism never also writes to it. See `isPlayingControl`'s own doc
+   * comment for why not both.
    */
   const transportHooksFor = (claimedControlIds: ReadonlySet<string>): SurfaceModeHooks | undefined => {
     const applicable = transportSources.filter(({ controlId }) => !claimedControlIds.has(controlId));
@@ -281,9 +317,10 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
     let unbinds: Array<() => void> = [];
     return {
       onEnter: () => {
-        unbinds = applicable.map(({ source, action, control }) => {
+        unbinds = applicable.map(({ source, action, control, name }) => {
           const unbindTrigger = bindActionTrigger(input, source, action);
-          const output = devices?.outputs[control.feedbackPortId ?? control.portId];
+          const ownsLed = !(name === "play" && contract.isPlayingControl !== undefined);
+          const output = ownsLed ? devices?.outputs[control.feedbackPortId ?? control.portId] : undefined;
           const feedback = bindMomentaryFeedback(control, input, output);
           feedback.painter?.paint();
           return () => {
@@ -307,7 +344,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   const transportControlIds = new Set(Object.values(layout.transport ?? {}).filter((id): id is string => id !== undefined));
 
   const faderModes = devices
-    ? faderModeDefinitions(profile, contract, devices, { bankIndicators, bankHooks, modeIndicators, dedicatedMuteBindings, transportHooksFor })
+    ? faderModeDefinitions(profile, contract, devices, { bankIndicators, bankHooks, modeIndicators, playIndicator, dedicatedMuteBindings, transportHooksFor })
     : [];
   const faderModeIds = new Set(faderModes.map((definition) => definition.mode));
   const declaredFaderModeIds = new Set((profile.modes ?? []).flatMap((mode) => mode.faders.banks.map((bank) => bank.modeId)));
@@ -399,19 +436,19 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   const bindings: SurfaceBindingTable = [
     {
       mode: "steps",
-      bindings: [...modeBindings, ...stepPages, ...stepBindings, ...bankIndicators, ...modeIndicators, ...dedicatedMuteBindings],
+      bindings: [...modeBindings, ...stepPages, ...stepBindings, ...bankIndicators, ...modeIndicators, ...playIndicator, ...dedicatedMuteBindings],
       hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds)),
       activateOn: { scope: "step" },
     },
     {
       mode: "mixer",
-      bindings: [...modeBindings, ...mixerPages, ...muteBindings, ...bankIndicators, ...modeIndicators, ...dedicatedMuteBindings],
+      bindings: [...modeBindings, ...mixerPages, ...muteBindings, ...bankIndicators, ...modeIndicators, ...playIndicator, ...dedicatedMuteBindings],
       hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds)),
       activateOn: { scope: "track" },
     },
     {
       mode: "transport",
-      bindings: [...transportModeBindings, ...bankIndicators, ...modeIndicators, ...dedicatedMuteBindings],
+      bindings: [...transportModeBindings, ...bankIndicators, ...modeIndicators, ...playIndicator, ...dedicatedMuteBindings],
       hooks: joinHooks(bankHooks(), transportHooksFor(transportModeButtonControlIds)),
     },
     ...faderModes,
@@ -429,6 +466,7 @@ function faderModeDefinitions(
     bankIndicators: readonly ModeBinding[];
     bankHooks: () => SurfaceModeHooks | undefined;
     modeIndicators: readonly ModeBinding[];
+    playIndicator: readonly ModeBinding[];
     dedicatedMuteBindings: readonly ModeBinding[];
     transportHooksFor: (claimedControlIds: ReadonlySet<string>) => SurfaceModeHooks | undefined;
   },
@@ -480,7 +518,7 @@ function faderModeDefinitions(
     );
     return {
       mode: modeId,
-      bindings: [...navigation, ...faders, ...shared.bankIndicators, ...shared.modeIndicators, ...shared.dedicatedMuteBindings],
+      bindings: [...navigation, ...faders, ...shared.bankIndicators, ...shared.modeIndicators, ...shared.playIndicator, ...shared.dedicatedMuteBindings],
       // The surface refuses to enter this mode while one of its ports isn't connected (ECS-104).
       requiredPortIds: mode.requiredPortIds,
       hooks: joinHooks(

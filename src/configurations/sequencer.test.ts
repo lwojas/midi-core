@@ -10,6 +10,7 @@ import { PUSH_MK1_PROFILE } from "../profile/devices/push-mk1.js";
 import { validateDeviceProfile } from "../profile/validation/validate-profile.js";
 import type { ModeBinding, NavigationBinding, SurfaceBindingTable } from "../surface/types/bindings.js";
 import type { DeviceLayout } from "../profile/types/layout.js";
+import { bindSurfaceMode } from "../surface/bindings.js";
 import { createSequencerBindings, type SequencerContract, type SequencerDevices } from "./sequencer.js";
 
 // A `DisplayBinding` (ECS-137) is the one `ModeBinding` kind with no `physicalControlId`, so accessing it below
@@ -334,7 +335,87 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
     await definition.hooks?.onExit?.();
     expect(sent).toEqual(expect.arrayContaining([[85, 0], [29, 0], [86, 0]])); // fully off on exit
   });
+
+  it("isPlayingControl (ECS-145 follow-up): Play's binding table gets an IndicatorBinding instead of the plain momentary one", () => {
+    const { bindings: pushTable } = createSequencerBindings(pushInputFor(), push.profile, { ...contract(), isPlayingControl: "transport.isPlaying" });
+    for (const mode of ["steps", "mixer", "transport"] as const) {
+      const indicators = bindingsOf(pushTable, mode).filter((binding) => binding.kind === "indicator");
+      expect(indicators).toEqual([
+        {
+          kind: "indicator",
+          physicalControlId: "button-play",
+          role: "transport: play (isPlaying)",
+          resolve: { kind: "static", controlId: "transport.isPlaying" },
+          lit: 1,
+        },
+      ]);
+    }
+  });
+
+  it("isPlayingControl: Play's LED stays full while the control reports playing, regardless of physical hold/release, and off once bound elsewhere", async () => {
+    const rawInput = new MockMidiInput({ id: "push-in-2", type: "input", name: "push-in-2", manufacturer: null });
+    const pushInput = createMidiInput(rawInput);
+    const sent: Array<readonly number[]> = [];
+    const output = {
+      send: (message: MidiMessage) => sent.push(message.type === "control-change" ? [message.controller, message.value] : []),
+    } as unknown as MidiOutput;
+    const devices: SequencerDevices = { outputs: { "user-port-out": output }, inputs: {} };
+    const isPlaying = createTestNumberControl("transport.isPlaying", 0);
+
+    const { bindings: pushTable } = createSequencerBindings(pushInput, push.profile, { ...contract(), isPlayingControl: isPlaying.def.id }, devices);
+    const steps = pushTable.find((candidate) => candidate.mode === "steps")!;
+
+    await steps.hooks?.onEnter?.();
+    const teardown = await bindSurfaceMode(steps, {
+      profile: push.profile,
+      context: { listSelections: () => [], getSelection: () => undefined, onChange: () => () => {} },
+      registry: { listControls: () => [isPlaying], getControl: (id) => (id === isPlaying.def.id ? isPlaying : undefined), onChange: () => () => {} },
+      ports: { inputs: { "user-port-in": pushInput }, outputs: { "user-port-out": output } },
+      generate: () => [],
+    });
+    sent.length = 0;
+
+    rawInput.emitRawMessage(new Uint8Array([0xb0, 85, 127])); // hold Play: no momentary LED write of its own any more
+    expect(sent).toEqual([]);
+
+    isPlaying.setValue(1); // playback actually starts
+    expect(sent).toContainEqual([85, 127]);
+
+    sent.length = 0;
+    rawInput.emitRawMessage(new Uint8Array([0xb0, 85, 0])); // release Play: still playing, so still full
+    expect(sent).toEqual([]);
+
+    isPlaying.setValue(0); // playback stops
+    expect(sent).toContainEqual([85, 1]); // back to dim, not fully off -- still live in this mode
+
+    sent.length = 0;
+    await teardown();
+    await steps.hooks?.onExit?.();
+    expect(sent).toContainEqual([85, 0]); // fully off once no mode binds it any more
+  });
 });
+
+function pushInputFor() {
+  return createMidiInput(new MockMidiInput({ id: "push-in-3", type: "input", name: "push-in-3", manufacturer: null }));
+}
+
+function createTestNumberControl(id: string, initial: number) {
+  let value = initial;
+  const listeners = new Set<(value: number, previous: number) => void>();
+  return {
+    def: { id, label: id, kind: "number" as const, min: 0, max: 1, default: initial },
+    getValue: () => value,
+    setValue: (next: number) => {
+      const previous = value;
+      value = next;
+      for (const listener of listeners) listener(value, previous);
+    },
+    onChange: (listener: (value: number, previous: number) => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
 
 describe("createSequencerBindings when a role cannot be found", () => {
   const withLayout = (layout: DeviceLayout | undefined, profile = launchpad.profile) =>
