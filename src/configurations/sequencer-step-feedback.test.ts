@@ -172,6 +172,20 @@ describe("step duration feedback on the Launchpad (ECS-127)", () => {
     await surface.detach();
   });
 
+  it("keeps showing continuation feedback on the next page for a duration that spans the page boundary (ECS-147)", async () => {
+    const { surface, steps, durations, pageRight, sent } = build({ duration: true }, 16);
+    steps[6]!.setValue(true); // virtual column 6, near the end of page 0
+    durations[6]!.setValue(4); // covers virtual columns 7-9, past the page 0/1 boundary at column 8
+    await surface.attach();
+    expect(lastLed(sent(), padNote(7))).toBe(rgb(padNote(7), 0, 0, 32)); // virtual column 7: still on page 0
+
+    await pageRight(); // offset.column: 0 -> 8; pad-81..88 now show virtual columns 8-15
+    expect(lastLed(sent(), padNote(0))).toBe(rgb(padNote(0), 0, 0, 32)); // virtual column 8: steps[6]'s duration still reaches here
+    expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 32)); // virtual column 9: last covered column
+    expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 0, 0)); // virtual column 10: outside the 4-step span
+    await surface.detach();
+  });
+
   it("shows no continuation feedback at all when the contract names no duration control", async () => {
     const { surface, steps, sent } = build({ duration: false, playhead: false });
     steps[0]!.setValue(true);

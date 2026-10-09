@@ -146,12 +146,13 @@ export interface WindowedControlBinding extends ModeBindingBase {
    * position `template` names — `{row}`/`{column}` fill the same way (ECS-127). A cell whose own `template`
    * control is off, but which falls within a nearer active cell's span, is a continuation of that cell rather than
    * a step of its own: painted `continuationColour` instead of `colour`, so a one-bar note's pads read as one
-   * occupied span rather than several independent ones. The scan for a covering cell is bounded to this binding's
-   * own row on the *current page*: a duration whose owning step is on an earlier, now-unpaged page is not
-   * reconstructed from off-page state, by design (no pattern or sequencer data is duplicated here to make that
-   * possible). Omitted, no duration feedback: the window behaves exactly as it did before ECS-127. Only takes
-   * effect on a `"toggle"`-press window — a `"hold"` window ignores it, since nothing yet needs continuation
-   * feedback on a held control.
+   * occupied span rather than several independent ones. The scan for a covering cell reads off-page virtual
+   * positions directly (via the grid's own offset arithmetic, no pattern or sequencer data duplicated to do it) but
+   * is bounded to one page boundary behind the current page — `grid.paging.columns` worth of virtual columns on the
+   * page just left, no further (ECS-147). A duration long enough to span two or more page turns is not reconstructed
+   * past that first one; whether it should be is left open, not decided here. Omitted, no duration feedback: the
+   * window behaves exactly as it did before ECS-127. Only takes effect on a `"toggle"`-press window — a `"hold"`
+   * window ignores it, since nothing yet needs continuation feedback on a held control.
    */
   readonly durationTemplate?: string;
   /** The colour a continuation cell shows (ECS-127), in place of `colour`. Meaningless without `durationTemplate`. */

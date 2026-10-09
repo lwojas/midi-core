@@ -10,7 +10,7 @@ import type { ControlMapping } from "../mapping/types/mapping.js";
 import { bindControlMapping } from "../mapping/bind.js";
 import { buildFeedbackMessage, resolveIncomingValue } from "../mapping/value.js";
 import type { PhysicalControl } from "../profile/types/control.js";
-import type { GridCell } from "../profile/types/grid.js";
+import type { ControlGrid, GridCell } from "../profile/types/grid.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActionTrigger } from "./action-binding.js";
 import { buildDisplayMessage } from "./display-binding.js";
@@ -209,12 +209,20 @@ function bindStepFeedback(
   binding: WindowedControlBinding,
   physical: PhysicalControl,
   cell: GridCell,
+  grid: ControlGrid,
   deps: BindSurfaceModeDeps,
   navigation: SurfaceNavigation,
   input: MidiInput,
   source: MidiSource,
   shouldApply?: () => boolean,
 ): { unsubscribe: Unsubscribe; painter?: FeedbackPainter } {
+  // ECS-147: the predecessor scan below is allowed to cross exactly one page boundary behind the current page (i.e.
+  // read `grid.paging.columns` worth of virtual columns that lie on the page just left), reusing the same
+  // `predecessorAt()`/virtual-position lookup as the current-page case rather than a second mechanism — no pattern
+  // or sequencer data is duplicated to do this. One page back is a deliberate, minimal choice, not a derived limit:
+  // whether a note's continuation should keep being reconstructed across two or more page turns (for a duration long
+  // enough to span that far) is left open by ECS-147 itself and isn't decided here.
+  const lookback = grid.paging?.columns ?? 0;
   const ownDef: BooleanControlDef = { id: `window.${binding.gridId}.${cell.row}.${cell.column}`, label: physical.label, kind: "boolean", default: false };
   const own = createWindowedControl(
     ownDef,
@@ -280,7 +288,9 @@ function bindStepFeedback(
     if (binding.durationTemplate !== undefined) {
       // Nearest predecessor first: an overlapping earlier span still reads as "this cell is covered" either way,
       // but checking from the closest one out keeps the scan proportional to the distance that actually matters.
-      for (let j = cell.column - 1; j >= 0; j--) {
+      // Bounded at -lookback (ECS-147), not 0: physicalColumn going negative lands predecessorAt() on the previous
+      // page's virtual columns, since windowPosition() only ever adds the offset without clamping.
+      for (let j = cell.column - 1; j >= -lookback; j--) {
         const { active, duration } = predecessorAt(j);
         if (active?.getValue() === true && duration !== undefined && duration.getValue() > cell.column - j) {
           send(true, binding.continuationColour);
@@ -301,7 +311,7 @@ function bindStepFeedback(
     playheadUnsubscribe = undefined;
 
     if (binding.durationTemplate !== undefined) {
-      for (let j = 0; j < cell.column; j++) {
+      for (let j = -lookback; j < cell.column; j++) {
         const { active, duration } = predecessorAt(j);
         if (active) predecessorUnsubscribes.push(active.onChange(paint));
         if (duration) predecessorUnsubscribes.push(duration.onChange(paint));
@@ -511,7 +521,7 @@ export async function bindSurfaceMode(
     // ECS-127 / ECS-131: a toggle step carrying duration and/or playhead feedback owns its LED alone, composing all
     // three signals into one colour rather than racing a second, independent feedback path against the same pad.
     if (binding.press === "toggle" && (binding.durationTemplate !== undefined || binding.playheadControl !== undefined)) {
-      const handle = bindStepFeedback(binding, physical, cell, deps, navigation, input, source, () => matchesWhen(binding.when));
+      const handle = bindStepFeedback(binding, physical, cell, grid, deps, navigation, input, source, () => matchesWhen(binding.when));
       unsubscribes.push(handle.unsubscribe);
       if (handle.painter) painters.push(handle.painter);
       continue;
