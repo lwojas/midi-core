@@ -243,7 +243,51 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
       }))
     : [];
 
-  const faderModes = devices ? faderModeDefinitions(profile, contract, devices, { bankIndicators, bankHooks, modeIndicators, dedicatedMuteBindings }) : [];
+  const transportSources: Array<{ name: (typeof TRANSPORT_NAMES)[number]; controlId: string; source: MidiSource; action: Action }> = [];
+  for (const name of TRANSPORT_NAMES) {
+    const controlId = layout.transport?.[name];
+    const action = contract.actions[name];
+    if (controlId === undefined || !action) continue;
+    const control = profile.controls.find((candidate) => candidate.id === controlId);
+    const source = control && toMidiSource(control);
+    if (!source) {
+      unresolved.push(`transport: ${name} (control ${controlId})`);
+      continue;
+    }
+    transportSources.push({ name, controlId, source, action });
+  }
+
+  /**
+   * Binds the transport triggers a mode's own bindings leave free (ECS-146): a control already claimed there by a
+   * mode-button or recovery role (`claimedControlIds`) keeps that role instead of also firing a transport action.
+   * Included unconditionally in every mode's bindings below, the same "available everywhere" treatment bank
+   * indicators, mode indicators and the dedicated mute strip already get, so Play/Stop/Record work the instant the
+   * surface attaches, in whichever mode is current, with no mode switch needed to reach them.
+   */
+  const transportHooksFor = (claimedControlIds: ReadonlySet<string>): SurfaceModeHooks | undefined => {
+    const applicable = transportSources.filter(({ controlId }) => !claimedControlIds.has(controlId));
+    if (applicable.length === 0) return undefined;
+    let unbinds: Array<() => void> = [];
+    return {
+      onEnter: () => {
+        unbinds = applicable.map(({ source, action }) => bindActionTrigger(input, source, action));
+      },
+      onExit: () => {
+        for (const unbind of unbinds) unbind();
+        unbinds = [];
+      },
+    };
+  };
+
+  // A mode button that shares a control with a transport role (e.g. the Launchpad's side-59 selects a fader bank, and
+  // is also the transport "play" control) always keeps the mode-button role: the set below is used both to filter
+  // transport out of the modes where that control is a live mode button, and (for the `transport` mode itself) to
+  // filter the colliding mode button out there instead, so the transport role wins in the one mode built to host it.
+  const transportControlIds = new Set(Object.values(layout.transport ?? {}).filter((id): id is string => id !== undefined));
+
+  const faderModes = devices
+    ? faderModeDefinitions(profile, contract, devices, { bankIndicators, bankHooks, modeIndicators, dedicatedMuteBindings, transportHooksFor })
+    : [];
   const faderModeIds = new Set(faderModes.map((definition) => definition.mode));
   const declaredFaderModeIds = new Set((profile.modes ?? []).flatMap((mode) => mode.faders.banks.map((bank) => bank.modeId)));
 
@@ -324,54 +368,30 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         }))
     : [];
 
-  const transportSources: Array<{ name: (typeof TRANSPORT_NAMES)[number]; source: MidiSource; action: Action }> = [];
-  for (const name of TRANSPORT_NAMES) {
-    const controlId = layout.transport?.[name];
-    const action = contract.actions[name];
-    if (controlId === undefined || !action) continue;
-    const control = profile.controls.find((candidate) => candidate.id === controlId);
-    const source = control && toMidiSource(control);
-    if (!source) {
-      unresolved.push(`transport: ${name} (control ${controlId})`);
-      continue;
-    }
-    transportSources.push({ name, source, action });
-  }
-
-  // A mode button that shares a control with a transport role (ECS-96: the Launchpad's side-59 selects a fader bank, and
-  // is also a transport control) is not bound in the transport mode, where the transport role wins.
-  const transportControlIds = new Set(Object.values(layout.transport ?? {}).filter((id): id is string => id !== undefined));
-
-  let transportUnbinds: Array<() => void> = [];
+  // Mode-select buttons claim their own control within a given mode's own bindings (steps/mixer: modeBindings itself;
+  // transport: the subset of modeBindings left after the transportControlIds filter below). A transport trigger
+  // only binds there once that mode's own claims are known, so the sets below feed transportHooksFor per mode.
+  const modeButtonControlIds = new Set(modeBindings.map((binding) => binding.physicalControlId));
+  const transportModeBindings = modeBindings.filter((binding) => !transportControlIds.has(binding.physicalControlId));
+  const transportModeButtonControlIds = new Set(transportModeBindings.map((binding) => binding.physicalControlId));
 
   const bindings: SurfaceBindingTable = [
     {
       mode: "steps",
       bindings: [...modeBindings, ...stepPages, ...stepBindings, ...bankIndicators, ...modeIndicators, ...dedicatedMuteBindings],
-      hooks: joinHooks(bankHooks()),
+      hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds)),
       activateOn: { scope: "step" },
     },
     {
       mode: "mixer",
       bindings: [...modeBindings, ...mixerPages, ...muteBindings, ...bankIndicators, ...modeIndicators, ...dedicatedMuteBindings],
-      hooks: joinHooks(bankHooks()),
+      hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds)),
       activateOn: { scope: "track" },
     },
     {
       mode: "transport",
-      bindings: [...modeBindings.filter((binding) => !transportControlIds.has(binding.physicalControlId)), ...bankIndicators, ...modeIndicators, ...dedicatedMuteBindings],
-      hooks: joinHooks(
-        {
-          onEnter: () => {
-            transportUnbinds = transportSources.map(({ source, action }) => bindActionTrigger(input, source, action));
-          },
-          onExit: () => {
-            for (const unbind of transportUnbinds) unbind();
-            transportUnbinds = [];
-          },
-        },
-        bankHooks(),
-      ),
+      bindings: [...transportModeBindings, ...bankIndicators, ...modeIndicators, ...dedicatedMuteBindings],
+      hooks: joinHooks(bankHooks(), transportHooksFor(transportModeButtonControlIds)),
     },
     ...faderModes,
   ];
@@ -389,6 +409,7 @@ function faderModeDefinitions(
     bankHooks: () => SurfaceModeHooks | undefined;
     modeIndicators: readonly ModeBinding[];
     dedicatedMuteBindings: readonly ModeBinding[];
+    transportHooksFor: (claimedControlIds: ReadonlySet<string>) => SurfaceModeHooks | undefined;
   },
 ): SurfaceModeDefinition[] {
   const actions = contract.faderActions ?? {};
@@ -427,6 +448,15 @@ function faderModeDefinitions(
       role: `${bank.id} fader ${index + 1}`,
       resolve: { kind: "static", controlId: template.split("{index}").join(String(index)) },
     }));
+    // This mode's own entry in `mode.modeButtons` names the control that selects it -- left out of `navigation`
+    // above since navigating to the mode you're already in is a no-op, but still a mode-button control here (ECS-146):
+    // transport must not newly claim it just because it has no NavigationBinding of its own in this mode.
+    const ownButton = mode.modeButtons?.find((button) => button.mode === modeId);
+    const claimedControlIds = new Set(
+      [...navigation.map((binding) => binding.physicalControlId), ownButton?.controlId, ownButton?.recoveryControlId].filter(
+        (controlId): controlId is string => controlId !== undefined,
+      ),
+    );
     return {
       mode: modeId,
       bindings: [...navigation, ...faders, ...shared.bankIndicators, ...shared.modeIndicators, ...shared.dedicatedMuteBindings],
@@ -448,6 +478,7 @@ function faderModeDefinitions(
           },
         },
         shared.bankHooks(),
+        shared.transportHooksFor(claimedControlIds),
       ),
     };
   });

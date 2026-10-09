@@ -210,10 +210,10 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
     expect(unresolved).toEqual([]);
   });
 
-  it("builds the same three modes, but reaches only steps/transport by button: mixer has no mode button on this device (ECS-138)", () => {
+  it("builds the same three modes, but reaches only steps by button: mixer and transport have no mode button on this device (ECS-138, ECS-146)", () => {
     expect(table.map((definition) => definition.mode)).toEqual(["steps", "mixer", "transport"]);
     const modeButtons = bindingsOf(table, "steps").filter(isNavigationBinding).filter((binding) => binding.navigate.kind === "set-mode");
-    expect(modeButtons.map((binding) => binding.physicalControlId)).toEqual(["button-note", "button-stop-clip"]);
+    expect(modeButtons.map((binding) => binding.physicalControlId)).toEqual(["button-note"]);
   });
 
   it("windows its own 8x8 pad grid onto the sequence; the grid's top row (notes 92-99) still mutes in mixer mode", () => {
@@ -248,12 +248,9 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
     }
   });
 
-  it("lights Note/Stop while their own mode is active, and nowhere else (ECS-138)", () => {
+  it("lights Note while steps is active, and nowhere else (ECS-138)", () => {
     const indicators = bindingsOf(table, "steps").filter((binding) => binding.kind === "mode-indicator");
-    expect(indicators).toEqual([
-      { kind: "mode-indicator", physicalControlId: "button-note", role: "mode indicator: steps", mode: "steps" },
-      { kind: "mode-indicator", physicalControlId: "button-stop-clip", role: "mode indicator: transport", mode: "transport" },
-    ]);
+    expect(indicators).toEqual([{ kind: "mode-indicator", physicalControlId: "button-note", role: "mode indicator: steps", mode: "steps" }]);
     // Present, identically, in every mode's own bindings -- the same "available everywhere" treatment bank indicators get.
     expect(bindingsOf(table, "mixer").filter((binding) => binding.kind === "mode-indicator")).toEqual(indicators);
     expect(bindingsOf(table, "transport").filter((binding) => binding.kind === "mode-indicator")).toEqual(indicators);
@@ -264,13 +261,43 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
     expect(pages.map((binding) => binding.physicalControlId)).toEqual(["button-arrow-up", "button-arrow-down", "button-arrow-left", "button-arrow-right"]);
   });
 
-  it("reaches transport mode via Stop Clip, and builds it from Play/Record alone: Stop/Clear have no assigned action button and are silently absent, not reported", () => {
-    expect(push.profile.layout?.transport).toEqual({ play: "button-play", record: "button-record" });
+  it("builds transport from Play/Stop/Record: Clear has no assigned action button and is silently absent, not reported", () => {
+    expect(push.profile.layout?.transport).toEqual({ play: "button-play", stop: "button-stop-clip", record: "button-record" });
+    expect(table.find((definition) => definition.mode === "transport")?.hooks).toBeDefined();
+  });
+
+  it("has no button that reaches transport mode; Stop Clip is a plain transport control instead (ECS-146)", () => {
     const toTransport = bindingsOf(table, "steps")
       .filter(isNavigationBinding)
       .find((binding) => binding.navigate.kind === "set-mode" && binding.navigate.mode === "transport");
-    expect(toTransport?.physicalControlId).toBe("button-stop-clip");
-    expect(table.find((definition) => definition.mode === "transport")?.hooks).toBeDefined();
+    expect(toTransport).toBeUndefined();
+  });
+
+  it("fires Play/Stop/Record from steps and mixer alike, with no mode switch: Stop actually invokes contract.actions.stop (ECS-146)", async () => {
+    const rawInput = new MockMidiInput({ id: "push-in", type: "input", name: "push-in", manufacturer: null });
+    const pushInput = createMidiInput(rawInput);
+    const played: string[] = [];
+    const fire = (name: string) => () => played.push(name);
+    const trackedContract: SequencerContract = {
+      ...contract(),
+      actions: {
+        play: createAction({ id: "play", label: "play" }, fire("play")),
+        stop: createAction({ id: "stop", label: "stop" }, fire("stop")),
+        record: createAction({ id: "record", label: "record" }, fire("record")),
+      },
+    };
+    const { bindings: pushTable } = createSequencerBindings(pushInput, push.profile, trackedContract);
+    const press = (cc: number) => rawInput.emitRawMessage(new Uint8Array([0xb0, cc, 127]));
+
+    for (const mode of ["steps", "mixer"] as const) {
+      const definition = pushTable.find((candidate) => candidate.mode === mode);
+      await definition?.hooks?.onEnter?.();
+      press(85); // Play
+      press(29); // Stop (button-stop-clip)
+      press(86); // Record
+      await definition?.hooks?.onExit?.();
+    }
+    expect(played).toEqual(["play", "stop", "record", "play", "stop", "record"]);
   });
 
   it("has no bank role: bank buttons/indicators are simply absent, with nothing to report", () => {
@@ -299,7 +326,8 @@ describe("createSequencerBindings when a role cannot be found", () => {
       pageLeft: "top-0",
       transport: { ...launchpadLayout.transport, play: "top-0" },
     });
-    expect(unresolved).toEqual(["page left (control top-0)", "transport: play (control top-0)"]);
+    // Transport roles are resolved before mode/page roles now (ECS-146: the fader modes need them up front), so "transport:" reports first.
+    expect(unresolved).toEqual(["transport: play (control top-0)", "page left (control top-0)"]);
     expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page")).toHaveLength(3);
   });
 

@@ -70,18 +70,21 @@ describe("PUSH_MK1_PROFILE", () => {
     for (const controlId of Object.values(layout.transport ?? {})) expect(ids.has(controlId!)).toBe(true);
   });
 
-  it("has no mode button for mixer: Session is free, and mute moved to the dedicated strip instead (ECS-138)", () => {
+  it("has no mode button for mixer or transport: Session and Stop are both free (ECS-138, ECS-146)", () => {
     const layout = PUSH_MK1_PROFILE.layout!;
-    expect(layout.modeButtons?.map((button) => button.mode)).toEqual(["steps", "transport"]);
+    expect(layout.modeButtons?.map((button) => button.mode)).toEqual(["steps"]);
     expect(layout.modeButtons?.every((button) => button.controlId !== "button-session")).toBe(true);
+    expect(layout.modeButtons?.every((button) => button.controlId !== "button-stop-clip")).toBe(true);
   });
 
-  it("lights Note and Stop while their own mode is active (ECS-138)", () => {
+  it("lights Note while its own mode is active (ECS-138)", () => {
     const layout = PUSH_MK1_PROFILE.layout!;
-    expect(layout.modeButtons).toEqual([
-      { controlId: "button-note", mode: "steps", indicator: true },
-      { controlId: "button-stop-clip", mode: "transport", indicator: true },
-    ]);
+    expect(layout.modeButtons).toEqual([{ controlId: "button-note", mode: "steps", indicator: true }]);
+  });
+
+  it("binds Stop as a plain transport control, alongside Play/Record (ECS-146)", () => {
+    const layout = PUSH_MK1_PROFILE.layout!;
+    expect(layout.transport).toEqual({ play: "button-play", stop: "button-stop-clip", record: "button-record" });
   });
 
   it("names the upper control row as a dedicated, always-available mute strip (ECS-138)", () => {

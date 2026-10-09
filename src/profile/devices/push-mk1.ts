@@ -346,39 +346,40 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
 
 /**
  * ECS-90: the sequencer's roles on this device. `Note` (CC 50, round-2-corrected -- see the file doc comment above)
- * stands in for steps mode; the dedicated Arrow buttons page; Play/Record cover two of the four transport actions.
- * `Stop` (CC 29, otherwise unused) is the transport mode's own switch -- without a button naming it, "transport"
- * mode is built by `createSequencerBindings` but unreachable, so Play/Record could never actually fire (found
- * during the ECS-91 live hardware check: a raw Play press decoded fine but the app's action never triggered, since
- * nothing had switched the surface into transport mode). No bank roles: nothing documented on this device groups
- * buttons into bank select A-D the way the Launchpad's top row does.
+ * stands in for steps mode; the dedicated Arrow buttons page. No bank roles: nothing documented on this device
+ * groups buttons into bank select A-D the way the Launchpad's top row does.
  *
  * **ECS-138: no `mixer` mode button, by deliberate decision, not an oversight.** `Session` (CC 51) switched to
  * `mixer` before this ticket; that entry is removed, not merely left unindicated, so `Session` is now free (same
- * "left unresolved rather than guessed at" treatment `transport.stop`/`transport.clear` already got above).
+ * "left unresolved rather than guessed at" treatment `transport.clear` already got above).
  * **Why**: the dedicated `mixer` mode made every mute reachable only by giving up the entire pad grid (steps
  * disappear while it's shown) -- a worse trade on this device than on the Launchpad, which has no equivalent to
  * the upper control row below. `dedicatedMuteGridId` (below) moves the *same* mute responsibility onto that row
- * instead, visible and live in `steps` and `transport` at once, with no mode switch and no lost grid. The generic
+ * instead, visible and live in `steps` and `mixer` at once, with no mode switch and no lost grid. The generic
  * `mixer` `SurfaceModeDefinition` `createSequencerBindings` always builds is untouched and still exists for other
  * devices (the Launchpad still reaches it from `side-79`) -- this is a profile-level routing choice, not a change
  * to shared code, and it costs nothing: with no button naming `mixer`, that mode is simply never reachable on this
  * device, the same way an unresolved mode/page/transport role already works elsewhere in this layout.
  * **Confirmed hands-on (2026-10-09)**: the new LED traffic this decision adds -- `indicator: true` below lights
- * `Note`/`Stop` according to the surface's actual active mode, and the mute strip (CC 102-109) lights and toggles
- * mute correctly, live in `steps` with no mode switch. See `docs/hardware-validation-push-mk1.md`'s ECS-138 section
- * for the full record.
+ * `Note` according to the surface's actual active mode, and the mute strip (CC 102-109) lights and toggles mute
+ * correctly, live in `steps` with no mode switch. See `docs/hardware-validation-push-mk1.md`'s ECS-138 section for
+ * the full record.
+ *
+ * **ECS-146: no `transport` mode button either, for the same reason.** `Stop` (CC 29) used to be the only way to
+ * *reach* `transport` mode -- the sole mode where Play/Record's bindings actually existed -- so leaving the steps
+ * or mixer grid was the price of pressing Play. `button-stop-clip` is now `layout.transport.stop` instead: a plain
+ * transport control, like `button-play`/`button-record`, that `createSequencerBindings` binds in every mode this
+ * profile has, no mode switch required. The generic `transport` `SurfaceModeDefinition` is untouched and still
+ * built (unreachable here, the same way `mixer` already is); any device that still wants a dedicated transport mode
+ * keeps that option.
  */
 export const PUSH_MK1_LAYOUT: DeviceLayout = {
-  modeButtons: [
-    { controlId: "button-note", mode: "steps", indicator: true },
-    { controlId: "button-stop-clip", mode: "transport", indicator: true },
-  ],
+  modeButtons: [{ controlId: "button-note", mode: "steps", indicator: true }],
   pageUp: "button-arrow-up",
   pageDown: "button-arrow-down",
   pageLeft: "button-arrow-left",
   pageRight: "button-arrow-right",
-  transport: { play: "button-play", record: "button-record" },
+  transport: { play: "button-play", stop: "button-stop-clip", record: "button-record" },
   dedicatedMuteGridId: "mute-strip",
 };
 

@@ -213,6 +213,39 @@ describe("the fader modes, on a Launchpad with its DAW ports", () => {
     expect(transport["side-59"]).toBeUndefined();
     expect(transport["side-79"]).toBe("mixer");
   });
+
+  it("binds transport everywhere (ECS-146), but never double-binds side-59/side-49 with their mode-button role, in steps, mixer, or either fader mode they select", async () => {
+    const rawInput = new MockMidiInput({ id: "main-in", type: "input", name: "main-in", manufacturer: null });
+    const mainInput = createMidiInput(rawInput);
+    const played: string[] = [];
+    const fire = (name: string) => () => played.push(name);
+    const trackedContract: SequencerContract = {
+      ...contract(),
+      actions: {
+        play: createAction({ id: "play", label: "play" }, fire("play")),
+        stop: createAction({ id: "stop", label: "stop" }, fire("stop")),
+        record: createAction({ id: "record", label: "record" }, fire("record")),
+        clear: createAction({ id: "clear", label: "clear" }, fire("clear")),
+      },
+    };
+    const { devices } = connectedLaunchpad();
+    const { bindings } = createSequencerBindings(mainInput, LAUNCHPAD_MINI_MK3_PROFILE, trackedContract, devices);
+    const press = (cc: number) => rawInput.emitRawMessage(new Uint8Array([0xb0, cc, 127]));
+
+    for (const mode of ["steps", "mixer", "faders-pan", "faders-send"] as const) {
+      played.length = 0;
+      const definition = definitionOf(bindings, mode);
+      await definition.hooks?.onEnter?.();
+      press(59); // side-59: play, and also faders-pan's own mode button
+      press(49); // side-49: stop, and also faders-send's own mode button
+      press(39); // side-39: record, with no mode-button role anywhere
+      press(29); // side-29: clear, with no mode-button role anywhere
+      await definition.hooks?.onExit?.();
+      // Play/Stop stay exactly as unreachable here as before this ticket; Record/Clear, which collide with
+      // nothing, now fire from every mode without a mode switch.
+      expect(played).toEqual(["record", "clear"]);
+    }
+  });
 });
 
 describe("the fader modes, on a Launchpad without its DAW ports", () => {
