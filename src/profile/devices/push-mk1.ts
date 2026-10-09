@@ -107,6 +107,14 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * (CC 102-109, `PUSH_MK1_MUTE_STRIP_GRID`) is a dedicated, always-available mute strip in place of the removed
  * mode's grid takeover. Both confirmed hands-on -- see `PUSH_MK1_LAYOUT`'s own comment and
  * `docs/hardware-validation-push-mk1.md`.
+ *
+ * **ECS-145**: Phase 3's dim/full LED tiers. Every `UTILITY_BUTTONS` control now declares a `feedback.dimValue`
+ * (see `PUSH_MK1_DIM_VALUE`'s own doc comment for the hands-on byte-level finding), and `PUSH_MK1_LAYOUT` names
+ * `button-shift` as `modifier` for the first time, which also gives Shift real LED feedback it never had. One
+ * real research correction came out of this: the upper control row (CC 102-109) turned out not to be a monochrome
+ * button family at all -- see `MUTE_STRIP_BUTTONS`'s own doc comment -- so it's a separate export now,
+ * `velocity-color-led` like the pads, with no `dimValue`. See `docs/hardware-validation-push-mk1.md`'s ECS-145
+ * section for the full probe results and what's still only assumed, not individually confirmed.
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {
@@ -210,7 +218,11 @@ export const PUSH_MK1_PADS: readonly PhysicalControl[] = Array.from({ length: 8 
   Array.from({ length: 8 }, (_, column) => padControl(rowFromBottom, column)),
 );
 
-/** Utility, navigation and mode-select buttons: all CC-addressed, with simple on/off LED feedback (no documented color palette, unlike the pads). */
+/**
+ * Utility, navigation and mode-select buttons: all CC-addressed, monochrome LED feedback (ECS-145: off/dim/full,
+ * not a colour palette -- that's the upper control row's own `MUTE_STRIP_BUTTONS` below, a different control
+ * family entirely, see that constant's doc comment).
+ */
 const UTILITY_BUTTONS = [
   ["display-1", "Display row button 1 (above screen, leftmost)", 20],
   ["display-2", "Display row button 2", 21],
@@ -220,14 +232,6 @@ const UTILITY_BUTTONS = [
   ["display-6", "Display row button 6", 25],
   ["display-7", "Display row button 7", 26],
   ["display-8", "Display row button 8 (above screen, rightmost)", 27],
-  ["upper-1", "Upper control row button 1 (leftmost)", 102],
-  ["upper-2", "Upper control row button 2", 103],
-  ["upper-3", "Upper control row button 3", 104],
-  ["upper-4", "Upper control row button 4", 105],
-  ["upper-5", "Upper control row button 5", 106],
-  ["upper-6", "Upper control row button 6", 107],
-  ["upper-7", "Upper control row button 7", 108],
-  ["upper-8", "Upper control row button 8 (rightmost)", 109],
   ["tap-tempo", "Tap Tempo", 3],
   ["metronome", "Metronome", 9],
   ["master", "Master", 28],
@@ -259,22 +263,72 @@ const UTILITY_BUTTONS = [
   // Select/Shift pair near the nav pad. Likely the same Push 2 layout conflation already found in this section.
 ] as const;
 
+/**
+ * ECS-145: the lowest raw CC value that renders a dim-but-visible, non-full LED level on this unit's monochrome
+ * utility buttons -- hands-on confirmed on two independent physical buttons, Play (CC 85) and Shift (CC 49):
+ * `0` = off, `1` = dim/steady, `2`-`3` = dim/blinking (increasingly fast), `4` = full/steady, `5`-`6` =
+ * full/blinking, `7` and up = full/steady (clamped -- 40/50/127 all read identically to `4`). Only the two steady
+ * states (`1`, `4`/`127`) are modeled here; the blink states are a real device capability this ticket has no use
+ * for (no "blinking" feedback level exists in this contract) and are left unused, not un-discovered.
+ */
+const PUSH_MK1_DIM_VALUE = 1;
+
 export const PUSH_MK1_UTILITY_BUTTONS: readonly PhysicalControl[] = UTILITY_BUTTONS.map(([id, label, cc]) => ({
   id: `button-${id}`,
   label: `${label} (CC ${cc})`,
   kind: "button",
   portId: "user-port-in",
   input: { address: { type: "control-change", controller: cc }, channel: 0 },
-  feedback: { kind: "monochrome-led", address: { address: { type: "control-change", controller: cc }, channel: 0 } },
+  feedback: {
+    kind: "monochrome-led",
+    address: { address: { type: "control-change", controller: cc }, channel: 0 },
+    dimValue: PUSH_MK1_DIM_VALUE,
+  },
   feedbackPortId: "user-port-out",
 }));
 
-/** 127 controls total: 11 encoders + 11 touch notes, the touch strip + its tap, 64 pads, 39 utility/nav/mode buttons. */
+/**
+ * ECS-145 finding, correcting a previously-unverified assumption: the upper control row (CC 102-109), used as the
+ * dedicated mute strip since ECS-138, is NOT a monochrome on/off/dim button like the rest of `UTILITY_BUTTONS` --
+ * it was only ever lumped in with them because the original `UTILITY_BUTTONS` loop blanket-applied monochrome
+ * feedback to every CC-addressed button, never individually hands-on-checked. Probing CC 102 by hand (same method
+ * as the dim-value probe above) showed a value-selected *colour* palette -- white, orange, red, yellow, green,
+ * pink, turquoise at different raw values -- the same `velocity-color-led` family the 64 pads already declare, not
+ * a brightness scale at all. Giving this row a `dimValue` the way the other utility buttons get one would be
+ * inventing a brightness tier where the device actually changes hue; per the ticket's own scoping, this is exactly
+ * the pads' "own bright/standard/dim RGB tiers... a separate, already-flagged gap (ECS-135), not this ticket's" --
+ * the mute strip turns out to belong to that excluded family instead of the one this ticket extends. No per-colour
+ * palette mapping is modeled here, same "declare the fact, leave the unresolved extent unresolved" stance this
+ * profile already takes elsewhere (e.g. `relativeEncoding`'s "assumed, not confirmed" note on 9 of 11 encoders).
+ */
+const MUTE_STRIP_BUTTONS = [
+  ["upper-1", "Upper control row button 1 (leftmost)", 102],
+  ["upper-2", "Upper control row button 2", 103],
+  ["upper-3", "Upper control row button 3", 104],
+  ["upper-4", "Upper control row button 4", 105],
+  ["upper-5", "Upper control row button 5", 106],
+  ["upper-6", "Upper control row button 6", 107],
+  ["upper-7", "Upper control row button 7", 108],
+  ["upper-8", "Upper control row button 8 (rightmost)", 109],
+] as const;
+
+export const PUSH_MK1_MUTE_STRIP_BUTTONS: readonly PhysicalControl[] = MUTE_STRIP_BUTTONS.map(([id, label, cc]) => ({
+  id: `button-${id}`,
+  label: `${label} (CC ${cc})`,
+  kind: "button",
+  portId: "user-port-in",
+  input: { address: { type: "control-change", controller: cc }, channel: 0 },
+  feedback: { kind: "velocity-color-led", address: { address: { type: "control-change", controller: cc }, channel: 0 }, paletteSize: 128 },
+  feedbackPortId: "user-port-out",
+}));
+
+/** 127 controls total: 11 encoders + 11 touch notes, the touch strip + its tap, 64 pads, 8 mute-strip buttons, 31 other utility/nav/mode buttons. */
 export const PUSH_MK1_CONTROLS: readonly PhysicalControl[] = [
   ...PUSH_MK1_ENCODERS,
   ...PUSH_MK1_TOUCH_STRIP,
   ...PUSH_MK1_PADS,
   ...PUSH_MK1_UTILITY_BUTTONS,
+  ...PUSH_MK1_MUTE_STRIP_BUTTONS,
 ];
 
 export const PUSH_MK1_PAD_GRID: ControlGrid = {
@@ -372,6 +426,14 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
  * profile has, no mode switch required. The generic `transport` `SurfaceModeDefinition` is untouched and still
  * built (unreachable here, the same way `mixer` already is); any device that still wants a dedicated transport mode
  * keeps that option.
+ *
+ * **ECS-145: `modifier: "button-shift"`, declared for the first time on this profile.** Nothing here uses a
+ * `when`-conditional binding yet, `modifier`'s original (ECS-137) purpose -- but `bindSurfaceMode()` now also
+ * lights whichever control this names (dim while released, full while held) whenever that control declares a
+ * `feedback` with a `dimValue`, which `button-shift` (CC 49) now does, hands-on confirmed above. Declaring this
+ * costs nothing on its own (no binding here sets `when`, so the modifier-dispatch behavior stays exactly as
+ * unused as before) and gives Shift a real, lit state it never had -- the one `button-shift` was always missing
+ * despite having `feedback` declared on its `PhysicalControl` since this profile's very first version.
  */
 export const PUSH_MK1_LAYOUT: DeviceLayout = {
   modeButtons: [{ controlId: "button-note", mode: "steps", indicator: true }],
@@ -381,6 +443,7 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
   pageRight: "button-arrow-right",
   transport: { play: "button-play", stop: "button-stop-clip", record: "button-record" },
   dedicatedMuteGridId: "mute-strip",
+  modifier: "button-shift",
 };
 
 export const PUSH_MK1_PROFILE: DeviceProfile = {

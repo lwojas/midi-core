@@ -3,6 +3,7 @@ import { validateDeviceProfile } from "../validation/validate-profile.js";
 import {
   PUSH_MK1_ENCODERS,
   PUSH_MK1_CONTROLS,
+  PUSH_MK1_MUTE_STRIP_BUTTONS,
   PUSH_MK1_MUTE_STRIP_GRID,
   PUSH_MK1_PAD_GRID,
   PUSH_MK1_PADS,
@@ -15,11 +16,23 @@ describe("PUSH_MK1_PROFILE", () => {
     expect(validateDeviceProfile(PUSH_MK1_PROFILE)).toEqual([]);
   });
 
-  it("has 11 encoders (22 controls: a CC and a touch-note each), 64 pads, 39 utility/nav/mode buttons: 127 controls", () => {
+  it("has 11 encoders (22 controls: a CC and a touch-note each), 64 pads, 8 mute-strip buttons, 31 other utility/nav/mode buttons: 127 controls", () => {
     expect(PUSH_MK1_ENCODERS).toHaveLength(22);
     expect(PUSH_MK1_PADS).toHaveLength(64);
-    expect(PUSH_MK1_UTILITY_BUTTONS).toHaveLength(39);
+    expect(PUSH_MK1_MUTE_STRIP_BUTTONS).toHaveLength(8);
+    expect(PUSH_MK1_UTILITY_BUTTONS).toHaveLength(31);
     expect(PUSH_MK1_CONTROLS).toHaveLength(127);
+  });
+
+  it("ECS-145: every monochrome utility button declares the hands-on confirmed dim value; the mute strip (velocity-color-led, a different control family) does not", () => {
+    for (const button of PUSH_MK1_UTILITY_BUTTONS) {
+      expect(button.feedback?.kind, button.id).toBe("monochrome-led");
+      expect(button.feedback?.dimValue, button.id).toBe(1);
+    }
+    for (const button of PUSH_MK1_MUTE_STRIP_BUTTONS) {
+      expect(button.feedback?.kind, button.id).toBe("velocity-color-led");
+      expect(button.feedback?.dimValue, button.id).toBeUndefined();
+    }
   });
 
   it("every control id is unique", () => {
@@ -68,6 +81,13 @@ describe("PUSH_MK1_PROFILE", () => {
     for (const { controlId } of layout.modeButtons ?? []) expect(ids.has(controlId)).toBe(true);
     for (const side of [layout.pageUp, layout.pageDown, layout.pageLeft, layout.pageRight]) expect(ids.has(side!)).toBe(true);
     for (const controlId of Object.values(layout.transport ?? {})) expect(ids.has(controlId!)).toBe(true);
+    expect(ids.has(layout.modifier!)).toBe(true);
+  });
+
+  it("ECS-145: Shift is the layout's modifier, and its own control declares the confirmed dim value", () => {
+    expect(PUSH_MK1_PROFILE.layout?.modifier).toBe("button-shift");
+    const shift = PUSH_MK1_UTILITY_BUTTONS.find((control) => control.id === "button-shift");
+    expect(shift?.feedback?.dimValue).toBe(1);
   });
 
   it("has no mode button for mixer or transport: Session and Stop are both free (ECS-138, ECS-146)", () => {

@@ -249,6 +249,36 @@ describe("buildFeedbackMessage — note", () => {
   });
 });
 
+describe("buildFeedbackMessage — dim/full two-tier feedback (ECS-145)", () => {
+  it("control-change: renders false as dimValue and true as the native max, when dimValue is declared", () => {
+    const target: MidiTarget = { address: { type: "control-change", controller: 85 }, channel: 0, dimValue: 1 };
+    expect(buildFeedbackMessage(target, muted, false)).toEqual({ type: "control-change", channel: 0, controller: 85, value: 1 });
+    expect(buildFeedbackMessage(target, muted, true)).toEqual({ type: "control-change", channel: 0, controller: 85, value: 127 });
+  });
+
+  it("control-change: falls back to plain 0/127 when dimValue is omitted, exactly as before this field existed", () => {
+    const target: MidiTarget = { address: { type: "control-change", controller: 85 }, channel: 0 };
+    expect(buildFeedbackMessage(target, muted, false)).toMatchObject({ value: 0 });
+    expect(buildFeedbackMessage(target, muted, true)).toMatchObject({ value: 127 });
+  });
+
+  it("control-change: dimValue has no effect on a non-boolean control", () => {
+    const target: MidiTarget = { address: { type: "control-change", controller: 74 }, channel: 0, dimValue: 1 };
+    expect(buildFeedbackMessage(target, cutoff, 40)).toMatchObject({ value: 0 });
+  });
+
+  it("note: renders false as a low-velocity note-on (not note-off) when dimValue is declared", () => {
+    const target: MidiTarget = { address: { type: "note", note: 36 }, channel: 0, dimValue: 1 };
+    expect(buildFeedbackMessage(target, muted, false)).toEqual({ type: "note-on", channel: 0, note: 36, velocity: 1 });
+    expect(buildFeedbackMessage(target, muted, true)).toEqual({ type: "note-on", channel: 0, note: 36, velocity: 127 });
+  });
+
+  it("note: falls back to note-on/note-off when dimValue is omitted, exactly as before this field existed", () => {
+    const target: MidiTarget = { address: { type: "note", note: 36 }, channel: 0 };
+    expect(buildFeedbackMessage(target, muted, false)).toEqual({ type: "note-off", channel: 0, note: 36, velocity: 0 });
+  });
+});
+
 describe("buildFeedbackMessage — rgb-led (ECS-95)", () => {
   const lamp: BooleanControlDef = { id: "lamp", label: "Lamp", kind: "boolean", default: false };
   const target: MidiTarget = {

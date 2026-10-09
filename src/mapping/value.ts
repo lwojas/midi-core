@@ -102,6 +102,14 @@ export function resolveIncomingValue<D extends ControlDef>(
  * The outgoing feedback message for `value`, given `target` (where to send
  * it) and `def` (the control's range/kind). Returns `undefined` when
  * `target`'s address kind doesn't pair with `def.kind` per the table above.
+ *
+ * `target.dimValue` (ECS-145): for a boolean control whose target declares one, `false` renders as `dimValue`
+ * instead of the address kind's native minimum — a resting, dim-but-visible LED level in place of fully off, for a
+ * control that's live in the current mode but not currently held/active. `true` is unaffected (still the native
+ * maximum). Omitted, every boolean renders exactly as before this field existed: `false` is the native minimum,
+ * `true` is the native maximum. Turning a control fully, truly off (e.g. when a mode stops binding it at all) is a
+ * separate concern a caller gets by stripping `dimValue` from `target` before calling this, not a third value
+ * passed in here — see `src/surface/bindings.ts`'s `offTarget()`.
  */
 export function buildFeedbackMessage<D extends ControlDef>(
   target: MidiTarget,
@@ -112,6 +120,10 @@ export function buildFeedbackMessage<D extends ControlDef>(
   if (target.rgbPrefix !== undefined) return buildRgbFeedbackMessage(target, def, value, lit);
   switch (target.address.type) {
     case "control-change": {
+      if (def.kind === "boolean" && target.dimValue !== undefined) {
+        const on = value as unknown as boolean;
+        return { type: "control-change", channel: target.channel, controller: target.address.controller, value: on ? 127 : target.dimValue };
+      }
       const native = denormalizeRanged(value, def, 0, 127);
       return native === undefined
         ? undefined
@@ -125,6 +137,9 @@ export function buildFeedbackMessage<D extends ControlDef>(
     case "note": {
       if (def.kind !== "boolean") return undefined;
       const on = value as unknown as boolean;
+      if (target.dimValue !== undefined) {
+        return { type: "note-on", channel: target.channel, note: target.address.note, velocity: on ? 127 : target.dimValue };
+      }
       return {
         type: on ? "note-on" : "note-off",
         channel: target.channel,

@@ -85,6 +85,13 @@ export interface MidiTarget {
    * message is then F0, these bytes, the LED index (the note or controller), red, green, blue, F7.
    */
   readonly rgbPrefix?: readonly number[];
+  /**
+   * The raw native value that renders a dim, resting level for a boolean control, in place of this address kind's
+   * native minimum (ECS-145) — mapping's own copy of `profile/types/control.ts`'s `ControlFeedback.dimValue`, carried
+   * across the profile/mapping boundary the same way `rgbPrefix` already is. Omitted (every target before ECS-145)
+   * means a boolean `false` renders at the native minimum exactly as before — see `buildFeedbackMessage()`.
+   */
+  readonly dimValue?: number;
 }
 
 /** An RGB LED colour, each channel 0-127 (ECS-95). */

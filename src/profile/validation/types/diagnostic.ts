@@ -33,6 +33,7 @@ export type ProfileDiagnosticCode =
   | "relative-control-missing-encoding"
   | "unknown-feedback-kind"
   | "invalid-rgb-prefix"
+  | "invalid-dim-value"
   | "duplicate-control-id"
   | "dangling-port-reference"
   | "invalid-grid"

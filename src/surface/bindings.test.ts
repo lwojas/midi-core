@@ -556,3 +556,168 @@ describe("bindSurfaceMode — mode indicator binding (ECS-138)", () => {
     expect(rawOutput.sentMessages).toHaveLength(0);
   });
 });
+
+describe("bindSurfaceMode — dim/full two-tier feedback (ECS-145)", () => {
+  const muteButton: PhysicalControl = {
+    id: "button-mute-1",
+    label: "Mute 1",
+    kind: "button",
+    portId: "in-1",
+    input: { address: { type: "control-change", controller: 102 }, channel: 0 },
+    feedback: { kind: "monochrome-led", address: { address: { type: "control-change", controller: 102 }, channel: 0 }, dimValue: 1 },
+    feedbackPortId: "out-1",
+  };
+
+  const toggleBinding: ModeBinding = {
+    kind: "control",
+    physicalControlId: "button-mute-1",
+    role: "mute",
+    press: "toggle",
+    resolve: { kind: "static", controlId: muted.id },
+  };
+
+  it("paints dim, not fully off, on bind, while the bound control is false", async () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const control = createTestControl(muted);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [muteButton] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [muted.id]: control }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+    };
+
+    await bindSurfaceMode({ mode: "mixer", bindings: [toggleBinding] }, deps);
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 102, 1]);
+  });
+
+  it("goes to full brightness when the bound control becomes true, and back to dim (not off) when it's false again", async () => {
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const control = createTestControl(muted);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [muteButton] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [muted.id]: control }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+    };
+
+    await bindSurfaceMode({ mode: "mixer", bindings: [toggleBinding] }, deps);
+    rawOutput.clearSentMessages();
+
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 102, 127)); // press toggles the control true
+    expect(control.getValue()).toBe(true);
+    expect(Array.from(rawOutput.sentMessages[rawOutput.sentMessages.length - 1]!)).toEqual([0xb0, 102, 127]);
+
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 102, 127)); // press again toggles back false
+    expect(control.getValue()).toBe(false);
+    expect(Array.from(rawOutput.sentMessages[rawOutput.sentMessages.length - 1]!)).toEqual([0xb0, 102, 1]); // dim, not off
+  });
+
+  it("goes fully off (not dim) on unbind, even though this control's rest state renders dim while bound", async () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const control = createTestControl(muted);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [muteButton] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [muted.id]: control }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+    };
+
+    const teardown = await bindSurfaceMode({ mode: "mixer", bindings: [toggleBinding] }, deps);
+    rawOutput.clearSentMessages();
+    await teardown();
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 102, 0]);
+  });
+
+  it("a control with no dimValue declared keeps today's plain on/off behavior, unchanged", async () => {
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const plainButton: PhysicalControl = { ...muteButton, feedback: { kind: "monochrome-led", address: muteButton.feedback!.address } };
+    const control = createTestControl(muted);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [plainButton] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [muted.id]: control }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+    };
+
+    await bindSurfaceMode({ mode: "mixer", bindings: [toggleBinding] }, deps);
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 102, 0]); // rests fully off, not dim
+
+    rawOutput.clearSentMessages();
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 102, 127));
+    expect(Array.from(rawOutput.sentMessages[rawOutput.sentMessages.length - 1]!)).toEqual([0xb0, 102, 127]);
+  });
+});
+
+describe("bindSurfaceMode — modifier LED feedback (ECS-145)", () => {
+  const shiftButton: PhysicalControl = {
+    id: "button-shift",
+    label: "Shift",
+    kind: "button",
+    portId: "in-1",
+    input: { address: { type: "control-change", controller: 49 }, channel: 0 },
+    feedback: { kind: "monochrome-led", address: { address: { type: "control-change", controller: 49 }, channel: 0 }, dimValue: 1 },
+    feedbackPortId: "out-1",
+  };
+
+  function profileWithModifierFeedback(): DeviceProfile {
+    return { ...profile, controls: [shiftButton], layout: { modifier: "button-shift" } };
+  }
+
+  it("rests dim on bind, goes full while held, back to dim on release, and off on unbind", async () => {
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const deps: BindSurfaceModeDeps = {
+      profile: profileWithModifierFeedback(),
+      context: createFakeContext(),
+      registry: createFakeRegistry({}),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+    };
+
+    const teardown = await bindSurfaceMode({ mode: "mixer", bindings: [] }, deps);
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 49, 1]);
+    rawOutput.clearSentMessages();
+
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 49, 127));
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 49, 127]);
+    rawOutput.clearSentMessages();
+
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 49, 0));
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 49, 1]);
+    rawOutput.clearSentMessages();
+
+    await teardown();
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 49, 0]);
+  });
+
+  it("tracks held/released for `when` dispatch exactly as before, when the modifier control declares no feedback", async () => {
+    const noFeedbackShift: PhysicalControl = { id: "button-shift", label: "Shift", kind: "button", portId: "in-1", input: shiftButton.input };
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const heldTarget: NumericControlDef = { id: "held.value", label: "Held", kind: "number", min: 0, max: 127, default: 0 };
+    const held = createTestControl(heldTarget);
+    const generate = vi.fn<GenerateControlMappings>(() => [
+      {
+        mapping: { id: "shared-held", control: heldTarget.id, source: { address: { type: "control-change", controller: 71 }, channel: "any" } },
+        inputPortId: "in-1",
+        when: "modifier-held",
+      },
+    ]);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [noFeedbackShift], layout: { modifier: "button-shift" } },
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [heldTarget.id]: held }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate,
+    };
+
+    await bindSurfaceMode({ mode: "mixer", bindings: [] }, deps);
+    expect(rawOutput.sentMessages).toHaveLength(0); // no feedback declared -- nothing ever sent for the modifier itself
+
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 49, 127));
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 50));
+    expect(held.getValue()).toBe(50); // held/released tracking for `when` still works with no feedback wired
+  });
+});

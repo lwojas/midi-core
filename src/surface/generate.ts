@@ -85,7 +85,13 @@ export function toMidiTarget(control: PhysicalControl): MidiTarget | undefined {
   const address = toMidiAddress(control.feedback.address.address);
   if (!address) return undefined;
   const rgbPrefix = control.feedback.kind === "rgb-led" ? control.feedback.rgbSysExPrefix : undefined;
-  return rgbPrefix ? { address, channel, rgbPrefix } : { address, channel };
+  const dimValue = control.feedback.dimValue;
+  return {
+    address,
+    channel,
+    ...(rgbPrefix ? { rgbPrefix } : {}),
+    ...(dimValue !== undefined ? { dimValue } : {}),
+  };
 }
 
 /**

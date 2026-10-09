@@ -225,6 +225,21 @@ function checkControls(value: unknown, portIds: Set<string>, controlIds: Set<str
         });
       }
     }
+
+    // dimValue (ECS-145) is a raw native byte, same range every other raw value in this schema is held to; an
+    // out-of-range value would silently build a malformed MIDI message rather than fail here, where the mistake is
+    // actually traceable to the profile that authored it.
+    if (isRecord(control.feedback) && control.feedback.dimValue !== undefined) {
+      const dimValue = control.feedback.dimValue;
+      if (typeof dimValue !== "number" || !Number.isInteger(dimValue) || dimValue < 0 || dimValue > 127) {
+        diagnostics.push({
+          severity: "error",
+          code: "invalid-dim-value",
+          path: `${path}.feedback.dimValue`,
+          message: `Control "${String(control.id)}"'s feedback.dimValue must be an integer 0-127.`,
+        });
+      }
+    }
   });
 
   return diagnostics;

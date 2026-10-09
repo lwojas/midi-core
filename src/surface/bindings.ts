@@ -87,17 +87,57 @@ function isDisplayBinding(binding: ModeBinding): binding is DisplayBinding {
  * the same reuse `bindActionTrigger()` already makes for a plain action trigger — rather than re-deriving
  * press/release detection a second time. Not a full `Control`: nothing needs to subscribe to this changing, only
  * read synchronously at dispatch time, so a plain ref is the smallest shape that's actually needed.
+ *
+ * `feedback` (ECS-145), when the modifier's own `PhysicalControl` resolves a target and an output, lights it: dim
+ * while released (available — this *is* the mode's modifier, after all), full while held. Omitted — no `feedback`
+ * declared on the control, or no output port resolved for it — reproduces the exact previous behavior: the
+ * modifier's state is still tracked for `when`-conditional dispatch, it simply never lights anything, same as every
+ * profile before this field existed.
  */
-function bindModifierState(physical: PhysicalControl, input: MidiInput): { getValue: () => boolean; unsubscribe: Unsubscribe } | undefined {
+function bindModifierState(
+  physical: PhysicalControl,
+  input: MidiInput,
+  feedback?: { target: MidiTarget; output: MidiOutput },
+): { getValue: () => boolean; unsubscribe: Unsubscribe; painter?: FeedbackPainter } | undefined {
   const source = toMidiSource(physical);
   if (!source) return undefined;
   const def: BooleanControlDef = { id: `modifier.${physical.id}`, label: physical.label, kind: "boolean", default: false };
   let held = false;
+  const send = (on: boolean) => {
+    if (!feedback) return;
+    const message = buildFeedbackMessage(feedback.target, def, on);
+    if (message !== undefined) feedback.output.send(message);
+  };
   const unsubscribe = input.onMessage((message) => {
     const resolved = resolveIncomingValue(message, source, def);
-    if (resolved !== undefined) held = resolved;
+    if (resolved !== undefined && resolved !== held) {
+      held = resolved;
+      send(held);
+    }
   });
-  return { getValue: () => held, unsubscribe };
+  const painter: FeedbackPainter | undefined = feedback
+    ? {
+        paint: () => send(held),
+        clear: () => {
+          const message = buildFeedbackMessage(offTarget(feedback.target), def, false);
+          if (message !== undefined) feedback.output.send(message);
+        },
+      }
+    : undefined;
+  return { getValue: () => held, unsubscribe, painter };
+}
+
+/**
+ * Strips `dimValue` so a feedback send renders a boolean control's true, fully-off state regardless of any declared
+ * dim level (ECS-145) — used only when a binding is actually leaving/clearing a control (a mode exit, a toggle's
+ * initial unbound state), never for its ordinary resting paint, where `false` is meant to render dim rather than
+ * off. A no-op (returns `target` unchanged) when no `dimValue` is declared, so every call site using this is exactly
+ * as before this field existed.
+ */
+function offTarget(target: MidiTarget): MidiTarget {
+  if (target.dimValue === undefined) return target;
+  const { dimValue, ...rest } = target;
+  return rest;
 }
 
 /**
@@ -153,7 +193,9 @@ function bindToggle(
     painter: {
       paint: () => send(control.getValue()),
       clear: () => {
-        if (feedback.kind !== "motorized") send(false);
+        if (feedback.kind === "motorized") return;
+        const message = buildFeedbackMessage(offTarget(feedback.target), control.def, false, feedback.lit);
+        if (message !== undefined) feedback.output.send(message);
       },
     },
   };
@@ -348,7 +390,13 @@ function bindStepFeedback(
       playheadUnsubscribe?.();
       own.dispose();
     },
-    painter: { paint, clear: () => send(false, undefined) },
+    painter: {
+      paint,
+      clear: () => {
+        const message = buildFeedbackMessage(offTarget(target), ownDef, false, undefined);
+        if (message !== undefined) output.send(message);
+      },
+    },
   };
 }
 
@@ -365,9 +413,15 @@ function painterFor(
   };
   return {
     paint: () => send(control.getValue()),
-    // A motorized control's position is its value, so leaving the mode must not move it.
+    // A motorized control's position is its value, so leaving the mode must not move it. The rest value renders
+    // through `offTarget()` (ECS-145), not plain `send()`: leaving a mode must turn a dim-capable control fully
+    // off, never leave it resting dim as if it were still live in some mode.
     clear: () => {
-      if (feedbackKind !== "motorized") send(restValue(control.def));
+      if (feedbackKind === "motorized") return;
+      const value = restValue(control.def);
+      if (value === undefined) return;
+      const message = buildFeedbackMessage(offTarget(target), control.def, value);
+      if (message !== undefined) output.send(message);
     },
   };
 }
@@ -417,8 +471,16 @@ export async function bindSurfaceMode(
   const modifierControlId = deps.profile.layout?.modifier;
   const modifierPhysical = modifierControlId ? deps.profile.controls.find((candidate) => candidate.id === modifierControlId) : undefined;
   const modifierInput = modifierPhysical ? deps.ports.inputs[modifierPhysical.portId] : undefined;
-  const modifierState = modifierPhysical && modifierInput ? bindModifierState(modifierPhysical, modifierInput) : undefined;
-  if (modifierState) unsubscribes.push(modifierState.unsubscribe);
+  const modifierTarget = modifierPhysical ? toMidiTarget(modifierPhysical) : undefined;
+  const modifierOutput = modifierPhysical ? deps.ports.outputs[modifierPhysical.feedbackPortId ?? modifierPhysical.portId] : undefined;
+  const modifierState =
+    modifierPhysical && modifierInput
+      ? bindModifierState(modifierPhysical, modifierInput, modifierTarget && modifierOutput ? { target: modifierTarget, output: modifierOutput } : undefined)
+      : undefined;
+  if (modifierState) {
+    unsubscribes.push(modifierState.unsubscribe);
+    if (modifierState.painter) painters.push(modifierState.painter);
+  }
 
   const matchesWhen = (when: ModifierCondition | undefined): boolean => {
     if (when === undefined) return true;
@@ -480,7 +542,13 @@ export async function bindSurfaceMode(
       if (message !== undefined) output.send(message);
     };
     unsubscribes.push(number.onChange((value) => send(value === binding.lit)));
-    painters.push({ paint: () => send(number.getValue() === binding.lit), clear: () => send(false) });
+    painters.push({
+      paint: () => send(number.getValue() === binding.lit),
+      clear: () => {
+        const message = buildFeedbackMessage(offTarget(target), def, false, binding.colour);
+        if (message !== undefined) output.send(message);
+      },
+    });
   }
 
   // A mode indicator lights its button while the surface's current mode matches (ECS-138). Feedback only, painted
@@ -498,7 +566,13 @@ export async function bindSurfaceMode(
       if (message !== undefined) output.send(message);
     };
     const isActive = deps.navigation.state.mode === binding.mode;
-    painters.push({ paint: () => send(isActive), clear: () => send(false) });
+    painters.push({
+      paint: () => send(isActive),
+      clear: () => {
+        const message = buildFeedbackMessage(offTarget(target), def, false, binding.colour);
+        if (message !== undefined) output.send(message);
+      },
+    });
   }
 
   const navigation = deps.navigation;

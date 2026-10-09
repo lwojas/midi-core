@@ -148,6 +148,16 @@ export interface ControlFeedback {
    * F0, these bytes, the LED index (the control's note or controller), red, green, blue, F7.
    */
   readonly rgbSysExPrefix?: readonly number[];
+  /**
+   * The raw native value (0-127) that produces a distinct, dim-but-visible LED level, below full (127) and above
+   * off (0) — a device fact, hands-on confirmed, never guessed (ECS-145). Meaningful for "monochrome-led" (and, in
+   * principle, any boolean-paired feedback kind addressed by a note or control-change) — a generic, additive
+   * extension point, not a Push-specific field: a profile that omits it (every profile before ECS-145, and any
+   * control on this device not individually confirmed) keeps today's exact on/off behavior, unchanged. See
+   * `push-mk1.ts`'s own doc comment for the Push mk1's confirmed value and which controls it was actually checked
+   * on versus merely assumed from the same component family.
+   */
+  readonly dimValue?: number;
 }
 
 /**

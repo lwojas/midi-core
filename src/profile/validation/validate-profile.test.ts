@@ -221,6 +221,31 @@ describe("validateDeviceProfile", () => {
     });
   });
 
+  describe("dimValue feedback (ECS-145)", () => {
+    const withFeedback = (feedback: unknown): unknown => {
+      const profile = validProfile();
+      return { ...profile, controls: profile.controls.map((control) => ({ ...control, feedback })) };
+    };
+    const address = { address: { type: "control-change" as const, controller: 50 }, channel: 0 };
+
+    it("accepts a monochrome-led control with an in-range dimValue, or none at all", () => {
+      expect(validateDeviceProfile(withFeedback({ kind: "monochrome-led", address, dimValue: 1 }))).toEqual([]);
+      expect(validateDeviceProfile(withFeedback({ kind: "monochrome-led", address }))).toEqual([]);
+    });
+
+    it("reports a dimValue outside 0-127, or a non-integer one", () => {
+      expect(validateDeviceProfile(withFeedback({ kind: "monochrome-led", address, dimValue: 128 }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-dim-value", path: "controls[0].feedback.dimValue", severity: "error" }),
+      );
+      expect(validateDeviceProfile(withFeedback({ kind: "monochrome-led", address, dimValue: -1 }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-dim-value" }),
+      );
+      expect(validateDeviceProfile(withFeedback({ kind: "monochrome-led", address, dimValue: 1.5 }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-dim-value" }),
+      );
+    });
+  });
+
   describe("layout (ECS-90)", () => {
     const withLayout = (layout: unknown): unknown => ({ ...validProfile(), layout });
 
