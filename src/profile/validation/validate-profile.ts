@@ -42,8 +42,9 @@ export function validateDeviceProfile(profile: unknown): readonly ProfileDiagnos
   const controlIds = new Set<string>();
   diagnostics.push(...checkControls(profile.controls, portIds, controlIds));
 
-  diagnostics.push(...checkGrids(profile.grids, controlIds));
-  diagnostics.push(...checkLayout(profile.layout, controlIds));
+  const gridIds = new Set<string>();
+  diagnostics.push(...checkGrids(profile.grids, controlIds, gridIds));
+  diagnostics.push(...checkLayout(profile.layout, controlIds, gridIds));
   diagnostics.push(...checkSysEx(profile.sysex));
   diagnostics.push(...checkSetup(profile.setup, profile.ports));
   diagnostics.push(...checkModes(profile.modes, profile.ports, controlIds));
@@ -232,8 +233,10 @@ function checkControls(value: unknown, portIds: Set<string>, controlIds: Set<str
 /**
  * ECS-90: a layout's control ids must name controls on this profile. An unknown mode, page or transport name is
  * not checked here: the surface decides what a mode is, and the configuration reports any role it cannot bind.
+ * ECS-138: `dedicatedMuteGridId` must name a grid on this profile, the same "dangling reference" check a control id
+ * gets, just against `gridIds` (computed by `checkGrids`, so `grids` is checked before `layout` in the caller).
  */
-function checkLayout(value: unknown, controlIds: Set<string>): ProfileDiagnostic[] {
+function checkLayout(value: unknown, controlIds: Set<string>, gridIds: Set<string>): ProfileDiagnostic[] {
   if (value === undefined) return [];
   if (!isRecord(value)) {
     return [{ severity: "error", code: "invalid-layout", path: "layout", message: "layout must be an object when present." }];
@@ -266,6 +269,9 @@ function checkLayout(value: unknown, controlIds: Set<string>): ProfileDiagnostic
           return;
         }
         checkReference(button.controlId, `${path}.controlId`);
+        if (button.indicator !== undefined && typeof button.indicator !== "boolean") {
+          diagnostics.push({ severity: "error", code: "invalid-layout", path: `${path}.indicator`, message: "indicator must be a boolean when present." });
+        }
       });
     }
   }
@@ -285,17 +291,29 @@ function checkLayout(value: unknown, controlIds: Set<string>): ProfileDiagnostic
 
   checkReference(value.modifier, "layout.modifier");
 
+  if (value.dedicatedMuteGridId !== undefined) {
+    if (typeof value.dedicatedMuteGridId !== "string") {
+      diagnostics.push({ severity: "error", code: "invalid-layout", path: "layout.dedicatedMuteGridId", message: "layout.dedicatedMuteGridId must be a string." });
+    } else if (!gridIds.has(value.dedicatedMuteGridId)) {
+      diagnostics.push({
+        severity: "error",
+        code: "dangling-grid-reference",
+        path: "layout.dedicatedMuteGridId",
+        message: `layout.dedicatedMuteGridId references grid "${value.dedicatedMuteGridId}", which isn't declared in grids.`,
+      });
+    }
+  }
+
   return diagnostics;
 }
 
-function checkGrids(value: unknown, controlIds: Set<string>): ProfileDiagnostic[] {
+function checkGrids(value: unknown, controlIds: Set<string>, gridIds: Set<string>): ProfileDiagnostic[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
     return [{ severity: "error", code: "invalid-grid", path: "grids", message: "grids must be an array when present." }];
   }
 
   const diagnostics: ProfileDiagnostic[] = [];
-  const gridIds = new Set<string>();
 
   value.forEach((grid, gridIndex) => {
     const path = `grids[${gridIndex}]`;

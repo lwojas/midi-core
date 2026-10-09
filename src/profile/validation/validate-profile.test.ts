@@ -257,6 +257,23 @@ describe("validateDeviceProfile", () => {
         expect.objectContaining({ code: "dangling-control-reference", path: "layout.modifier" }),
       );
     });
+
+    it("accepts a mode button's boolean indicator, and reports a non-boolean one (ECS-138)", () => {
+      expect(validateDeviceProfile(withLayout({ modeButtons: [{ controlId: "pad-1", mode: "steps", indicator: true }] }))).toEqual([]);
+      expect(validateDeviceProfile(withLayout({ modeButtons: [{ controlId: "pad-1", mode: "steps", indicator: "yes" }] }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-layout", path: "layout.modeButtons[0].indicator" }),
+      );
+    });
+
+    it("accepts a dedicatedMuteGridId naming a real grid, and reports a dangling or non-string one (ECS-138)", () => {
+      expect(validateDeviceProfile(withLayout({ dedicatedMuteGridId: "grid-1" }))).toEqual([]);
+      expect(validateDeviceProfile(withLayout({ dedicatedMuteGridId: "ghost-grid" }))).toContainEqual(
+        expect.objectContaining({ code: "dangling-grid-reference", path: "layout.dedicatedMuteGridId" }),
+      );
+      expect(validateDeviceProfile(withLayout({ dedicatedMuteGridId: 42 }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-layout", path: "layout.dedicatedMuteGridId" }),
+      );
+    });
   });
 
   describe("relativeEncoding (ECS-137)", () => {

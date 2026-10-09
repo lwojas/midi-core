@@ -84,7 +84,12 @@ specific thing an earlier contract named as deferred:
   `pageRight`, `transport` or `modifier` (ECS-137) must be a declared control
   (`dangling-control-reference`). The validator doesn't check whether a mode name
   means anything: the surface decides that, and the configuration reports any role
-  it cannot bind.
+  it cannot bind. `modeButtons[].indicator` (ECS-138), when present, must be a
+  boolean (`invalid-layout`). `dedicatedMuteGridId` (ECS-138), when present, must
+  be a string (`invalid-layout`) that resolves to a declared *grid* — not a
+  control, so this is `dangling-grid-reference`, checked against the grid ids
+  `checkGrids` collects (grids are validated before layout, so this can reuse
+  that same set rather than re-scanning `grids`).
 - **`displays`** (ECS-137) — when present, must be an array of objects with
   string `id`/`label`/`portId` (`invalid-display`); `portId` must resolve to a
   declared *output* port (`dangling-port-reference`, or `invalid-display` if it

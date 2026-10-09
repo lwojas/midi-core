@@ -214,7 +214,36 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
     };
   };
 
-  const faderModes = devices ? faderModeDefinitions(profile, contract, devices, { bankIndicators, bankHooks }) : [];
+  // A mode button opted into `indicator` (ECS-138) also gets a ModeIndicatorBinding on the same control, so its LED
+  // shows whichever mode is actually active -- included in every mode's own bindings below, the same unconditional
+  // "available everywhere" treatment bankIndicators already gets. Computed up front (not from `modeBindings` below)
+  // since the fader modes built next also need it.
+  const modeIndicators: ModeBinding[] = (layout.modeButtons ?? [])
+    .filter((button) => button.indicator && hasControl(button.controlId))
+    .map((button): ModeBinding => ({ kind: "mode-indicator", physicalControlId: button.controlId, role: `mode indicator: ${button.mode}`, mode: button.mode }));
+
+  // Dedicated mute controls (ECS-138): the same "horizontal window" shape as the step grid's own top-row mute
+  // cells below, just sourced from a separate, always-available grid instead of the step grid's top row -- so mute
+  // stays visible and controllable without taking over the pad grid, in every mode (steps, mixer, transport and
+  // fader alike), sharing the same page offset the step grid's own up/down paging already moves. Computed up front
+  // for the same reason modeIndicators is.
+  const dedicatedMuteGrid = layout.dedicatedMuteGridId ? profile.grids?.find((candidate) => candidate.id === layout.dedicatedMuteGridId) : undefined;
+  if (layout.dedicatedMuteGridId && !dedicatedMuteGrid) unresolved.push(`dedicated mutes (grid ${layout.dedicatedMuteGridId})`);
+  const dedicatedMuteBindings: ModeBinding[] = dedicatedMuteGrid
+    ? dedicatedMuteGrid.cells.map((cell) => ({
+        kind: "window",
+        physicalControlId: cell.controlId,
+        role: `dedicated mute ${cell.column + 1}`,
+        gridId: dedicatedMuteGrid.id,
+        template: contract.muteTemplate,
+        press: "toggle",
+        orientation: "horizontal",
+        rowCountControl: contract.trackCountControl,
+        colour: colours.mutes,
+      }))
+    : [];
+
+  const faderModes = devices ? faderModeDefinitions(profile, contract, devices, { bankIndicators, bankHooks, modeIndicators, dedicatedMuteBindings }) : [];
   const faderModeIds = new Set(faderModes.map((definition) => definition.mode));
   const declaredFaderModeIds = new Set((profile.modes ?? []).flatMap((mode) => mode.faders.banks.map((bank) => bank.modeId)));
 
@@ -318,19 +347,19 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   const bindings: SurfaceBindingTable = [
     {
       mode: "steps",
-      bindings: [...modeBindings, ...stepPages, ...stepBindings, ...bankIndicators],
+      bindings: [...modeBindings, ...stepPages, ...stepBindings, ...bankIndicators, ...modeIndicators, ...dedicatedMuteBindings],
       hooks: joinHooks(bankHooks()),
       activateOn: { scope: "step" },
     },
     {
       mode: "mixer",
-      bindings: [...modeBindings, ...mixerPages, ...muteBindings, ...bankIndicators],
+      bindings: [...modeBindings, ...mixerPages, ...muteBindings, ...bankIndicators, ...modeIndicators, ...dedicatedMuteBindings],
       hooks: joinHooks(bankHooks()),
       activateOn: { scope: "track" },
     },
     {
       mode: "transport",
-      bindings: [...modeBindings.filter((binding) => !transportControlIds.has(binding.physicalControlId)), ...bankIndicators],
+      bindings: [...modeBindings.filter((binding) => !transportControlIds.has(binding.physicalControlId)), ...bankIndicators, ...modeIndicators, ...dedicatedMuteBindings],
       hooks: joinHooks(
         {
           onEnter: () => {
@@ -355,7 +384,12 @@ function faderModeDefinitions(
   profile: DeviceProfile,
   contract: SequencerContract,
   devices: SequencerDevices,
-  shared: { bankIndicators: readonly ModeBinding[]; bankHooks: () => SurfaceModeHooks | undefined },
+  shared: {
+    bankIndicators: readonly ModeBinding[];
+    bankHooks: () => SurfaceModeHooks | undefined;
+    modeIndicators: readonly ModeBinding[];
+    dedicatedMuteBindings: readonly ModeBinding[];
+  },
 ): SurfaceModeDefinition[] {
   const actions = contract.faderActions ?? {};
   const hasControl = (controlId: string) => profile.controls.some((control) => control.id === controlId);
@@ -395,7 +429,7 @@ function faderModeDefinitions(
     }));
     return {
       mode: modeId,
-      bindings: [...navigation, ...faders, ...shared.bankIndicators],
+      bindings: [...navigation, ...faders, ...shared.bankIndicators, ...shared.modeIndicators, ...shared.dedicatedMuteBindings],
       // The surface refuses to enter this mode while one of its ports isn't connected (ECS-104).
       requiredPortIds: mode.requiredPortIds,
       hooks: joinHooks(

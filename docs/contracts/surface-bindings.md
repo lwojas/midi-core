@@ -142,14 +142,14 @@ interface NavigationBinding extends ModeBindingBase {
   navigate: NavigationAction;
 }
 
-type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding | IndicatorBinding | DisplayBinding;
+type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding | IndicatorBinding | ModeIndicatorBinding | DisplayBinding;
 ```
 
 (`WindowedControlBinding` and `IndicatorBinding` — a grid window onto an
 application control, and a feedback-only lit-while-equal indicator — were
 added after this ticket by ECS-89/ECS-95/ECS-114; both still extend
 `ModeBindingBase` exactly as above. `DisplayBinding` is new in ECS-137,
-below.)
+below. `ModeIndicatorBinding` is new in ECS-138, below.)
 
 ## Conditional (modifier) bindings (ECS-137)
 
@@ -204,6 +204,46 @@ same way `ControlDef.label` is purely informational. It's kept because
 generation step around "the binding table assigns a role to" each
 `PhysicalControl"; dropping the field here would silently undo that
 vocabulary one ticket later.
+
+## Mode indicator bindings (ECS-138)
+
+```ts
+interface ModeIndicatorBinding {
+  kind: "mode-indicator";
+  physicalControlId: string; // PhysicalControl.id
+  role: ControlRole;
+  mode: SurfaceModeId;       // lit while SurfaceNavigation.state.mode equals this
+  colour?: RgbColour;
+}
+```
+
+Shows which surface mode is active, the same feedback-only, "a press
+never writes a control it doesn't own" shape `IndicatorBinding` already
+has — the button's own press is bound elsewhere, usually the exact same
+`physicalControlId`, by a `NavigationBinding` with a `"set-mode"` action.
+The difference from `IndicatorBinding` is what it reads: `IndicatorBinding`
+compares an application `Control`'s live value; this reads
+`SurfaceNavigation.state.mode`, surface-local state no `ControlRegistry`
+entry ever models, so it needs its own binding kind rather than reusing
+`IndicatorBinding`'s `resolve`/`lit` shape.
+
+Painted once on bind, from whatever `deps.navigation.state.mode` already
+is, and cleared on unbind — never resubscribed. That's deliberate, not an
+oversight: a mode switch always unbinds every one of the outgoing mode's
+bindings before binding the incoming mode's
+(`docs/contracts/mode-switching.md`), so nothing bound under one mode can
+ever observe navigation changing to a different mode while it's still
+live. Requires `deps.navigation`; without it (or an unresolvable control
+or feedback port), the binding sends nothing, the same "report, don't
+invent, don't crash a live caller" stance every other binding here takes.
+
+`DeviceLayout.modeButtons[].indicator` (`docs/contracts/device-profile.md`)
+is the device-fact half: a profile opts a mode button into this binding
+explicitly, since lighting it is new outgoing traffic no profile authored
+before this field existed has had reproduced. `src/configurations/sequencer.ts`
+builds one `ModeIndicatorBinding` per opted-in mode button and includes it,
+unconditionally, in every mode's own binding list — the same "available
+everywhere" treatment bank indicators (ECS-114) already get.
 
 ## `SurfaceModeDefinition` and `SurfaceBindingTable`
 

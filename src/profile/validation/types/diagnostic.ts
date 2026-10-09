@@ -39,6 +39,7 @@ export type ProfileDiagnosticCode =
   | "invalid-layout"
   | "duplicate-grid-id"
   | "dangling-control-reference"
+  | "dangling-grid-reference"
   | "grid-cell-out-of-bounds"
   | "duplicate-grid-cell"
   | "sysex-required-no-manufacturer-id"

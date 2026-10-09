@@ -22,6 +22,14 @@ export interface ModeButtonRole {
    * leaving it stuck on a mode whose own port has gone quiet.
    */
   readonly recoveryControlId?: string;
+  /**
+   * Light this button's own LED while `mode` is the surface's active mode (ECS-138), using the feedback the profile
+   * already declares for it. Omitted (the default) sends no new feedback for this button at all, reproducing the
+   * exact prior behavior for every profile authored before this field existed -- a device opts in explicitly,
+   * since lighting a mode button is new outgoing traffic no profile declaring it has necessarily had re-verified on
+   * hardware yet.
+   */
+  readonly indicator?: boolean;
 }
 
 export interface TransportRoles {
@@ -64,4 +72,13 @@ export interface DeviceLayout {
    * reported as unreachable, not guessed at).
    */
   readonly modifier?: string;
+  /**
+   * A profile grid (ECS-138) whose cells mirror track mute state without taking over the step grid, the way the
+   * step grid's own top row otherwise would -- so mute stays visible and controllable in every mode at once, not
+   * only in a dedicated mode that replaces the pad grid. Built and bound the same "horizontal window" way the step
+   * grid's top-row mute cells already are, so it shares the same page offset the step grid's own up/down paging
+   * already moves: no separate paging control is needed for it. Omitted, track mute still needs the dedicated
+   * `mixer` mode's grid takeover, exactly as before this field existed.
+   */
+  readonly dedicatedMuteGridId?: string;
 }

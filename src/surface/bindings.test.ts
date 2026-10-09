@@ -10,7 +10,7 @@ import type { PhysicalControl } from "../profile/types/control.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActiveMode, bindSurfaceMode, type BindSurfaceModeDeps } from "./bindings.js";
 import { createSurfaceNavigation } from "./navigation.js";
-import type { DisplayBinding, ModeBinding, SurfaceModeDefinition } from "./types/bindings.js";
+import type { DisplayBinding, ModeBinding, ModeIndicatorBinding, SurfaceModeDefinition } from "./types/bindings.js";
 import type { GenerateControlMappings } from "./types/generation.js";
 
 function createTestControl<D extends ControlDef>(def: D): Control<D> {
@@ -486,6 +486,73 @@ describe("bindSurfaceMode — display binding (ECS-137)", () => {
     rawOutput.clearSentMessages();
     await teardown();
     control.setValue("gone");
+    expect(rawOutput.sentMessages).toHaveLength(0);
+  });
+});
+
+describe("bindSurfaceMode — mode indicator binding (ECS-138)", () => {
+  const noteButton: PhysicalControl = {
+    id: "button-note",
+    label: "Note",
+    kind: "button",
+    portId: "in-1",
+    input: { address: { type: "control-change", controller: 50 }, channel: 0 },
+    feedback: { kind: "monochrome-led", address: { address: { type: "control-change", controller: 50 }, channel: 0 } },
+    feedbackPortId: "out-1",
+  };
+
+  const modeIndicator: ModeIndicatorBinding = { kind: "mode-indicator", physicalControlId: "button-note", role: "mode indicator: steps", mode: "steps" };
+
+  it("paints lit when the mode it names is the surface's current mode", async () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const generate = vi.fn<GenerateControlMappings>(() => []);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [noteButton] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({}),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate,
+      navigation: createSurfaceNavigation({ mode: "steps" }),
+    };
+
+    await bindSurfaceMode({ mode: "steps", bindings: [modeIndicator] }, deps);
+    expect(rawOutput.sentMessages).toHaveLength(1);
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 50, 127]);
+  });
+
+  it("paints dark when the mode it names is not the surface's current mode, and clears on unbind", async () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const generate = vi.fn<GenerateControlMappings>(() => []);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [noteButton] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({}),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate,
+      navigation: createSurfaceNavigation({ mode: "mixer" }),
+    };
+
+    const teardown = await bindSurfaceMode({ mode: "mixer", bindings: [modeIndicator] }, deps);
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 50, 0]);
+
+    rawOutput.clearSentMessages();
+    await teardown();
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 50, 0]);
+  });
+
+  it("sends nothing without a navigation dependency, or for an unresolvable control/port", async () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const generate = vi.fn<GenerateControlMappings>(() => []);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [noteButton] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({}),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate,
+      // no navigation
+    };
+
+    await bindSurfaceMode({ mode: "steps", bindings: [modeIndicator] }, deps);
     expect(rawOutput.sentMessages).toHaveLength(0);
   });
 });

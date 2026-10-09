@@ -210,6 +210,43 @@ contaminated doc section either — just worth calling out since it sits
 immediately next to a control this pass did re-verify, and remains the
 nearest concrete next hardware check if someone picks this back up.
 
+## ECS-138: mixer mode removed, mute moved to the upper control row (2026-10-09)
+
+**Decision, made at the code/contract level, not yet confirmed on this unit.** The dedicated `mixer` mode (`Session`,
+CC 51) previously took over the entire pad grid to show mute — a worse trade on this device than on the Launchpad,
+which has nothing equivalent to Push mk1's upper control row (CC 102-109, directly above the pads). `Session` no
+longer selects a mode; it's free, the same "left unresolved rather than guessed at" treatment `transport.stop`/
+`transport.clear` already got in this profile. Mute moved onto the upper control row instead
+(`PUSH_MK1_MUTE_STRIP_GRID`, `layout.dedicatedMuteGridId`): live in `steps` and `transport` at once, no mode switch,
+no lost grid, sharing the step grid's own up/down track-paging offset so the two scroll together automatically. The
+generic `mixer` `SurfaceModeDefinition` `createSequencerBindings` always builds is untouched — it's simply
+unreachable on this device now, the same way an unresolved mode/page/transport role already works elsewhere in
+this layout; the Launchpad still reaches its own `mixer` mode from `side-79`, unaffected.
+
+`button-note` (steps) and `button-stop-clip` (transport) also opted into `indicator: true`: their own LED now
+lights while their own mode is active, reusing the exact `monochrome-led`/CC feedback shape every utility button on
+this profile already sends (and the shape ECS-114's bank indicators already proved correct on hardware, for the
+Launchpad).
+
+**Outgoing LED writes can't be mistaken for presses, by construction, not by convention.** `button-note`/
+`button-stop-clip`/the mute strip's own CCs all send their LED feedback on `user-port-out` while listening for a
+press on `user-port-in` — two separate `MidiOutput`/`MidiInput` objects (`src/surface/bindings.ts`'s `painter.paint()`
+calls `output.send()`; nothing anywhere feeds a sent message back into `input.onMessage()`). This was true of every
+existing feedback-bearing control on this profile already (every pad, every utility button); ECS-138 adds two more
+controls to the same already-correct wiring, not a new code path that could get it wrong. Confirmed by reading the
+code, not by a hardware loopback test — this device's own User Mode has no documented local MIDI-echo behavior
+either (`PUSH_MK1_SYSEX`'s notes), so there's no device-side mechanism this profile knows of that could loop a sent
+LED byte back as a received press.
+
+**Not done here: a real-hardware check of either new LED behavior.** No physical unit was available for this
+change. Automated transition/state-feedback tests cover the binding logic (`src/surface/bindings.test.ts`,
+`src/configurations/sequencer.test.ts`, `src/profile/devices/push-mk1.test.ts`), and nothing here introduces a new
+protocol shape — but "the code sends the byte we expect" and "the device does what we expect when it receives that
+byte" are different claims, and only the first one is verified. Record a hands-on check of both before trusting
+them sight-unseen: confirm CC 50 and CC 29 actually light/clear as `steps`/`transport` are entered and left, and
+confirm CC 102-109 actually light/clear as the mute strip's underlying tracks toggle — the same "light it, read
+what's actually on/off" methodology `docs/hardware-verification-methodology.md` already describes.
+
 ## What's still unverified
 
 - Encoders 2-8 and the Master Encoder's exact relative-encoding bytes
@@ -222,3 +259,6 @@ nearest concrete next hardware check if someone picks this back up.
   CC 49 Shift) — likely where the real Mute/Solo/Clip-equivalent buttons
   actually live, since the doc's claims for those CCs (49/50/112) turned
   out to belong to different buttons entirely
+- ECS-138's two new LED behaviors (the `steps`/`transport` mode indicators on `button-note`/`button-stop-clip`, and
+  the mute strip's lighting on CC 102-109) — reuse an already hardware-proven feedback shape, but have not
+  themselves been confirmed against this unit

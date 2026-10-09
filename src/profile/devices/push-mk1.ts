@@ -100,6 +100,13 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * next to the confirmed-real CC 49 Shift — never tested on hardware, not
  * in this profile, not newly discovered here but worth re-surfacing since
  * it sits directly beside a control this pass did re-verify.
+ *
+ * **ECS-138**: Phase 2's mode refinement. `Session` (CC 51) no longer selects a `mixer` mode -- see
+ * `PUSH_MK1_LAYOUT`'s own doc comment for the full decision and its reasoning. `button-note`/`button-stop-clip`
+ * (steps/transport) now light while their own mode is active (`indicator: true`), and the upper control row
+ * (CC 102-109, `PUSH_MK1_MUTE_STRIP_GRID`) is a dedicated, always-available mute strip in place of the removed
+ * mode's grid takeover. Neither is confirmed on real hardware yet -- flagged in `PUSH_MK1_LAYOUT`'s own comment,
+ * not repeated here.
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {
@@ -284,6 +291,22 @@ export const PUSH_MK1_PAD_GRID: ControlGrid = {
 };
 
 /**
+ * ECS-138: the upper control row (CC 102-109), directly above the pad grid, as a dedicated mute strip -- the
+ * "dedicated labelled controls above the grid" the ticket asks this profile to evaluate moving mute onto, instead
+ * of the dedicated `mixer` mode's grid takeover. One row, 8 columns, left to right, matching the row-0 orientation
+ * `PUSH_MK1_PAD_GRID`'s own top row already uses. No `paging` of its own: `layout.dedicatedMuteGridId` (see
+ * `PUSH_MK1_LAYOUT`) shares the step grid's own page offset instead, so up/down (which already pages tracks in
+ * `steps` mode) moves both at once.
+ */
+export const PUSH_MK1_MUTE_STRIP_GRID: ControlGrid = {
+  id: "mute-strip",
+  label: "Upper control row, as a dedicated mute strip",
+  rows: 1,
+  columns: 8,
+  cells: Array.from({ length: 8 }, (_, column) => ({ row: 0, column, controlId: `button-upper-${column + 1}` })),
+};
+
+/**
  * Vendor SysEx (F0 47 7F ...) is used for the LCD text display and global configuration (aftertouch mode, Live/User
  * mode force) -- confirmed hands-on for the display and the aftertouch-mode toggle. Normal pad/button/encoder
  * operation doesn't depend on any of it; the LCD is the only feedback with no Note/CC alternative, and this profile
@@ -322,26 +345,44 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
 };
 
 /**
- * ECS-90: the sequencer's roles on this device. `Note`/`Session` (CC 50/51, round-2-corrected -- see the file doc
- * comment above) stand in for steps/mixer mode; the dedicated Arrow buttons page; Play/Record cover two of the four
- * transport actions. `Stop` (CC 29, otherwise unused) is the transport mode's own switch -- without a button naming
- * it, "transport" mode is built by
- * `createSequencerBindings` but unreachable, so Play/Record could never actually fire (found during the ECS-91 live
- * hardware check: a raw Play press decoded fine but the app's action never triggered, since nothing had switched the
- * surface into transport mode). No bank roles: nothing documented on this device groups buttons into bank select
- * A-D the way the Launchpad's top row does.
+ * ECS-90: the sequencer's roles on this device. `Note` (CC 50, round-2-corrected -- see the file doc comment above)
+ * stands in for steps mode; the dedicated Arrow buttons page; Play/Record cover two of the four transport actions.
+ * `Stop` (CC 29, otherwise unused) is the transport mode's own switch -- without a button naming it, "transport"
+ * mode is built by `createSequencerBindings` but unreachable, so Play/Record could never actually fire (found
+ * during the ECS-91 live hardware check: a raw Play press decoded fine but the app's action never triggered, since
+ * nothing had switched the surface into transport mode). No bank roles: nothing documented on this device groups
+ * buttons into bank select A-D the way the Launchpad's top row does.
+ *
+ * **ECS-138: no `mixer` mode button, by deliberate decision, not an oversight.** `Session` (CC 51) switched to
+ * `mixer` before this ticket; that entry is removed, not merely left unindicated, so `Session` is now free (same
+ * "left unresolved rather than guessed at" treatment `transport.stop`/`transport.clear` already got above).
+ * **Why**: the dedicated `mixer` mode made every mute reachable only by giving up the entire pad grid (steps
+ * disappear while it's shown) -- a worse trade on this device than on the Launchpad, which has no equivalent to
+ * the upper control row below. `dedicatedMuteGridId` (below) moves the *same* mute responsibility onto that row
+ * instead, visible and live in `steps` and `transport` at once, with no mode switch and no lost grid. The generic
+ * `mixer` `SurfaceModeDefinition` `createSequencerBindings` always builds is untouched and still exists for other
+ * devices (the Launchpad still reaches it from `side-79`) -- this is a profile-level routing choice, not a change
+ * to shared code, and it costs nothing: with no button naming `mixer`, that mode is simply never reachable on this
+ * device, the same way an unresolved mode/page/transport role already works elsewhere in this layout.
+ * **Not done here**: real-hardware verification of the new LED traffic this decision adds (`indicator: true` below
+ * lights `Note`/`Stop`; the mute strip lights CC 102-109 whenever a track is muted) -- no physical unit was
+ * available for this change. Both reuse the exact `monochrome-led`/CC feedback shape every utility button on this
+ * profile already sends, the same shape ECS-114's bank indicators already proved correct on hardware for the
+ * Launchpad, but that reuse has not itself been confirmed against *this* unit. Record a hands-on check here (the
+ * same "Verification" section every other dated entry in `docs/hardware-validation-push-mk1.md` uses) before
+ * trusting these two LEDs sight-unseen.
  */
 export const PUSH_MK1_LAYOUT: DeviceLayout = {
   modeButtons: [
-    { controlId: "button-note", mode: "steps" },
-    { controlId: "button-session", mode: "mixer" },
-    { controlId: "button-stop-clip", mode: "transport" },
+    { controlId: "button-note", mode: "steps", indicator: true },
+    { controlId: "button-stop-clip", mode: "transport", indicator: true },
   ],
   pageUp: "button-arrow-up",
   pageDown: "button-arrow-down",
   pageLeft: "button-arrow-left",
   pageRight: "button-arrow-right",
   transport: { play: "button-play", record: "button-record" },
+  dedicatedMuteGridId: "mute-strip",
 };
 
 export const PUSH_MK1_PROFILE: DeviceProfile = {
@@ -349,7 +390,7 @@ export const PUSH_MK1_PROFILE: DeviceProfile = {
   identity: PUSH_MK1_IDENTITY,
   ports: PUSH_MK1_PORTS,
   controls: PUSH_MK1_CONTROLS,
-  grids: [PUSH_MK1_PAD_GRID],
+  grids: [PUSH_MK1_PAD_GRID, PUSH_MK1_MUTE_STRIP_GRID],
   sysex: PUSH_MK1_SYSEX,
   layout: PUSH_MK1_LAYOUT,
   displays: [PUSH_MK1_DISPLAY],

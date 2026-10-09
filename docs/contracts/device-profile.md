@@ -151,7 +151,7 @@ interface DeviceProfile {
   mode unavailable, not an invalid profile.
 - **`layout`** — `DeviceLayout` (ECS-90): which controls play which
   sequencer roles, as the profile's default. `modeButtons` is an ordered list of
-  `{ controlId, mode }`; `pageUp`/`pageDown`, `pageLeft`/`pageRight` and `transport`
+  `{ controlId, mode, recoveryControlId?, indicator? }`; `pageUp`/`pageDown`, `pageLeft`/`pageRight` and `transport`
   (`{ play?, stop?, record?, clear? }`) are control ids. Every id names a
   `PhysicalControl` on this profile. The step grid is not named here: it is the
   grid with `paging`. Rows are tracks, so up and down page tracks, and the mixer
@@ -163,6 +163,14 @@ interface DeviceProfile {
   optionally names the control id of a shift-style button: a `ModeBinding.when`
   (`docs/contracts/surface-bindings.md`) is only satisfied while this button is
   held/released. Omitted, no binding's `when` on this profile is ever satisfied.
+  `indicator` (ECS-138), per mode button, opts that button's own LED into a
+  `ModeIndicatorBinding` lighting while its mode is active; omitted (every profile authored
+  before this field existed) sends no new feedback at all. `dedicatedMuteGridId` (ECS-138)
+  names a *different* profile grid (not the step grid) whose cells always mirror mute
+  state, in every mode, without taking over the step grid the way the dedicated `mixer`
+  mode's grid takeover does — sharing the step grid's own page offset, so it needs no page
+  buttons of its own. Omitted, track mute still needs the `mixer` mode's grid takeover,
+  exactly as before this field existed.
 - **`displays`** — `DeviceDisplayDefinition[]` (ECS-137), optional. A text
   display's declarative SysEx template, the same "describe the byte
   layout, don't invent a second codec" move `modes`' `bankPrefix`/

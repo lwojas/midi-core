@@ -22,6 +22,7 @@ import type {
   DisplayBinding,
   IndicatorBinding,
   ModeBinding,
+  ModeIndicatorBinding,
   ModifierCondition,
   NavigationBinding,
   SurfaceBindingTable,
@@ -70,6 +71,10 @@ function isWindowedBinding(binding: ModeBinding): binding is WindowedControlBind
 
 function isIndicatorBinding(binding: ModeBinding): binding is IndicatorBinding {
   return binding.kind === "indicator";
+}
+
+function isModeIndicatorBinding(binding: ModeBinding): binding is ModeIndicatorBinding {
+  return binding.kind === "mode-indicator";
 }
 
 function isDisplayBinding(binding: ModeBinding): binding is DisplayBinding {
@@ -366,7 +371,9 @@ function painterFor(
  * held/released state (tracked once per call via `bindModifierState()`); omitting `when` on every binding (the
  * case before this field existed) reproduces the exact previous behavior, unconditionally. A `DisplayBinding` paints
  * a resolved string `Control`'s value out through a `DeviceDisplayDefinition`'s declarative SysEx template whenever
- * it changes, the same "state -> feedback" shape every other binding already uses.
+ * it changes, the same "state -> feedback" shape every other binding already uses. A `ModeIndicatorBinding` (ECS-138)
+ * lights a button while this mode's own id matches `deps.navigation.state.mode` -- surface-local state, not an
+ * application `Control`, which is why it's a distinct binding kind from `IndicatorBinding` rather than reusing it.
  */
 export async function bindSurfaceMode(
   modeDefinition: SurfaceModeDefinition | undefined,
@@ -455,6 +462,24 @@ export async function bindSurfaceMode(
     };
     unsubscribes.push(number.onChange((value) => send(value === binding.lit)));
     painters.push({ paint: () => send(number.getValue() === binding.lit), clear: () => send(false) });
+  }
+
+  // A mode indicator lights its button while the surface's current mode matches (ECS-138). Feedback only, painted
+  // once from the navigation state already current when this mode was entered: a mode switch always unbinds this
+  // mode before binding the next, so nothing here needs a live subscription to repaint from.
+  for (const binding of bindings.filter(isModeIndicatorBinding)) {
+    const physical = deps.profile.controls.find((candidate) => candidate.id === binding.physicalControlId);
+    const target = physical && toMidiTarget(physical);
+    const output = physical && deps.ports.outputs[physical.feedbackPortId ?? physical.portId];
+    if (!deps.navigation || !physical || !target || !output) continue;
+
+    const def: BooleanControlDef = { id: `mode-indicator.${binding.physicalControlId}`, label: physical.label, kind: "boolean", default: false };
+    const send = (on: boolean) => {
+      const message = buildFeedbackMessage(target, def, on, binding.colour);
+      if (message !== undefined) output.send(message);
+    };
+    const isActive = deps.navigation.state.mode === binding.mode;
+    painters.push({ paint: () => send(isActive), clear: () => send(false) });
   }
 
   const navigation = deps.navigation;

@@ -210,18 +210,53 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
     expect(unresolved).toEqual([]);
   });
 
-  it("builds the same three modes, switched by Note/Session/Stop Clip rather than any Launchpad-specific control", () => {
+  it("builds the same three modes, but reaches only steps/transport by button: mixer has no mode button on this device (ECS-138)", () => {
     expect(table.map((definition) => definition.mode)).toEqual(["steps", "mixer", "transport"]);
     const modeButtons = bindingsOf(table, "steps").filter(isNavigationBinding).filter((binding) => binding.navigate.kind === "set-mode");
-    expect(modeButtons.map((binding) => binding.physicalControlId)).toEqual(["button-note", "button-session", "button-stop-clip"]);
+    expect(modeButtons.map((binding) => binding.physicalControlId)).toEqual(["button-note", "button-stop-clip"]);
   });
 
-  it("windows its own 8x8 pad grid onto the sequence, and mutes from the grid's top row (notes 92-99)", () => {
-    const windows = bindingsOf(table, "steps").filter((binding) => binding.kind === "window");
+  it("windows its own 8x8 pad grid onto the sequence; the grid's top row (notes 92-99) still mutes in mixer mode", () => {
+    const windows = bindingsOf(table, "steps")
+      .filter((binding) => binding.kind === "window")
+      .filter((binding) => binding.gridId === "pads");
     expect(windows).toHaveLength(64);
-    expect(windows.every((binding) => binding.kind === "window" && binding.gridId === "pads")).toBe(true);
-    const mutes = bindingsOf(table, "mixer").filter((binding) => binding.kind === "window");
+    const mutes = bindingsOf(table, "mixer")
+      .filter((binding) => binding.kind === "window")
+      .filter((binding) => binding.gridId === "pads");
     expect(mutes.map((binding) => binding.physicalControlId)).toEqual(["pad-92", "pad-93", "pad-94", "pad-95", "pad-96", "pad-97", "pad-98", "pad-99"]);
+  });
+
+  it("also mutes from the dedicated upper-row strip (CC 102-109), live in steps and transport without a mode switch (ECS-138)", () => {
+    for (const mode of ["steps", "transport"]) {
+      const dedicated = bindingsOf(table, mode)
+        .filter((binding) => binding.kind === "window")
+        .filter((binding) => binding.gridId === "mute-strip");
+      expect(dedicated.map((binding) => binding.physicalControlId)).toEqual([
+        "button-upper-1",
+        "button-upper-2",
+        "button-upper-3",
+        "button-upper-4",
+        "button-upper-5",
+        "button-upper-6",
+        "button-upper-7",
+        "button-upper-8",
+      ]);
+      expect(dedicated.every((binding) => binding.kind === "window" && binding.template === "mute.{track}" && binding.orientation === "horizontal")).toBe(
+        true,
+      );
+    }
+  });
+
+  it("lights Note/Stop while their own mode is active, and nowhere else (ECS-138)", () => {
+    const indicators = bindingsOf(table, "steps").filter((binding) => binding.kind === "mode-indicator");
+    expect(indicators).toEqual([
+      { kind: "mode-indicator", physicalControlId: "button-note", role: "mode indicator: steps", mode: "steps" },
+      { kind: "mode-indicator", physicalControlId: "button-stop-clip", role: "mode indicator: transport", mode: "transport" },
+    ]);
+    // Present, identically, in every mode's own bindings -- the same "available everywhere" treatment bank indicators get.
+    expect(bindingsOf(table, "mixer").filter((binding) => binding.kind === "mode-indicator")).toEqual(indicators);
+    expect(bindingsOf(table, "transport").filter((binding) => binding.kind === "mode-indicator")).toEqual(indicators);
   });
 
   it("pages with the dedicated Arrow buttons", () => {
@@ -273,6 +308,13 @@ describe("createSequencerBindings when a role cannot be found", () => {
     expect(unresolved).toEqual(["step grid (a grid with paging)"]);
     expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "window")).toHaveLength(0);
     expect(bindingsOf(bindings, "mixer").filter((binding) => binding.kind === "control")).toHaveLength(0);
+    expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode")).toHaveLength(2);
+  });
+
+  it("reports a dedicatedMuteGridId naming a grid the profile lacks, and still builds the rest (ECS-138)", () => {
+    const { bindings, unresolved } = withLayout({ ...launchpadLayout, dedicatedMuteGridId: "no-such-grid" });
+    expect(unresolved).toEqual(["dedicated mutes (grid no-such-grid)"]);
+    expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "window" && binding.gridId === "no-such-grid")).toHaveLength(0);
     expect(bindingsOf(bindings, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode")).toHaveLength(2);
   });
 

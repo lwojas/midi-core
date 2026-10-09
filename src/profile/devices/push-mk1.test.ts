@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { validateDeviceProfile } from "../validation/validate-profile.js";
-import { PUSH_MK1_ENCODERS, PUSH_MK1_CONTROLS, PUSH_MK1_PAD_GRID, PUSH_MK1_PADS, PUSH_MK1_PROFILE, PUSH_MK1_UTILITY_BUTTONS } from "./push-mk1.js";
+import {
+  PUSH_MK1_ENCODERS,
+  PUSH_MK1_CONTROLS,
+  PUSH_MK1_MUTE_STRIP_GRID,
+  PUSH_MK1_PAD_GRID,
+  PUSH_MK1_PADS,
+  PUSH_MK1_PROFILE,
+  PUSH_MK1_UTILITY_BUTTONS,
+} from "./push-mk1.js";
 
 describe("PUSH_MK1_PROFILE", () => {
   it("has no validation diagnostics", () => {
@@ -60,6 +68,41 @@ describe("PUSH_MK1_PROFILE", () => {
     for (const { controlId } of layout.modeButtons ?? []) expect(ids.has(controlId)).toBe(true);
     for (const side of [layout.pageUp, layout.pageDown, layout.pageLeft, layout.pageRight]) expect(ids.has(side!)).toBe(true);
     for (const controlId of Object.values(layout.transport ?? {})) expect(ids.has(controlId!)).toBe(true);
+  });
+
+  it("has no mode button for mixer: Session is free, and mute moved to the dedicated strip instead (ECS-138)", () => {
+    const layout = PUSH_MK1_PROFILE.layout!;
+    expect(layout.modeButtons?.map((button) => button.mode)).toEqual(["steps", "transport"]);
+    expect(layout.modeButtons?.every((button) => button.controlId !== "button-session")).toBe(true);
+  });
+
+  it("lights Note and Stop while their own mode is active (ECS-138)", () => {
+    const layout = PUSH_MK1_PROFILE.layout!;
+    expect(layout.modeButtons).toEqual([
+      { controlId: "button-note", mode: "steps", indicator: true },
+      { controlId: "button-stop-clip", mode: "transport", indicator: true },
+    ]);
+  });
+
+  it("names the upper control row as a dedicated, always-available mute strip (ECS-138)", () => {
+    expect(PUSH_MK1_PROFILE.layout?.dedicatedMuteGridId).toBe("mute-strip");
+    expect(PUSH_MK1_MUTE_STRIP_GRID).toEqual({
+      id: "mute-strip",
+      label: "Upper control row, as a dedicated mute strip",
+      rows: 1,
+      columns: 8,
+      cells: [
+        { row: 0, column: 0, controlId: "button-upper-1" },
+        { row: 0, column: 1, controlId: "button-upper-2" },
+        { row: 0, column: 2, controlId: "button-upper-3" },
+        { row: 0, column: 3, controlId: "button-upper-4" },
+        { row: 0, column: 4, controlId: "button-upper-5" },
+        { row: 0, column: 5, controlId: "button-upper-6" },
+        { row: 0, column: 6, controlId: "button-upper-7" },
+        { row: 0, column: 7, controlId: "button-upper-8" },
+      ],
+    });
+    expect(PUSH_MK1_PROFILE.grids).toContain(PUSH_MK1_MUTE_STRIP_GRID);
   });
 
   it("every relative-valueMode encoder declares a relativeEncoding (ECS-137)", () => {

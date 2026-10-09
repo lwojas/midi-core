@@ -186,6 +186,23 @@ export interface IndicatorBinding extends ModeBindingBase {
 }
 
 /**
+ * A button that shows which surface mode is active (ECS-138): lit while `SurfaceNavigation.state.mode` equals
+ * `mode`, dark otherwise. Feedback only, the same "a press never writes a control it doesn't own" rule
+ * `IndicatorBinding` already follows -- the button's own press is bound elsewhere (a `NavigationBinding` with a
+ * `"set-mode"` action), usually the exact same `physicalControlId`. Unlike `IndicatorBinding`, which reads an
+ * application `Control`, this reads the surface-local navigation state no `ControlRegistry` entry ever models.
+ * Painted once on bind and cleared on unbind, never resubscribed: a mode switch always unbinds every one of its
+ * mode's bindings before binding the next mode's (`docs/contracts/mode-switching.md`), so nothing here can observe
+ * a mode change while it's live and would need a live subscription to repaint from.
+ */
+export interface ModeIndicatorBinding extends ModeBindingBase {
+  readonly kind: "mode-indicator";
+  readonly mode: SurfaceModeId;
+  /** The colour the LED shows while lit, on an RGB LED. Omitted means white. */
+  readonly colour?: RgbColour;
+}
+
+/**
  * One line of a `DeviceDisplayDefinition` (`docs/contracts/device-profile.md`, ECS-137), driven by a string
  * `Control` instead of a `PhysicalControl` — a display has no input semantics, so this is not a `ModeBindingBase`:
  * there's no physical control press to assign a role to, only an application string to paint out whenever it
@@ -201,8 +218,8 @@ export interface DisplayBinding {
   readonly resolve: ControlIdResolution;
 }
 
-/** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, a window onto a grid of controls, an indicator of one value, or (for `DisplayBinding`) a display line to paint from a string control. */
-export type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding | IndicatorBinding | DisplayBinding;
+/** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, a window onto a grid of controls, an indicator of one value or of the active mode, or (for `DisplayBinding`) a display line to paint from a string control. */
+export type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding | IndicatorBinding | ModeIndicatorBinding | DisplayBinding;
 
 /**
  * The two genuine escape valves a declarative `bindings` list can't
