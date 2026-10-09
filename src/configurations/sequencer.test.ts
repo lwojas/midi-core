@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createAction } from "../control-api/action.js";
 import { createMidiInput } from "../core/input/create-midi-input.js";
+import type { MidiMessage } from "../core/types/message.js";
+import type { MidiOutput } from "../core/types/output.js";
 import { MockMidiInput } from "../adapters/mock/mock-input.js";
 import { DEVICE_REGISTRY, findDevice, type DeviceEntry } from "../devices/registry.js";
 import { EXAMPLE_GRID_8X8_PROFILE } from "../profile/devices/example-grid-8x8.js";
@@ -8,7 +10,7 @@ import { PUSH_MK1_PROFILE } from "../profile/devices/push-mk1.js";
 import { validateDeviceProfile } from "../profile/validation/validate-profile.js";
 import type { ModeBinding, NavigationBinding, SurfaceBindingTable } from "../surface/types/bindings.js";
 import type { DeviceLayout } from "../profile/types/layout.js";
-import { createSequencerBindings, type SequencerContract } from "./sequencer.js";
+import { createSequencerBindings, type SequencerContract, type SequencerDevices } from "./sequencer.js";
 
 // A `DisplayBinding` (ECS-137) is the one `ModeBinding` kind with no `physicalControlId`, so accessing it below
 // needs this file's own navigation-binding narrowing, same as `createSequencerBindings` never produces one.
@@ -304,6 +306,33 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
     expect(push.profile.layout?.bank).toBeUndefined();
     const indicators = bindingsOf(table, "steps").filter((binding) => binding.kind === "indicator");
     expect(indicators).toHaveLength(0);
+  });
+
+  it("lights Play/Stop/Record dim on enter, full while held, and off on exit, when an output is connected (ECS-145 follow-up)", async () => {
+    const rawInput = new MockMidiInput({ id: "push-in", type: "input", name: "push-in", manufacturer: null });
+    const pushInput = createMidiInput(rawInput);
+    const sent: Array<readonly number[]> = [];
+    const output = {
+      send: (message: MidiMessage) => sent.push(message.type === "control-change" ? [message.controller, message.value] : []),
+    } as unknown as MidiOutput;
+    const devices: SequencerDevices = { outputs: { "user-port-out": output }, inputs: {} };
+
+    const { bindings: pushTable } = createSequencerBindings(pushInput, push.profile, contract(), devices);
+    const definition = pushTable.find((candidate) => candidate.mode === "steps")!;
+
+    await definition.hooks?.onEnter?.();
+    // Play (CC 85), Stop (CC 29), Record (CC 86) all rest dim (value 1) immediately on enter.
+    expect(sent).toEqual(expect.arrayContaining([[85, 1], [29, 1], [86, 1]]));
+
+    sent.length = 0;
+    rawInput.emitRawMessage(new Uint8Array([0xb0, 85, 127])); // hold Play
+    expect(sent).toContainEqual([85, 127]);
+    rawInput.emitRawMessage(new Uint8Array([0xb0, 85, 0])); // release Play
+    expect(sent).toContainEqual([85, 1]); // back to dim, not off
+
+    sent.length = 0;
+    await definition.hooks?.onExit?.();
+    expect(sent).toEqual(expect.arrayContaining([[85, 0], [29, 0], [86, 0]])); // fully off on exit
   });
 });
 

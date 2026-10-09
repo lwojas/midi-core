@@ -141,6 +141,58 @@ function offTarget(target: MidiTarget): MidiTarget {
 }
 
 /**
+ * Lights a momentary, action-triggered button dim-at-rest/full-while-held (ECS-145 follow-up) — for a control
+ * whose own press already drives something else entirely (a `NavigationBinding`'s page/mode action below, or a
+ * transport trigger in `src/configurations/sequencer.ts`'s `transportHooksFor`) rather than a persisted
+ * application `Control`, so there's no `onChange()` to paint from the way `painterFor()`/`bindToggle()` do.
+ * Tracks press/release itself, the same `resolveIncomingValue()` reuse `bindModifierState()` already makes —
+ * deliberately not shared with it, since that function also needs to expose `getValue()` for `when`-dispatch,
+ * which this one has no caller for. Exported for `transportHooksFor`'s own direct use, since that hook is built
+ * outside `bindSurfaceMode()`'s own `deps.ports`-resolution loop (see its own doc comment for why).
+ *
+ * Returns no `painter` when `physical` has no feedback target, `output` is `undefined` (no port resolved for it),
+ * or the target declares no `dimValue`: a momentary button with only plain on/off (or an RGB/palette control with
+ * nothing dim/full means for) has nothing worth painting here that it didn't already have — "dim" and "off" would
+ * be the exact same message, so forcing one on every mode enter/exit would just be new wire traffic with no new
+ * visible state, for every such control on every profile, not only the ones ECS-145 actually extends. A caller
+ * whose control doesn't opt in (every profile/control before this function existed) degrades to exactly its
+ * previous behavior: the button fires its action, no LED.
+ */
+export function bindMomentaryFeedback(
+  physical: PhysicalControl,
+  input: MidiInput,
+  output: MidiOutput | undefined,
+): { unsubscribe: Unsubscribe; painter?: FeedbackPainter } {
+  const source = toMidiSource(physical);
+  const target = toMidiTarget(physical);
+  if (!source || !target || !output || target.dimValue === undefined) return { unsubscribe: () => {} };
+
+  const def: BooleanControlDef = { id: `momentary.${physical.id}`, label: physical.label, kind: "boolean", default: false };
+  let held = false;
+  const send = (on: boolean) => {
+    const message = buildFeedbackMessage(target, def, on);
+    if (message !== undefined) output.send(message);
+  };
+  const unsubscribe = input.onMessage((message) => {
+    const resolved = resolveIncomingValue(message, source, def);
+    if (resolved !== undefined && resolved !== held) {
+      held = resolved;
+      send(held);
+    }
+  });
+  return {
+    unsubscribe,
+    painter: {
+      paint: () => send(held),
+      clear: () => {
+        const message = buildFeedbackMessage(offTarget(target), def, false);
+        if (message !== undefined) output.send(message);
+      },
+    },
+  };
+}
+
+/**
  * Inert `MidiOutput` passed to `bindControlMapping()` when a mapping has
  * no `feedback` (so `output` is never read — see `src/mapping/bind.ts`)
  * and no output port was resolved for it either. Never actually used for
@@ -591,6 +643,13 @@ export async function bindSurfaceMode(
       else if (paging) navigation.pageBy({ row: navigate.direction.row * paging.rows, column: navigate.direction.column * paging.columns });
     });
     unsubscribes.push(bindActionTrigger(input, source, action));
+
+    // ECS-145 follow-up: a page/mode button lights the same dim-at-rest/full-while-held way every other bound
+    // utility button now does, when its PhysicalControl declares a feedback target and a port resolves for it.
+    const output = deps.ports.outputs[physical.feedbackPortId ?? physical.portId];
+    const feedback = bindMomentaryFeedback(physical, input, output);
+    unsubscribes.push(feedback.unsubscribe);
+    if (feedback.painter) painters.push(feedback.painter);
   }
 
   for (const binding of bindings.filter(isWindowedBinding)) {

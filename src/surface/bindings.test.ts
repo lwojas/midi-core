@@ -721,3 +721,71 @@ describe("bindSurfaceMode — modifier LED feedback (ECS-145)", () => {
     expect(held.getValue()).toBe(50); // held/released tracking for `when` still works with no feedback wired
   });
 });
+
+describe("bindSurfaceMode — navigation binding LED feedback (ECS-145 follow-up)", () => {
+  const arrowButton: PhysicalControl = {
+    id: "button-arrow-right",
+    label: "Arrow Right",
+    kind: "button",
+    portId: "in-1",
+    input: { address: { type: "control-change", controller: 45 }, channel: 0 },
+    feedback: { kind: "monochrome-led", address: { address: { type: "control-change", controller: 45 }, channel: 0 }, dimValue: 1 },
+    feedbackPortId: "out-1",
+  };
+
+  const pageBinding: ModeBinding = {
+    kind: "navigate",
+    physicalControlId: "button-arrow-right",
+    role: "page right",
+    navigate: { kind: "page", gridId: "pads", direction: { row: 0, column: 1 } },
+  };
+
+  const padGrid = { id: "pads", label: "pads", rows: 1, columns: 1, cells: [], paging: { rows: 1, columns: 1 } };
+
+  it("rests dim on bind, goes full while held, back to dim on release, and off on unbind", async () => {
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [arrowButton], grids: [padGrid] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({}),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+      navigation: createSurfaceNavigation({ mode: "steps" }),
+    };
+
+    const teardown = await bindSurfaceMode({ mode: "steps", bindings: [pageBinding] }, deps);
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 45, 1]);
+    rawOutput.clearSentMessages();
+
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 45, 127));
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 45, 127]);
+    rawOutput.clearSentMessages();
+
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 45, 0));
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 45, 1]);
+    rawOutput.clearSentMessages();
+
+    await teardown();
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xb0, 45, 0]);
+  });
+
+  it("still pages normally, and sends nothing, when the control declares no feedback", async () => {
+    const noFeedbackArrow: PhysicalControl = { ...arrowButton, feedback: undefined, feedbackPortId: undefined };
+    const { rawInput, input, output, rawOutput } = wiredPorts();
+    const navigation = createSurfaceNavigation({ mode: "steps", gridOffset: { row: 0, column: 0 } });
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [noFeedbackArrow], grids: [padGrid] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({}),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+      navigation,
+    };
+
+    await bindSurfaceMode({ mode: "steps", bindings: [pageBinding] }, deps);
+    expect(rawOutput.sentMessages).toHaveLength(0);
+
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 45, 127));
+    expect(navigation.state.gridOffset).toEqual({ row: 0, column: 1 });
+  });
+});

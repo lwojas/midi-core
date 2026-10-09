@@ -40,7 +40,7 @@ export type { GeneratedBinding, GenerateControlMappings } from "./types/generati
 export { createSurfaceNavigation } from "./navigation.js";
 
 export type { SurfacePorts, BindSurfaceModeDeps, SurfaceModeTeardown } from "./bindings.js";
-export { bindSurfaceMode, bindActiveMode } from "./bindings.js";
+export { bindSurfaceMode, bindActiveMode, bindMomentaryFeedback } from "./bindings.js";
 
 export { bindSelectionModePolicy } from "./selection-policy.js";
 

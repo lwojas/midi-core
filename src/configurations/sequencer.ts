@@ -3,10 +3,12 @@ import type { Action } from "../control-api/types/action.js";
 import type { MidiInput } from "../core/types/input.js";
 import type { MidiOutput } from "../core/types/output.js";
 import type { BankEntryField, DeviceFaderBank, DeviceModeProfile } from "../profile/types/mode.js";
+import type { PhysicalControl } from "../profile/types/control.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import type { DeviceLayout } from "../profile/types/layout.js";
 import type { ControlGrid } from "../profile/types/grid.js";
 import { bindActionTrigger } from "../surface/action-binding.js";
+import { bindMomentaryFeedback } from "../surface/bindings.js";
 import { toMidiSource } from "../surface/generate.js";
 import type { ControlBinding, ModeBinding, NavigationBinding, SurfaceBindingTable, SurfaceModeDefinition, SurfaceModeHooks } from "../surface/types/bindings.js";
 import type { MidiSource, RgbColour } from "../mapping/types/address.js";
@@ -243,18 +245,19 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
       }))
     : [];
 
-  const transportSources: Array<{ name: (typeof TRANSPORT_NAMES)[number]; controlId: string; source: MidiSource; action: Action }> = [];
+  const transportSources: Array<{ name: (typeof TRANSPORT_NAMES)[number]; controlId: string; control: PhysicalControl; source: MidiSource; action: Action }> =
+    [];
   for (const name of TRANSPORT_NAMES) {
     const controlId = layout.transport?.[name];
     const action = contract.actions[name];
     if (controlId === undefined || !action) continue;
     const control = profile.controls.find((candidate) => candidate.id === controlId);
     const source = control && toMidiSource(control);
-    if (!source) {
+    if (!control || !source) {
       unresolved.push(`transport: ${name} (control ${controlId})`);
       continue;
     }
-    transportSources.push({ name, controlId, source, action });
+    transportSources.push({ name, controlId, control, source, action });
   }
 
   /**
@@ -263,6 +266,14 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
    * Included unconditionally in every mode's bindings below, the same "available everywhere" treatment bank
    * indicators, mode indicators and the dedicated mute strip already get, so Play/Stop/Record work the instant the
    * surface attaches, in whichever mode is current, with no mode switch needed to reach them.
+   *
+   * ECS-145 follow-up: each transport control also gets the dim-at-rest/full-while-held LED treatment, via
+   * `bindMomentaryFeedback()` -- the same mechanism `NavigationBinding` now uses in `src/surface/bindings.ts`. This
+   * hook bypasses `bindSurfaceMode()`'s own `deps.ports` resolution entirely (by design -- see `SurfaceModeHooks`'s
+   * own doc comment), so the feedback output has to be resolved here instead, from `devices?.outputs` by the same
+   * `feedbackPortId ?? portId` convention `bindSurfaceMode()` uses. A caller with no `devices`, or none of its
+   * outputs matching a transport control's own port, gets exactly the previous behavior: the action fires, no LED
+   * (this was already true for every caller before this field existed, e.g. the Node demo scripts).
    */
   const transportHooksFor = (claimedControlIds: ReadonlySet<string>): SurfaceModeHooks | undefined => {
     const applicable = transportSources.filter(({ controlId }) => !claimedControlIds.has(controlId));
@@ -270,7 +281,17 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
     let unbinds: Array<() => void> = [];
     return {
       onEnter: () => {
-        unbinds = applicable.map(({ source, action }) => bindActionTrigger(input, source, action));
+        unbinds = applicable.map(({ source, action, control }) => {
+          const unbindTrigger = bindActionTrigger(input, source, action);
+          const output = devices?.outputs[control.feedbackPortId ?? control.portId];
+          const feedback = bindMomentaryFeedback(control, input, output);
+          feedback.painter?.paint();
+          return () => {
+            unbindTrigger();
+            feedback.painter?.clear();
+            feedback.unsubscribe();
+          };
+        });
       },
       onExit: () => {
         for (const unbind of unbinds) unbind();
