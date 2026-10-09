@@ -6,9 +6,15 @@ import { DEVICE_REGISTRY, findDevice, type DeviceEntry } from "../devices/regist
 import { EXAMPLE_GRID_8X8_PROFILE } from "../profile/devices/example-grid-8x8.js";
 import { PUSH_MK1_PROFILE } from "../profile/devices/push-mk1.js";
 import { validateDeviceProfile } from "../profile/validation/validate-profile.js";
-import type { ModeBinding, SurfaceBindingTable } from "../surface/types/bindings.js";
+import type { ModeBinding, NavigationBinding, SurfaceBindingTable } from "../surface/types/bindings.js";
 import type { DeviceLayout } from "../profile/types/layout.js";
 import { createSequencerBindings, type SequencerContract } from "./sequencer.js";
+
+// A `DisplayBinding` (ECS-137) is the one `ModeBinding` kind with no `physicalControlId`, so accessing it below
+// needs this file's own navigation-binding narrowing, same as `createSequencerBindings` never produces one.
+function isNavigationBinding(binding: ModeBinding): binding is NavigationBinding {
+  return binding.kind === "navigate";
+}
 
 const action = () => createAction({ id: "a", label: "a" }, () => {});
 const input = createMidiInput(new MockMidiInput({ id: "in", type: "input", name: "in", manufacturer: null }));
@@ -61,8 +67,8 @@ describe("createSequencerBindings on the Launchpad", () => {
   });
 
   it("pages tracks with the arrows' vertical pair, and time with the horizontal pair, in steps mode", () => {
-    const pages = bindingsOf(table, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page");
-    expect(pages.map((binding) => [binding.physicalControlId, binding.kind === "navigate" && binding.navigate.kind === "page" ? binding.navigate.direction : undefined])).toEqual([
+    const pages = bindingsOf(table, "steps").filter(isNavigationBinding).filter((binding) => binding.navigate.kind === "page");
+    expect(pages.map((binding) => [binding.physicalControlId, binding.navigate.kind === "page" ? binding.navigate.direction : undefined])).toEqual([
       ["top-91", { row: -1, column: 0 }],
       ["top-92", { row: 1, column: 0 }],
       ["top-93", { row: 0, column: -1 }],
@@ -71,8 +77,8 @@ describe("createSequencerBindings on the Launchpad", () => {
   });
 
   it("pages tracks in the mixer with the left and right arrows, since its tracks run across, and has no vertical paging", () => {
-    const pages = bindingsOf(table, "mixer").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page");
-    expect(pages.map((binding) => [binding.physicalControlId, binding.kind === "navigate" && binding.navigate.kind === "page" ? binding.navigate.direction : undefined])).toEqual([
+    const pages = bindingsOf(table, "mixer").filter(isNavigationBinding).filter((binding) => binding.navigate.kind === "page");
+    expect(pages.map((binding) => [binding.physicalControlId, binding.navigate.kind === "page" ? binding.navigate.direction : undefined])).toEqual([
       ["top-93", { row: -1, column: 0 }],
       ["top-94", { row: 1, column: 0 }],
     ]);
@@ -176,7 +182,7 @@ describe("createSequencerBindings on the example grid", () => {
 
   it("builds the same three modes, with its own mode buttons", () => {
     expect(table.map((definition) => definition.mode)).toEqual(["steps", "mixer", "transport"]);
-    const modeButtons = bindingsOf(table, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode");
+    const modeButtons = bindingsOf(table, "steps").filter(isNavigationBinding).filter((binding) => binding.navigate.kind === "set-mode");
     expect(modeButtons.map((binding) => binding.physicalControlId)).toEqual(["button-mode-a", "button-mode-b", "button-mode-c"]);
   });
 
@@ -190,7 +196,7 @@ describe("createSequencerBindings on the example grid", () => {
   });
 
   it("binds its page buttons to the grid's paging", () => {
-    const pages = bindingsOf(table, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page");
+    const pages = bindingsOf(table, "steps").filter(isNavigationBinding).filter((binding) => binding.navigate.kind === "page");
     expect(pages.map((binding) => binding.physicalControlId)).toEqual(["button-page-left", "button-page-right"]);
   });
 });
@@ -206,7 +212,7 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
 
   it("builds the same three modes, switched by Note/Session/Stop Clip rather than any Launchpad-specific control", () => {
     expect(table.map((definition) => definition.mode)).toEqual(["steps", "mixer", "transport"]);
-    const modeButtons = bindingsOf(table, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode");
+    const modeButtons = bindingsOf(table, "steps").filter(isNavigationBinding).filter((binding) => binding.navigate.kind === "set-mode");
     expect(modeButtons.map((binding) => binding.physicalControlId)).toEqual(["button-note", "button-session", "button-stop-clip"]);
   });
 
@@ -219,15 +225,15 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
   });
 
   it("pages with the dedicated Arrow buttons", () => {
-    const pages = bindingsOf(table, "steps").filter((binding) => binding.kind === "navigate" && binding.navigate.kind === "page");
+    const pages = bindingsOf(table, "steps").filter(isNavigationBinding).filter((binding) => binding.navigate.kind === "page");
     expect(pages.map((binding) => binding.physicalControlId)).toEqual(["button-arrow-up", "button-arrow-down", "button-arrow-left", "button-arrow-right"]);
   });
 
   it("reaches transport mode via Stop Clip, and builds it from Play/Record alone: Stop/Clear have no assigned action button and are silently absent, not reported", () => {
     expect(push.profile.layout?.transport).toEqual({ play: "button-play", record: "button-record" });
-    const toTransport = bindingsOf(table, "steps").find(
-      (binding) => binding.kind === "navigate" && binding.navigate.kind === "set-mode" && binding.navigate.mode === "transport",
-    );
+    const toTransport = bindingsOf(table, "steps")
+      .filter(isNavigationBinding)
+      .find((binding) => binding.navigate.kind === "set-mode" && binding.navigate.mode === "transport");
     expect(toTransport?.physicalControlId).toBe("button-stop-clip");
     expect(table.find((definition) => definition.mode === "transport")?.hooks).toBeDefined();
   });

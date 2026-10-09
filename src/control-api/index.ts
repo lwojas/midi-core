@@ -5,6 +5,7 @@ export type {
   BooleanControlDef,
   EnumControlDef,
   EnumControlOption,
+  StringControlDef,
   ControlDef,
   ControlValue,
   Control,

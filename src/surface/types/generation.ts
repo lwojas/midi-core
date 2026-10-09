@@ -1,7 +1,7 @@
 import type { SurfaceContext } from "../../control-api/types/context.js";
 import type { ControlMapping } from "../../mapping/types/mapping.js";
 import type { DeviceProfile } from "../../profile/types/profile.js";
-import type { ControlBinding } from "./bindings.js";
+import type { ControlBinding, ModifierCondition } from "./bindings.js";
 
 /**
  * One `ControlMapping` a generation step produced from a `ControlBinding`
@@ -22,6 +22,8 @@ export interface GeneratedBinding {
   readonly inputPortId: string;
   /** Present only when `mapping.feedback` is set. */
   readonly outputPortId?: string;
+  /** Carried over from the originating `ControlBinding.when` (ECS-137), so `src/surface/bindings.ts` can gate dispatch on the mode's modifier state without re-deriving it from the binding table a second time. */
+  readonly when?: ModifierCondition;
 }
 
 /**

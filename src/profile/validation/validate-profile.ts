@@ -1,6 +1,6 @@
 import { isPortType } from "../../core/types/identity.js";
 import { isMidiMessageType } from "../../core/types/message.js";
-import { isControlKind, isControlValueMode, isFeedbackKind } from "../types/control.js";
+import { isControlKind, isControlValueMode, isFeedbackKind, isRelativeEncoding } from "../types/control.js";
 import { DEVICE_PROFILE_SCHEMA_VERSION } from "../types/profile.js";
 import type { ProfileDiagnostic } from "./types/diagnostic.js";
 
@@ -47,6 +47,7 @@ export function validateDeviceProfile(profile: unknown): readonly ProfileDiagnos
   diagnostics.push(...checkSysEx(profile.sysex));
   diagnostics.push(...checkSetup(profile.setup, profile.ports));
   diagnostics.push(...checkModes(profile.modes, profile.ports, controlIds));
+  diagnostics.push(...checkDisplays(profile.displays, profile.ports));
 
   return diagnostics;
 }
@@ -180,6 +181,27 @@ function checkControls(value: unknown, portIds: Set<string>, controlIds: Set<str
       });
     }
 
+    if (control.relativeEncoding !== undefined && !isRelativeEncoding(control.relativeEncoding)) {
+      diagnostics.push({
+        severity: "error",
+        code: "unknown-relative-encoding",
+        path: `${path}.relativeEncoding`,
+        message: `Unknown relativeEncoding ${JSON.stringify(control.relativeEncoding)}.`,
+      });
+    }
+
+    // A relative control's raw byte is meaningless to decode without knowing its encoding (ECS-137) -- required
+    // whenever the control is both declared relative and actually addressed (a relative control with no `input`
+    // can't report anything, so there's nothing to decode and no encoding to require).
+    if (control.valueMode === "relative" && isRecord(control.input) && control.relativeEncoding === undefined) {
+      diagnostics.push({
+        severity: "error",
+        code: "relative-control-missing-encoding",
+        path: `${path}.relativeEncoding`,
+        message: `Control "${String(control.id)}" is valueMode "relative" with an input address but declares no relativeEncoding.`,
+      });
+    }
+
     if (isRecord(control.feedback) && !isFeedbackKind(control.feedback.kind)) {
       diagnostics.push({
         severity: "error",
@@ -260,6 +282,8 @@ function checkLayout(value: unknown, controlIds: Set<string>): ProfileDiagnostic
       for (const name of ["play", "stop", "record", "clear"] as const) checkReference(value.transport[name], `layout.transport.${name}`);
     }
   }
+
+  checkReference(value.modifier, "layout.modifier");
 
   return diagnostics;
 }
@@ -522,6 +546,75 @@ function checkModes(value: unknown, ports: unknown, controlIds: ReadonlySet<stri
           faderControlIds.add(controlId);
         }
       });
+    });
+  });
+
+  return diagnostics;
+}
+
+/**
+ * ECS-137: a display's port must be a real, output port; each line's id must be unique within its display; its
+ * byte template fields must be well-formed. Mirrors `checkModes`' SysEx-byte and port-reference checks rather than
+ * inventing a second convention for "a declarative byte template with a port reference."
+ */
+function checkDisplays(value: unknown, ports: unknown): ProfileDiagnostic[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    return [{ severity: "error", code: "invalid-display", path: "displays", message: "displays must be an array when present." }];
+  }
+
+  const diagnostics: ProfileDiagnostic[] = [];
+  const declaredPorts = Array.isArray(ports) ? ports.filter(isRecord) : [];
+  const seenDisplayIds = new Set<string>();
+
+  const isByteArray = (bytes: unknown): bytes is number[] =>
+    Array.isArray(bytes) && bytes.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255);
+
+  value.forEach((display, index) => {
+    const path = `displays[${index}]`;
+    if (!isRecord(display) || typeof display.id !== "string" || typeof display.label !== "string" || typeof display.portId !== "string") {
+      diagnostics.push({ severity: "error", code: "invalid-display", path, message: "A display must have string id/label/portId." });
+      return;
+    }
+
+    if (seenDisplayIds.has(display.id)) {
+      diagnostics.push({ severity: "error", code: "duplicate-display-id", path: `${path}.id`, message: `Duplicate display id "${display.id}".` });
+    }
+    seenDisplayIds.add(display.id);
+
+    const port = declaredPorts.find((candidate) => candidate.id === display.portId);
+    if (!port) {
+      diagnostics.push({ severity: "error", code: "dangling-port-reference", path: `${path}.portId`, message: `Display references port "${display.portId}", which isn't declared in ports.` });
+    } else if (port.type !== "output") {
+      diagnostics.push({ severity: "error", code: "invalid-display", path: `${path}.portId`, message: `Display port "${display.portId}" must be an output port, but it is ${JSON.stringify(port.type)}.` });
+    }
+
+    if (!isByteArray(display.prefix) || display.prefix[0] !== 0xf0) {
+      diagnostics.push({ severity: "error", code: "invalid-display", path: `${path}.prefix`, message: "prefix must start with F0 and hold bytes 0-255." });
+    }
+    if (!isByteArray(display.textPrefix)) {
+      diagnostics.push({ severity: "error", code: "invalid-display", path: `${path}.textPrefix`, message: "textPrefix must be an array of bytes 0-255." });
+    }
+    if (!Number.isInteger(display.charCount) || (display.charCount as number) <= 0) {
+      diagnostics.push({ severity: "error", code: "invalid-display", path: `${path}.charCount`, message: "charCount must be a positive integer." });
+    }
+
+    if (!Array.isArray(display.lines) || display.lines.length === 0) {
+      diagnostics.push({ severity: "error", code: "invalid-display", path: `${path}.lines`, message: "lines must be a non-empty array." });
+      return;
+    }
+
+    const seenLineIds = new Set<number>();
+    display.lines.forEach((line, lineIndex) => {
+      const linePath = `${path}.lines[${lineIndex}]`;
+      if (!isRecord(line) || typeof line.id !== "string" || typeof line.label !== "string" || !Number.isInteger(line.lineId) || (line.lineId as number) < 0 || (line.lineId as number) > 127) {
+        diagnostics.push({ severity: "error", code: "invalid-display", path: linePath, message: "A display line needs a string id/label and a lineId byte from 0 to 127." });
+        return;
+      }
+      if (seenLineIds.has(line.lineId as number)) {
+        diagnostics.push({ severity: "error", code: "duplicate-display-line-id", path: `${linePath}.lineId`, message: `Display "${display.id}" declares lineId ${line.lineId} more than once.` });
+      }
+      seenLineIds.add(line.lineId as number);
     });
   });
 

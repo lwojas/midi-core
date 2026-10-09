@@ -6,6 +6,7 @@ import type { DeviceSysExProfile } from "./sysex.js";
 import type { DeviceSetup } from "./setup.js";
 import type { DeviceLayout } from "./layout.js";
 import type { DeviceModeProfile } from "./mode.js";
+import type { DeviceDisplayDefinition } from "./display.js";
 
 /**
  * A device profile describes one device model: its identity, the ports it
@@ -40,4 +41,6 @@ export interface DeviceProfile {
   readonly layout?: DeviceLayout;
   /** Modes that need their own messages and ports (ECS-96). Optional: a device without them has no such modes. */
   readonly modes?: readonly DeviceModeProfile[];
+  /** Text displays (ECS-137), e.g. an LCD. Optional: a device without one has no `DisplayBinding` to resolve against. */
+  readonly displays?: readonly DeviceDisplayDefinition[];
 }

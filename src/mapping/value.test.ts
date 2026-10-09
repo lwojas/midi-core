@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BooleanControlDef, EnumControlDef, NumericControlDef } from "../control-api/types/control.js";
 import type { MidiMessage } from "../core/types/message.js";
 import type { MidiSource, MidiTarget } from "./types/address.js";
-import { buildFeedbackMessage, resolveIncomingValue } from "./value.js";
+import { buildFeedbackMessage, decodeRelativeDelta, resolveIncomingValue } from "./value.js";
 
 const cutoff: NumericControlDef = {
   id: "fx.filter.cutoff",
@@ -77,6 +77,66 @@ describe("resolveIncomingValue — control-change", () => {
   it("returns undefined when the message doesn't match the source", () => {
     const message: MidiMessage = { type: "control-change", channel: 0, controller: 75, value: 100 };
     expect(resolveIncomingValue(message, source, cutoff)).toBeUndefined();
+  });
+});
+
+describe("decodeRelativeDelta — twos-complement-7bit (ECS-137)", () => {
+  it.each([
+    [0, 0],
+    [1, 1],
+    [2, 2],
+    [63, 63],
+    [64, -64],
+    [65, -63],
+    [127, -1],
+    [126, -2],
+  ])("decodes raw %i to delta %i", (raw, delta) => {
+    expect(decodeRelativeDelta(raw, "twos-complement-7bit")).toBe(delta);
+  });
+});
+
+describe("resolveIncomingValue — relative control-change (ECS-137)", () => {
+  const source: MidiSource = { address: { type: "control-change", controller: 71 }, channel: 0 };
+  const level: NumericControlDef = { id: "mixer.send.1", label: "Send 1", kind: "number", min: 0, max: 127, step: 1, default: 64 };
+
+  it("accumulates a positive delta onto the control's current value, not the raw byte", () => {
+    const message: MidiMessage = { type: "control-change", channel: 0, controller: 71, value: 2 };
+    const result = resolveIncomingValue(message, source, level, { encoding: "twos-complement-7bit", current: 64 });
+    expect(result).toBe(66);
+  });
+
+  it("accumulates a negative delta (the two's-complement half of the byte range)", () => {
+    const message: MidiMessage = { type: "control-change", channel: 0, controller: 71, value: 127 };
+    const result = resolveIncomingValue(message, source, level, { encoding: "twos-complement-7bit", current: 64 });
+    expect(result).toBe(63);
+  });
+
+  it("clamps at the control's max rather than overflowing", () => {
+    const message: MidiMessage = { type: "control-change", channel: 0, controller: 71, value: 10 };
+    const result = resolveIncomingValue(message, source, level, { encoding: "twos-complement-7bit", current: 120 });
+    expect(result).toBe(127);
+  });
+
+  it("clamps at the control's min rather than underflowing", () => {
+    const message: MidiMessage = { type: "control-change", channel: 0, controller: 71, value: 127 };
+    const result = resolveIncomingValue(message, source, level, { encoding: "twos-complement-7bit", current: 0 });
+    expect(result).toBe(0);
+  });
+
+  it("returns undefined for a non-numeric control -- a relative delta onto a boolean/enum isn't a modeled pairing", () => {
+    const message: MidiMessage = { type: "control-change", channel: 0, controller: 71, value: 2 };
+    expect(resolveIncomingValue(message, source, muted, { encoding: "twos-complement-7bit", current: false })).toBeUndefined();
+  });
+
+  it("still returns undefined for a non-matching source, exactly as the non-relative path does", () => {
+    const message: MidiMessage = { type: "control-change", channel: 0, controller: 72, value: 2 };
+    expect(resolveIncomingValue(message, source, level, { encoding: "twos-complement-7bit", current: 64 })).toBeUndefined();
+  });
+
+  it("regression: omitting `relative` resolves the same CC via the existing direct-scaling path, unchanged", () => {
+    const message: MidiMessage = { type: "control-change", channel: 0, controller: 71, value: 2 };
+    // Direct scaling, not accumulation: raw 2 onto a 0-127 range is just 2, regardless of any "current" value.
+    expect(resolveIncomingValue(message, source, level)).toBe(2);
   });
 });
 

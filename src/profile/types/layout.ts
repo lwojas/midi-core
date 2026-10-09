@@ -57,4 +57,11 @@ export interface DeviceLayout {
   readonly transport?: TransportRoles;
   /** Bank buttons (ECS-114). A device with none has no bank binding. */
   readonly bank?: BankRoles;
+  /**
+   * The button that gates a `ModeBinding.when` (ECS-137) — a device fact, the same way the rest of this layout
+   * names which control plays which role. Omitted means the device has no modifier button, so every `when` on this
+   * profile's bindings is simply never satisfied (a conditional binding configured for a device with no modifier is
+   * reported as unreachable, not guessed at).
+   */
+  readonly modifier?: string;
 }

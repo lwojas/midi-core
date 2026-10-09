@@ -87,11 +87,20 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
     return deps.profile.ports.filter((port) => port.required);
   }
 
-  /** The ports a mode's bindings read or write, by their profile ids: the control's own port and its feedback port. */
+  /**
+   * The ports a mode's bindings read or write, by their profile ids: a `PhysicalControl`'s own port and its
+   * feedback port, or (ECS-137) a `DisplayBinding`'s display port — the one `ModeBinding` kind with no
+   * `physicalControlId` at all, since a display has no input semantics to look up a control for.
+   */
   function portIdsUsedBy(mode: string): Set<string> {
     const used = new Set<string>();
     const bindings = deps.bindingTable.find((definition) => definition.mode === mode)?.bindings ?? [];
     for (const binding of bindings) {
+      if (binding.kind === "display") {
+        const display = deps.profile.displays?.find((candidate) => candidate.id === binding.displayId);
+        if (display) used.add(display.portId);
+        continue;
+      }
       const control = deps.profile.controls.find((candidate) => candidate.id === binding.physicalControlId);
       if (!control) continue;
       used.add(control.portId);

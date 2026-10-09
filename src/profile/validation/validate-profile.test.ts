@@ -250,5 +250,134 @@ describe("validateDeviceProfile", () => {
         expect.objectContaining({ code: "invalid-layout", path: "layout.modeButtons[0]" }),
       );
     });
+
+    it("accepts a modifier naming a real control, and reports a dangling one (ECS-137)", () => {
+      expect(validateDeviceProfile(withLayout({ modifier: "pad-1" }))).toEqual([]);
+      expect(validateDeviceProfile(withLayout({ modifier: "ghost-shift" }))).toContainEqual(
+        expect.objectContaining({ code: "dangling-control-reference", path: "layout.modifier" }),
+      );
+    });
+  });
+
+  describe("relativeEncoding (ECS-137)", () => {
+    const withRelativeEncoder = (overrides: Record<string, unknown>): unknown => {
+      const profile = validProfile();
+      return {
+        ...profile,
+        controls: [
+          ...profile.controls,
+          {
+            id: "encoder-1",
+            label: "Encoder 1",
+            kind: "encoder",
+            portId: "main-in",
+            input: { address: { type: "control-change", controller: 71 }, channel: 0 },
+            valueMode: "relative",
+            relativeEncoding: "twos-complement-7bit",
+            ...overrides,
+          },
+        ],
+      };
+    };
+
+    it("accepts a relative, addressed control that declares a known relativeEncoding", () => {
+      expect(validateDeviceProfile(withRelativeEncoder({}))).toEqual([]);
+    });
+
+    it("accepts an absolute control with no relativeEncoding at all", () => {
+      const profile = validProfile();
+      expect(validateDeviceProfile(profile)).toEqual([]);
+    });
+
+    it("flags an unknown relativeEncoding value", () => {
+      expect(validateDeviceProfile(withRelativeEncoder({ relativeEncoding: "offset-binary-64" }))).toContainEqual(
+        expect.objectContaining({ code: "unknown-relative-encoding", path: "controls[1].relativeEncoding" }),
+      );
+    });
+
+    it("requires relativeEncoding on a relative, addressed control that omits it", () => {
+      expect(validateDeviceProfile(withRelativeEncoder({ relativeEncoding: undefined }))).toContainEqual(
+        expect.objectContaining({ code: "relative-control-missing-encoding", path: "controls[1].relativeEncoding" }),
+      );
+    });
+
+    it("does not require relativeEncoding on a relative control with no input address", () => {
+      expect(validateDeviceProfile(withRelativeEncoder({ relativeEncoding: undefined, input: undefined }))).toEqual([]);
+    });
+  });
+
+  describe("displays (ECS-137)", () => {
+    const withDisplay = (display: Record<string, unknown>): unknown => {
+      const profile = validProfile();
+      return {
+        ...profile,
+        ports: [...profile.ports, MAIN_OUT_PORT],
+        displays: [
+          {
+            id: "lcd",
+            label: "LCD",
+            portId: "main-out",
+            prefix: [0xf0, 0x47],
+            textPrefix: [0x00],
+            charCount: 8,
+            lines: [{ id: "line-1", label: "Line 1", lineId: 0x18 }],
+            ...display,
+          },
+        ],
+      };
+    };
+
+    it("accepts a well-formed display", () => {
+      expect(validateDeviceProfile(withDisplay({}))).toEqual([]);
+    });
+
+    it("flags a display referencing a nonexistent port", () => {
+      expect(validateDeviceProfile(withDisplay({ portId: "ghost-port" }))).toContainEqual(
+        expect.objectContaining({ code: "dangling-port-reference", path: "displays[0].portId" }),
+      );
+    });
+
+    it("flags a display routed to an input port instead of an output port", () => {
+      const profile = validProfile();
+      const broken = { ...profile, displays: [{ id: "lcd", label: "LCD", portId: "main-in", prefix: [0xf0], textPrefix: [], charCount: 8, lines: [{ id: "l", label: "L", lineId: 0 }] }] };
+      expect(validateDeviceProfile(broken)).toContainEqual(expect.objectContaining({ code: "invalid-display", path: "displays[0].portId" }));
+    });
+
+    it("flags a non-positive charCount (a char-count mismatch)", () => {
+      expect(validateDeviceProfile(withDisplay({ charCount: 0 }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-display", path: "displays[0].charCount" }),
+      );
+    });
+
+    it("flags an empty lines array", () => {
+      expect(validateDeviceProfile(withDisplay({ lines: [] }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-display", path: "displays[0].lines" }),
+      );
+    });
+
+    it("flags a duplicate lineId within one display", () => {
+      const broken = withDisplay({
+        lines: [
+          { id: "line-1", label: "Line 1", lineId: 0x18 },
+          { id: "line-2", label: "Line 2", lineId: 0x18 },
+        ],
+      });
+      expect(validateDeviceProfile(broken)).toContainEqual(
+        expect.objectContaining({ code: "duplicate-display-line-id", path: "displays[0].lines[1].lineId" }),
+      );
+    });
+
+    it("flags a duplicate display id", () => {
+      const profile = validProfile();
+      const one = { id: "lcd", label: "LCD", portId: "main-out", prefix: [0xf0], textPrefix: [], charCount: 8, lines: [{ id: "l", label: "L", lineId: 0 }] };
+      const broken = { ...profile, ports: [...profile.ports, MAIN_OUT_PORT], displays: [one, one] };
+      expect(validateDeviceProfile(broken)).toContainEqual(expect.objectContaining({ code: "duplicate-display-id", path: "displays[1].id" }));
+    });
+
+    it("flags a prefix that doesn't start with F0", () => {
+      expect(validateDeviceProfile(withDisplay({ prefix: [0x47, 0x7f] }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-display", path: "displays[0].prefix" }),
+      );
+    });
   });
 });

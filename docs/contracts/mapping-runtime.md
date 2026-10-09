@@ -23,6 +23,7 @@ function bindControlMapping<D extends ControlDef>(
   input: MidiInput,
   output: MidiOutput,
   control: Control<D>,
+  options?: { shouldApply?: () => boolean },
 ): Unsubscribe;
 ```
 
@@ -30,16 +31,30 @@ Two independent subscriptions, matching the two directions the mapping
 contract names:
 
 - **MIDI → Control**: every message `input` delivers is passed to
-  `resolveIncomingValue(message, mapping.source, control.def)`; a defined
-  result is pushed into `control` via `setValue()`. A message that doesn't
-  match the source, or whose kind doesn't pair with the control's kind, is
-  silently ignored — the same "not every caller's concern" stance
-  `resolveIncomingValue()` itself takes.
+  `resolveIncomingValue(message, mapping.source, control.def)` — or, when
+  `mapping.relativeEncoding` is set (ECS-137), to the same function with a
+  `relative: { encoding, current: control.getValue() }` argument, so a
+  relative encoder's delta accumulates onto the control's live value
+  instead of being scaled directly. A defined result is pushed into
+  `control` via `setValue()`. A message that doesn't match the source, or
+  whose kind doesn't pair with the control's kind, is silently ignored —
+  the same "not every caller's concern" stance `resolveIncomingValue()`
+  itself takes. `options.shouldApply` (ECS-137), when supplied, is checked
+  first on every message: a `false` result is treated exactly like a
+  non-matching message (ignored, nothing queued for echo suppression).
+  Omitted — the default, and every call site before this option existed —
+  every matching message applies, unconditionally. This runtime has no
+  idea what `shouldApply` actually checks; `src/surface/bindings.ts`
+  (`docs/contracts/surface-bindings.md`) is what supplies a
+  modifier-state predicate through it, keeping the word "modifier" itself
+  out of this device-agnostic layer.
 - **Control → MIDI**: only set up when `mapping.feedback` is present. Every
   `control.onChange()` is passed to
   `buildFeedbackMessage(mapping.feedback, control.def, value)`, and a
   defined result is sent through `output`. A mapping with no `feedback` is
   input-only, per `docs/contracts/mapping.md` — nothing is wired for it.
+  `shouldApply`/`relativeEncoding` only affect the MIDI → Control
+  direction; feedback is unaffected by either.
 
 Both subscriptions are torn down together by the single `Unsubscribe`
 `bindControlMapping()` returns.
@@ -139,9 +154,13 @@ the other end.
 - **No device profiles** — nothing here names a collection of
   `ControlMapping`s as "the mapping for a Launchpad," or knows about any
   specific controller. That's ECS-39.
-- **No curves or conditions** — same extension points
-  `docs/contracts/mapping.md` already named as deliberately undesigned;
-  this ticket implements the contract as defined, not more.
+- **No curves** — still a deliberately undesigned extension point, per
+  `docs/contracts/mapping.md`.
+- **No knowledge of what a condition means** — `options.shouldApply`
+  (ECS-137) is a bare predicate this runtime calls and nothing more; it
+  doesn't know "modifier," "soft takeover," or any other concrete
+  condition. Supplying one is entirely the caller's (`src/surface/
+  bindings.ts`'s) job.
 - **No cross-mapping or session-level echo suppression** — ECS-57's
   suppression is scoped to one `bindControlMapping()` call's own
   just-made change; it has no notion of "soft takeover," a time window, or

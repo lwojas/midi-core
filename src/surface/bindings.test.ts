@@ -2,14 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { MockMidiInput } from "../adapters/mock/mock-input.js";
 import { MockMidiOutput } from "../adapters/mock/mock-output.js";
 import type { SurfaceContext } from "../control-api/types/context.js";
-import type { BooleanControlDef, Control, ControlDef, ControlValue, NumericControlDef } from "../control-api/types/control.js";
+import type { BooleanControlDef, Control, ControlDef, ControlValue, NumericControlDef, StringControlDef } from "../control-api/types/control.js";
 import type { ControlRegistry } from "../control-api/types/registry.js";
 import { createMidiInput } from "../core/input/create-midi-input.js";
 import { createMidiOutput } from "../core/output/create-midi-output.js";
+import type { PhysicalControl } from "../profile/types/control.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActiveMode, bindSurfaceMode, type BindSurfaceModeDeps } from "./bindings.js";
 import { createSurfaceNavigation } from "./navigation.js";
-import type { ModeBinding, SurfaceModeDefinition } from "./types/bindings.js";
+import type { DisplayBinding, ModeBinding, SurfaceModeDefinition } from "./types/bindings.js";
 import type { GenerateControlMappings } from "./types/generation.js";
 
 function createTestControl<D extends ControlDef>(def: D): Control<D> {
@@ -312,5 +313,179 @@ describe("bindActiveMode", () => {
 
     expect(generate).not.toHaveBeenCalled();
     await expect(teardown()).resolves.toBeUndefined();
+  });
+});
+
+describe("bindSurfaceMode — modifier-conditional bindings (ECS-137)", () => {
+  const shiftButton: PhysicalControl = {
+    id: "shift",
+    label: "Shift",
+    kind: "button",
+    portId: "in-1",
+    input: { address: { type: "control-change", controller: 49 }, channel: 0 },
+  };
+
+  const heldTarget: NumericControlDef = { id: "held.value", label: "Held target", kind: "number", min: 0, max: 127, default: 0 };
+  const releasedTarget: NumericControlDef = { id: "released.value", label: "Released target", kind: "number", min: 0, max: 127, default: 0 };
+
+  function profileWithModifier(): DeviceProfile {
+    return { ...profile, controls: [shiftButton], layout: { modifier: "shift" } };
+  }
+
+  it("dispatches to the modifier-held binding while held, and the modifier-released binding otherwise", async () => {
+    const { rawInput, input, output } = wiredPorts();
+    const held = createTestControl(heldTarget);
+    const released = createTestControl(releasedTarget);
+    const generate = vi.fn<GenerateControlMappings>(() => [
+      {
+        mapping: { id: "shared-held", control: heldTarget.id, source: { address: { type: "control-change", controller: 71 }, channel: "any" } },
+        inputPortId: "in-1",
+        when: "modifier-held",
+      },
+      {
+        mapping: { id: "shared-released", control: releasedTarget.id, source: { address: { type: "control-change", controller: 71 }, channel: "any" } },
+        inputPortId: "in-1",
+        when: "modifier-released",
+      },
+    ]);
+    const deps: BindSurfaceModeDeps = {
+      profile: profileWithModifier(),
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [heldTarget.id]: held, [releasedTarget.id]: released }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate,
+    };
+
+    await bindSurfaceMode({ mode: "mixer", bindings: [] }, deps);
+
+    // Modifier released (the default, unpressed state): only the released-target binding applies.
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 100));
+    expect(released.getValue()).toBe(100);
+    expect(held.getValue()).toBe(0);
+
+    // Shift pressed (CC 49 full value): the held-target binding now applies instead.
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 49, 127));
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 50));
+    expect(held.getValue()).toBe(50);
+    expect(released.getValue()).toBe(100); // unchanged while the modifier is held
+
+    // Shift released again: back to the released-target binding.
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 49, 0));
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 20));
+    expect(released.getValue()).toBe(20);
+    expect(held.getValue()).toBe(50); // unchanged once the modifier is released again
+  });
+
+  it("never satisfies a conditional binding when the profile declares no layout.modifier", async () => {
+    const { rawInput, input, output } = wiredPorts();
+    const held = createTestControl(heldTarget);
+    const generate = vi.fn<GenerateControlMappings>(() => [
+      {
+        mapping: { id: "shared-held", control: heldTarget.id, source: { address: { type: "control-change", controller: 71 }, channel: "any" } },
+        inputPortId: "in-1",
+        when: "modifier-held",
+      },
+    ]);
+    const deps: BindSurfaceModeDeps = {
+      profile, // no layout at all
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [heldTarget.id]: held }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate,
+    };
+
+    await bindSurfaceMode({ mode: "mixer", bindings: [] }, deps);
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 100));
+
+    expect(held.getValue()).toBe(0); // "modifier-held" is never satisfied with no modifier declared
+  });
+
+  it("regression: a mapping with no `when` is applied unconditionally, even on a profile that declares a modifier", async () => {
+    const { rawInput, input, output } = wiredPorts();
+    const control = createTestControl(cutoff);
+    const generate = vi.fn<GenerateControlMappings>(() => [
+      {
+        mapping: { id: "m1", control: cutoff.id, source: { address: { type: "control-change", controller: 74 }, channel: "any" } },
+        inputPortId: "in-1",
+      },
+    ]);
+    const deps: BindSurfaceModeDeps = {
+      profile: profileWithModifier(),
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [cutoff.id]: control }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate,
+    };
+
+    await bindSurfaceMode({ mode: "mixer", bindings: [controlBinding] }, deps);
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 127)); // modifier never touched -- shift stays "released"
+
+    expect(control.getValue()).toBe(127);
+  });
+});
+
+describe("bindSurfaceMode — display binding (ECS-137)", () => {
+  const patternName: StringControlDef = { id: "sequencer.pattern-name", label: "Pattern name", kind: "string", default: "" };
+
+  function profileWithDisplay(): DeviceProfile {
+    return {
+      ...profile,
+      displays: [
+        {
+          id: "lcd",
+          label: "LCD",
+          portId: "out-1",
+          prefix: [0xf0, 0x47, 0x7f, 0x15],
+          textPrefix: [0x00, 0x45, 0x00],
+          charCount: 4,
+          lines: [{ id: "line-1", label: "Line 1", lineId: 0x18 }],
+        },
+      ],
+    };
+  }
+
+  const displayBinding: DisplayBinding = {
+    kind: "display",
+    displayId: "lcd",
+    lineId: "line-1",
+    resolve: { kind: "static", controlId: patternName.id },
+  };
+
+  it("paints the control's current value on bind, and repaints on every change", async () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const control = createTestControl({ ...patternName, default: "Hi" });
+    const generate = vi.fn<GenerateControlMappings>(() => []);
+    const deps: BindSurfaceModeDeps = {
+      profile: profileWithDisplay(),
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [patternName.id]: control }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate,
+    };
+
+    await bindSurfaceMode({ mode: "mixer", bindings: [displayBinding] }, deps);
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 72, 105, 0x20, 0x20, 0xf7]); // "Hi  "
+
+    control.setValue("Yo!!");
+    expect(Array.from(rawOutput.sentMessages[1]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 89, 111, 33, 33, 0xf7]);
+  });
+
+  it("stops repainting once unbound, and sends nothing for an unresolvable display/line/port", async () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const control = createTestControl(patternName);
+    const generate = vi.fn<GenerateControlMappings>(() => []);
+    const deps: BindSurfaceModeDeps = {
+      profile: profileWithDisplay(),
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [patternName.id]: control }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate,
+    };
+
+    const teardown = await bindSurfaceMode({ mode: "mixer", bindings: [displayBinding] }, deps);
+    rawOutput.clearSentMessages();
+    await teardown();
+    control.setValue("gone");
+    expect(rawOutput.sentMessages).toHaveLength(0);
   });
 });

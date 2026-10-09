@@ -1,4 +1,5 @@
 import type { PhysicalControl } from "../types/control.js";
+import type { DeviceDisplayDefinition } from "../types/display.js";
 import type { ControlGrid } from "../types/grid.js";
 import type { DeviceIdentity } from "../types/identity.js";
 import type { DeviceLayout } from "../types/layout.js";
@@ -80,6 +81,11 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * `docs/hardware-validation-push-mk1.md`'s "ECS-136 gate verification"
  * section for the full verification record.
  *
+ * **ECS-137**: the ECS-136 gate's reviewed contract extensions, applied to this profile where they have a concrete
+ * case here. `relativeEncoding` is now declared on every encoder (the gate's §1 hardware finding). `PUSH_MK1_DISPLAY`
+ * declares the LCD's SysEx template as data (the gate's extension 3) in place of `PUSH_MK1_SYSEX.notes`' free-text
+ * description of the same bytes -- actually driving a string `Control` through it is ECS-139's job, not this one's.
+ *
  * **Full Push-2-contamination audit (2026-10-09)**: every control below was
  * re-checked by hand against `AbletonPushUserModeHack.png` (the one source
  * in this chain independently authored, not derived from the original
@@ -146,6 +152,11 @@ export const PUSH_MK1_ENCODERS: readonly PhysicalControl[] = ENCODERS.flatMap(({
     portId: "user-port-in",
     input: { address: { type: "control-change", controller: cc }, channel: 0 },
     valueMode: "relative",
+    // ECS-136 gate: hands-on confirmed signed 7-bit two's-complement delta encoding on Encoder 1 and the Tempo
+    // encoder, independently re-confirmed on a second MIDI monitor; the other 9 are the same component family,
+    // assumed but not individually turned -- same "declare the fact, flag the unconfirmed extent" stance this
+    // profile already takes for its other partially-verified controls.
+    relativeEncoding: "twos-complement-7bit",
   },
   {
     id: `${id}-touch`,
@@ -288,6 +299,29 @@ export const PUSH_MK1_SYSEX: DeviceSysExProfile = {
 };
 
 /**
+ * The 4-line LCD (ECS-137), confirmed hands-on and independently re-confirmed at the ECS-136 gate:
+ * `F0 47 7F 15 {lineId} 00 45 00 [68 ASCII bytes] F7` rewrites one line. `lineId` is 0x18-0x1b for lines 1-4 --
+ * see `PUSH_MK1_SYSEX.notes` above, now re-expressed as a declarative `DeviceDisplayDefinition` (ECS-137's contract
+ * extension) instead of free text only. Driving an actual string `Control` through this (e.g. showing the current
+ * mode/track/parameter) is ECS-139's job, not this ticket's -- this profile declares the display contract, nothing
+ * wires a `DisplayBinding` to it yet.
+ */
+export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
+  id: "lcd",
+  label: "4-line LCD",
+  portId: "user-port-out",
+  prefix: [0xf0, 0x47, 0x7f, 0x15],
+  textPrefix: [0x00, 0x45, 0x00],
+  charCount: 68,
+  lines: [
+    { id: "line-1", label: "Line 1", lineId: 0x18 },
+    { id: "line-2", label: "Line 2", lineId: 0x19 },
+    { id: "line-3", label: "Line 3", lineId: 0x1a },
+    { id: "line-4", label: "Line 4", lineId: 0x1b },
+  ],
+};
+
+/**
  * ECS-90: the sequencer's roles on this device. `Note`/`Session` (CC 50/51, round-2-corrected -- see the file doc
  * comment above) stand in for steps/mixer mode; the dedicated Arrow buttons page; Play/Record cover two of the four
  * transport actions. `Stop` (CC 29, otherwise unused) is the transport mode's own switch -- without a button naming
@@ -318,4 +352,5 @@ export const PUSH_MK1_PROFILE: DeviceProfile = {
   grids: [PUSH_MK1_PAD_GRID],
   sysex: PUSH_MK1_SYSEX,
   layout: PUSH_MK1_LAYOUT,
+  displays: [PUSH_MK1_DISPLAY],
 };

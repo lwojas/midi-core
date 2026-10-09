@@ -6,6 +6,7 @@ import {
   type BooleanControlDef,
   type EnumControlDef,
   type NumericControlDef,
+  type StringControlDef,
 } from "./control.js";
 
 const cutoff: NumericControlDef = {
@@ -47,6 +48,14 @@ const playbackStatus: EnumControlDef = {
   default: "stopped",
 };
 
+const patternName: StringControlDef = {
+  id: "sequencer.pattern-name",
+  label: "Pattern name",
+  kind: "string",
+  maxLength: 16,
+  default: "",
+};
+
 describe("isControlValueKind", () => {
   it("accepts every declared kind", () => {
     for (const kind of CONTROL_VALUE_KINDS) {
@@ -55,7 +64,7 @@ describe("isControlValueKind", () => {
   });
 
   it("rejects unknown values", () => {
-    expect(isControlValueKind("string")).toBe(false);
+    expect(isControlValueKind("array")).toBe(false);
     expect(isControlValueKind(1)).toBe(false);
     expect(isControlValueKind(undefined)).toBe(false);
   });
@@ -111,5 +120,24 @@ describe("isValidControlValue — enum", () => {
 
   it("rejects non-string values", () => {
     expect(isValidControlValue(playbackStatus, 1)).toBe(false);
+  });
+});
+
+describe("isValidControlValue — string (ECS-137)", () => {
+  it("accepts a string within maxLength", () => {
+    expect(isValidControlValue(patternName, "Intro")).toBe(true);
+  });
+
+  it("accepts any length when maxLength is omitted", () => {
+    const unbounded: StringControlDef = { id: "notes", label: "Notes", kind: "string", default: "" };
+    expect(isValidControlValue(unbounded, "a".repeat(1000))).toBe(true);
+  });
+
+  it("rejects a string longer than maxLength", () => {
+    expect(isValidControlValue(patternName, "This name is definitely too long")).toBe(false);
+  });
+
+  it("rejects non-string values", () => {
+    expect(isValidControlValue(patternName, 1)).toBe(false);
   });
 });

@@ -16,9 +16,9 @@
 
 export type ControlId = string;
 
-export type ControlValueKind = "number" | "boolean" | "enum";
+export type ControlValueKind = "number" | "boolean" | "enum" | "string";
 
-export const CONTROL_VALUE_KINDS: readonly ControlValueKind[] = ["number", "boolean", "enum"];
+export const CONTROL_VALUE_KINDS: readonly ControlValueKind[] = ["number", "boolean", "enum", "string"];
 
 export function isControlValueKind(value: unknown): value is ControlValueKind {
   return typeof value === "string" && (CONTROL_VALUE_KINDS as readonly string[]).includes(value);
@@ -67,7 +67,19 @@ export interface EnumControlDef extends BaseControlDef {
   readonly default: string;
 }
 
-export type ControlDef = NumericControlDef | BooleanControlDef | EnumControlDef;
+/**
+ * A free-text control, e.g. the current pattern name shown on a device's LCD (ECS-137). Generic application state —
+ * not Push-specific, not tied to any particular display protocol; `src/surface/types/bindings.ts`'s `DisplayBinding`
+ * is what pairs a control like this with a device's actual text-display SysEx template.
+ */
+export interface StringControlDef extends BaseControlDef {
+  readonly kind: "string";
+  /** The longest value a consumer can usefully show (e.g. a display's fixed character width). Omitted means no limit. */
+  readonly maxLength?: number;
+  readonly default: string;
+}
+
+export type ControlDef = NumericControlDef | BooleanControlDef | EnumControlDef | StringControlDef;
 
 /** The value type a given ControlDef's Control reads and accepts. */
 export type ControlValue<D extends ControlDef> = D extends NumericControlDef
@@ -76,7 +88,9 @@ export type ControlValue<D extends ControlDef> = D extends NumericControlDef
     ? boolean
     : D extends EnumControlDef
       ? string
-      : never;
+      : D extends StringControlDef
+        ? string
+        : never;
 
 /** Unsubscribes the listener it was returned from. */
 export type Unsubscribe = () => void;
@@ -117,5 +131,7 @@ export function isValidControlValue(def: ControlDef, value: unknown): boolean {
       return typeof value === "boolean";
     case "enum":
       return typeof value === "string" && def.options.some((option) => option.value === value);
+    case "string":
+      return typeof value === "string" && (def.maxLength === undefined || value.length <= def.maxLength);
   }
 }

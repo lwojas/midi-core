@@ -66,7 +66,12 @@ specific thing an earlier contract named as deferred:
   this is also what catches a composition that produced colliding ids, per
   `protocol-composition.md`, since by the time controls reach this
   function their origin, protocol-composed or hand-authored, no longer
-  matters).
+  matters). `relativeEncoding` (if present) must be a real
+  `RelativeEncoding` (`unknown-relative-encoding`, ECS-137), and is
+  *required* when `valueMode` is `"relative"` and `input` is set
+  (`relative-control-missing-encoding`) — the one cross-field requirement
+  `device-profile.md` itself names, the same pattern `sysex.required`
+  already establishes below, not a new kind of check.
 - **`grids`** — every cell's `(row, column)` must fall inside the grid's
   declared `rows`/`columns` (`grid-cell-out-of-bounds`), no two cells in
   one grid share a position (`duplicate-grid-cell`), every cell's
@@ -76,9 +81,19 @@ specific thing an earlier contract named as deferred:
 - **`layout`** (ECS-90) — when present, must be an object (`invalid-layout`),
   `modeButtons` must be an array of objects with a string `mode` and a `controlId`
   (`invalid-layout`), and every control id named by `modeButtons`, `pageLeft`,
-  `pageRight` or `transport` must be a declared control (`dangling-control-reference`).
-  The validator doesn't check whether a mode name means anything: the surface decides
-  that, and the configuration reports any role it cannot bind.
+  `pageRight`, `transport` or `modifier` (ECS-137) must be a declared control
+  (`dangling-control-reference`). The validator doesn't check whether a mode name
+  means anything: the surface decides that, and the configuration reports any role
+  it cannot bind.
+- **`displays`** (ECS-137) — when present, must be an array of objects with
+  string `id`/`label`/`portId` (`invalid-display`); `portId` must resolve to a
+  declared *output* port (`dangling-port-reference`, or `invalid-display` if it
+  resolves to the wrong direction); `prefix` must start with 0xF0 and `textPrefix`
+  must hold bytes 0-255 (`invalid-display`); `charCount` must be a positive integer
+  (`invalid-display` — a line/char-count mismatch); `lines` must be a non-empty
+  array of `{ id, label, lineId }` with `lineId` a byte 0-127 (`invalid-display`),
+  no two displays sharing an `id` (`duplicate-display-id`), and no two lines of one
+  display sharing a `lineId` (`duplicate-display-line-id`).
 - **`sysex`** — `required: true` with an empty/missing `manufacturerId`
   is flagged (`sysex-required-no-manufacturer-id`): a profile claiming
   vendor SysEx is required but not saying which vendor is exactly the
@@ -109,6 +124,29 @@ exactly the three cases `protocol-composition.md` named as deferred:
   authoring mistake that would otherwise surface downstream as a
   `duplicate-control-id` once composed, caught here instead, before
   composing).
+
+## `validateDeviceOverrides(profile, overrides): readonly ProfileDiagnostic[]` (ECS-137)
+
+Validates a `DeviceOverrides` document (`docs/contracts/device-profile.md`'s
+"Overrides, standalone" section) against the `DeviceProfile` it claims to
+apply to — `overrides` is `unknown`, the same untrusted-data stance
+`validateDeviceProfile()` takes. Scoped, per the ECS-136 architecture
+gate's own split, to **version-check logic only**:
+
+- `schemaVersion` must be a string (`invalid-overrides`) and match the
+  version this build of midi-core understands
+  (`unsupported-overrides-schema-version`).
+- `profileId` must be a string (`invalid-overrides`) and match
+  `profile.identity.id` (`overrides-profile-mismatch`).
+- `profileSchemaVersion` must be a string (`invalid-overrides`); a
+  mismatch against `profile.schemaVersion` is a `"warning"`
+  (`overrides-stale-profile-schema`), not an error — the profile may have
+  moved on since these overrides were authored, which is worth flagging
+  but not necessarily fatal on its own.
+
+It does not validate `layoutOverrides`/`bindingOverrides`' own contents
+against the profile's actual controls/bindings — that's ECS-142's job,
+once a schema for them exists.
 
 ## What's deliberately not here
 

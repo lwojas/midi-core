@@ -1,5 +1,5 @@
 import { createAction } from "../control-api/action.js";
-import type { BooleanControlDef, Control, ControlDef, ControlValue, NumericControlDef } from "../control-api/types/control.js";
+import type { BooleanControlDef, Control, ControlDef, ControlValue, NumericControlDef, StringControlDef } from "../control-api/types/control.js";
 import type { SurfaceContext } from "../control-api/types/context.js";
 import type { ControlRegistry } from "../control-api/types/registry.js";
 import type { Unsubscribe } from "../core/types/discovery.js";
@@ -8,18 +8,21 @@ import type { MidiOutput } from "../core/types/output.js";
 import type { MidiSource, MidiTarget, RgbColour } from "../mapping/types/address.js";
 import type { ControlMapping } from "../mapping/types/mapping.js";
 import { bindControlMapping } from "../mapping/bind.js";
-import { buildFeedbackMessage } from "../mapping/value.js";
+import { buildFeedbackMessage, resolveIncomingValue } from "../mapping/value.js";
 import type { PhysicalControl } from "../profile/types/control.js";
 import type { GridCell } from "../profile/types/grid.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActionTrigger } from "./action-binding.js";
+import { buildDisplayMessage } from "./display-binding.js";
 import { toMidiSource, toMidiTarget } from "./generate.js";
 import { resolveControlId } from "./types/bindings.js";
 import type {
   ControlBinding,
   ControlPress,
+  DisplayBinding,
   IndicatorBinding,
   ModeBinding,
+  ModifierCondition,
   NavigationBinding,
   SurfaceBindingTable,
   SurfaceModeDefinition,
@@ -69,6 +72,29 @@ function isIndicatorBinding(binding: ModeBinding): binding is IndicatorBinding {
   return binding.kind === "indicator";
 }
 
+function isDisplayBinding(binding: ModeBinding): binding is DisplayBinding {
+  return binding.kind === "display";
+}
+
+/**
+ * Tracks a mode's `DeviceLayout.modifier` button's live held/released state (ECS-137), generically: reuses
+ * `resolveIncomingValue()`'s existing note-press/CC-threshold boolean rules via a synthetic `BooleanControlDef` —
+ * the same reuse `bindActionTrigger()` already makes for a plain action trigger — rather than re-deriving
+ * press/release detection a second time. Not a full `Control`: nothing needs to subscribe to this changing, only
+ * read synchronously at dispatch time, so a plain ref is the smallest shape that's actually needed.
+ */
+function bindModifierState(physical: PhysicalControl, input: MidiInput): { getValue: () => boolean; unsubscribe: Unsubscribe } | undefined {
+  const source = toMidiSource(physical);
+  if (!source) return undefined;
+  const def: BooleanControlDef = { id: `modifier.${physical.id}`, label: physical.label, kind: "boolean", default: false };
+  let held = false;
+  const unsubscribe = input.onMessage((message) => {
+    const resolved = resolveIncomingValue(message, source, def);
+    if (resolved !== undefined) held = resolved;
+  });
+  return { getValue: () => held, unsubscribe };
+}
+
 /**
  * Inert `MidiOutput` passed to `bindControlMapping()` when a mapping has
  * no `feedback` (so `output` is never read — see `src/mapping/bind.ts`)
@@ -100,8 +126,12 @@ function bindToggle(
   source: MidiSource,
   control: Control<BooleanControlDef>,
   feedback: { target: MidiTarget; output: MidiOutput; kind: string | undefined; lit?: RgbColour } | undefined,
+  shouldApply?: () => boolean,
 ): { unsubscribe: Unsubscribe; painter?: FeedbackPainter } {
-  const action = createAction({ id: `toggle.${control.def.id}`, label: control.def.label }, () => control.setValue(!control.getValue()));
+  const action = createAction({ id: `toggle.${control.def.id}`, label: control.def.label }, () => {
+    if (shouldApply && !shouldApply()) return;
+    control.setValue(!control.getValue());
+  });
   const unbindTrigger = bindActionTrigger(input, source, action);
   if (!feedback) return { unsubscribe: unbindTrigger };
 
@@ -178,6 +208,7 @@ function bindStepFeedback(
   navigation: SurfaceNavigation,
   input: MidiInput,
   source: MidiSource,
+  shouldApply?: () => boolean,
 ): { unsubscribe: Unsubscribe; painter?: FeedbackPainter } {
   const ownDef: BooleanControlDef = { id: `window.${binding.gridId}.${cell.row}.${cell.column}`, label: physical.label, kind: "boolean", default: false };
   const own = createWindowedControl(
@@ -190,7 +221,10 @@ function bindStepFeedback(
     },
     navigation,
   );
-  const pressAction = createAction({ id: `toggle.${ownDef.id}`, label: physical.label }, () => own.setValue(!own.getValue()));
+  const pressAction = createAction({ id: `toggle.${ownDef.id}`, label: physical.label }, () => {
+    if (shouldApply && !shouldApply()) return;
+    own.setValue(!own.getValue());
+  });
   const unbindPress = bindActionTrigger(input, source, pressAction);
 
   const target = toMidiTarget(physical);
@@ -327,6 +361,12 @@ function painterFor(
  * dangling reference, a `ControlId` nothing in `registry` has, a port with nothing
  * resolved for it) is silently skipped, not thrown. That's the same "report, don't
  * invent, don't crash a live caller" stance this project takes everywhere else.
+ *
+ * ECS-137: a binding with `when` set only dispatches while the mode's `layout.modifier` button is in the matching
+ * held/released state (tracked once per call via `bindModifierState()`); omitting `when` on every binding (the
+ * case before this field existed) reproduces the exact previous behavior, unconditionally. A `DisplayBinding` paints
+ * a resolved string `Control`'s value out through a `DeviceDisplayDefinition`'s declarative SysEx template whenever
+ * it changes, the same "state -> feedback" shape every other binding already uses.
  */
 export async function bindSurfaceMode(
   modeDefinition: SurfaceModeDefinition | undefined,
@@ -345,9 +385,24 @@ export async function bindSurfaceMode(
   const unsubscribes: Unsubscribe[] = [];
   const painters: FeedbackPainter[] = [];
 
+  // ECS-137: the mode's modifier button's live held/released state, if this profile declares one — read by every
+  // `when`-bearing binding below. A profile with no `layout.modifier` leaves `modifierState` undefined, so
+  // `matchesWhen()` treats any conditional binding as never satisfied, rather than guessing which state applies.
+  const modifierControlId = deps.profile.layout?.modifier;
+  const modifierPhysical = modifierControlId ? deps.profile.controls.find((candidate) => candidate.id === modifierControlId) : undefined;
+  const modifierInput = modifierPhysical ? deps.ports.inputs[modifierPhysical.portId] : undefined;
+  const modifierState = modifierPhysical && modifierInput ? bindModifierState(modifierPhysical, modifierInput) : undefined;
+  if (modifierState) unsubscribes.push(modifierState.unsubscribe);
+
+  const matchesWhen = (when: ModifierCondition | undefined): boolean => {
+    if (when === undefined) return true;
+    if (!modifierState) return false;
+    return when === "modifier-held" ? modifierState.getValue() : !modifierState.getValue();
+  };
+
   const controlBindings = bindings.filter((binding): binding is ControlBinding => isControlBinding(binding) && binding.press !== "toggle");
   const generated = deps.generate(deps.profile, controlBindings, deps.context);
-  for (const { mapping, inputPortId, outputPortId } of generated) {
+  for (const { mapping, inputPortId, outputPortId, when } of generated) {
     const control = deps.registry.getControl(mapping.control);
     const input = deps.ports.inputs[inputPortId];
     if (!control || !input) continue;
@@ -355,7 +410,7 @@ export async function bindSurfaceMode(
     const output = outputPortId !== undefined ? deps.ports.outputs[outputPortId] : undefined;
     if (mapping.feedback && !output) continue;
 
-    unsubscribes.push(bindControlMapping(mapping, input, output ?? NULL_OUTPUT, control));
+    unsubscribes.push(bindControlMapping(mapping, input, output ?? NULL_OUTPUT, control, { shouldApply: () => matchesWhen(when) }));
     if (mapping.feedback && output) {
       painters.push(painterFor(mapping.feedback, control, output, feedbackKindOf(deps.profile, mapping.id)));
     }
@@ -376,6 +431,7 @@ export async function bindSurfaceMode(
       source,
       control as Control<BooleanControlDef>,
       target && output ? { target, output, kind: physical.feedback?.kind, lit: binding.colour } : undefined,
+      () => matchesWhen(binding.when),
     );
     unsubscribes.push(handle.unsubscribe);
     if (handle.painter) painters.push(handle.painter);
@@ -412,6 +468,7 @@ export async function bindSurfaceMode(
     if (navigate.kind === "page" && !paging) continue;
 
     const action = createAction({ id: `navigate.${binding.physicalControlId}`, label: binding.role }, () => {
+      if (!matchesWhen(binding.when)) return;
       if (navigate.kind === "set-mode") navigation.setMode(navigate.mode);
       else if (paging) navigation.pageBy({ row: navigate.direction.row * paging.rows, column: navigate.direction.column * paging.columns });
     });
@@ -429,7 +486,7 @@ export async function bindSurfaceMode(
     // ECS-127 / ECS-131: a toggle step carrying duration and/or playhead feedback owns its LED alone, composing all
     // three signals into one colour rather than racing a second, independent feedback path against the same pad.
     if (binding.press === "toggle" && (binding.durationTemplate !== undefined || binding.playheadControl !== undefined)) {
-      const handle = bindStepFeedback(binding, physical, cell, deps, navigation, input, source);
+      const handle = bindStepFeedback(binding, physical, cell, deps, navigation, input, source, () => matchesWhen(binding.when));
       unsubscribes.push(handle.unsubscribe);
       if (handle.painter) painters.push(handle.painter);
       continue;
@@ -465,6 +522,7 @@ export async function bindSurfaceMode(
         source,
         windowed,
         target && output ? { target, output, kind: physical.feedback?.kind, lit: binding.colour } : undefined,
+        () => matchesWhen(binding.when),
       );
       unsubscribes.push(() => windowed.dispose(), handle.unsubscribe);
       if (handle.painter) painters.push(handle.painter);
@@ -473,10 +531,26 @@ export async function bindSurfaceMode(
 
     const mapping: ControlMapping = { id: binding.physicalControlId, control: def.id, source, ...(target ? { feedback: target } : {}) };
     unsubscribes.push(() => windowed.dispose());
-    unsubscribes.push(bindControlMapping(mapping, input, output ?? NULL_OUTPUT, windowed));
+    unsubscribes.push(bindControlMapping(mapping, input, output ?? NULL_OUTPUT, windowed, { shouldApply: () => matchesWhen(binding.when) }));
     if (target && output) {
       painters.push(painterFor(target, windowed as Control<ControlDef>, output, physical.feedback?.kind));
     }
+  }
+
+  for (const binding of bindings.filter(isDisplayBinding)) {
+    const display = deps.profile.displays?.find((candidate) => candidate.id === binding.displayId);
+    const line = display?.lines.find((candidate) => candidate.id === binding.lineId);
+    const output = display ? deps.ports.outputs[display.portId] : undefined;
+    const controlId = resolveControlId(binding.resolve, deps.context);
+    const control = controlId !== undefined ? deps.registry.getControl(controlId) : undefined;
+    if (!display || !line || !output || !control || control.def.kind !== "string") continue;
+
+    const stringControl = control as Control<StringControlDef>;
+    const send = (text: string) => output.send(buildDisplayMessage(display, line, text));
+    unsubscribes.push(stringControl.onChange((value) => send(value)));
+    // No "off" state for text, unlike an LED or a motorized fader's position: a display has nothing natural to
+    // revert to on exit, so leaving the mode simply stops updating it, rather than inventing a blank state to send.
+    painters.push({ paint: () => send(stringControl.getValue()), clear: () => {} });
   }
 
   for (const painter of painters) painter.paint();

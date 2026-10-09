@@ -3,9 +3,11 @@ import {
   CONTROL_KINDS,
   CONTROL_VALUE_MODES,
   FEEDBACK_KINDS,
+  RELATIVE_ENCODINGS,
   isControlKind,
   isControlValueMode,
   isFeedbackKind,
+  isRelativeEncoding,
 } from "./control.js";
 
 describe("isControlKind", () => {
@@ -30,6 +32,20 @@ describe("isControlValueMode", () => {
 
   it("rejects unknown values", () => {
     expect(isControlValueMode("incremental")).toBe(false);
+  });
+});
+
+describe("isRelativeEncoding", () => {
+  it("accepts every declared encoding", () => {
+    for (const encoding of RELATIVE_ENCODINGS) {
+      expect(isRelativeEncoding(encoding)).toBe(true);
+    }
+  });
+
+  it("rejects unknown values", () => {
+    expect(isRelativeEncoding("offset-binary-64")).toBe(false);
+    expect(isRelativeEncoding(1)).toBe(false);
+    expect(isRelativeEncoding(undefined)).toBe(false);
   });
 });
 

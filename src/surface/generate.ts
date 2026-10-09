@@ -1,7 +1,7 @@
 import type { SurfaceContext } from "../control-api/types/context.js";
-import type { MidiAddress, MidiSource, MidiTarget } from "../mapping/types/address.js";
+import type { MidiAddress, MidiSource, MidiTarget, RelativeEncoding as MappingRelativeEncoding } from "../mapping/types/address.js";
 import type { ControlMapping } from "../mapping/types/mapping.js";
-import type { ControlSurfaceAddress, PhysicalControl } from "../profile/types/control.js";
+import type { ControlSurfaceAddress, PhysicalControl, RelativeEncoding as ProfileRelativeEncoding } from "../profile/types/control.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { resolveControlId, type ControlBinding } from "./types/bindings.js";
 import type { GeneratedBinding } from "./types/generation.js";
@@ -25,6 +25,21 @@ function toMidiAddress(address: ControlSurfaceAddress): MidiAddress | undefined 
       return { type: "note", note: address.note };
     case "pitch-bend":
       return { type: "pitch-bend" };
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Translates a profile's `RelativeEncoding` (a device fact) into mapping's own `RelativeEncoding` (ECS-137) — the
+ * same "translate at the one boundary allowed to depend on both" move `toMidiAddress` already makes for
+ * `ControlSurfaceAddress`/`MidiAddress`, kept separate rather than merged into one type for the reasons
+ * `profile/types/control.ts`'s own doc comment on `RelativeEncoding` gives.
+ */
+function toRelativeEncoding(encoding: ProfileRelativeEncoding): MappingRelativeEncoding | undefined {
+  switch (encoding) {
+    case "twos-complement-7bit":
+      return "twos-complement-7bit";
     default:
       return undefined;
   }
@@ -120,18 +135,21 @@ export function generateControlMappings(
     if (controlId === undefined) continue;
 
     const target = toMidiTarget(control);
+    const relativeEncoding = control.relativeEncoding !== undefined ? toRelativeEncoding(control.relativeEncoding) : undefined;
 
     const mapping: ControlMapping = {
       id: binding.physicalControlId,
       control: controlId,
       source,
       ...(target ? { feedback: target } : {}),
+      ...(relativeEncoding ? { relativeEncoding } : {}),
     };
 
     generated.push({
       mapping,
       inputPortId: control.portId,
       ...(target ? { outputPortId: control.feedbackPortId ?? control.portId } : {}),
+      ...(binding.when ? { when: binding.when } : {}),
     });
   }
 

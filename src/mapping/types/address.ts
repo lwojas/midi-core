@@ -29,6 +29,26 @@ export function isChannelSelector(value: unknown): value is ChannelSelector {
   return value === "any" || isChannel(value);
 }
 
+/**
+ * How a relative control's raw CC byte decodes to a signed delta (ECS-137). Mapping's own copy of the device fact
+ * `profile/types/control.ts`'s `PhysicalControl.relativeEncoding` already names — kept separate rather than imported,
+ * the same "profile and mapping don't depend on each other" boundary `ControlSurfaceAddress`/`MidiAddress` already
+ * keep (see `docs/contracts/device-profile.md`'s "Why not reuse mapping's MidiAddress"); `src/surface/generate.ts`
+ * translates one into the other at the boundary that's already allowed to depend on both.
+ *
+ * Only one encoding is modeled: `"twos-complement-7bit"`, hardware-confirmed on the Ableton Push mk1 (ECS-136 gate,
+ * two independent encoders, two independent MIDI monitors) as the only relative scheme any profile actually declares
+ * today. Not a closed list by design — a future device needing a different relative scheme (e.g. a binary-offset-64
+ * split) adds a second value here, not a parallel type.
+ */
+export type RelativeEncoding = "twos-complement-7bit";
+
+export const RELATIVE_ENCODINGS: readonly RelativeEncoding[] = ["twos-complement-7bit"];
+
+export function isRelativeEncoding(value: unknown): value is RelativeEncoding {
+  return typeof value === "string" && (RELATIVE_ENCODINGS as readonly string[]).includes(value);
+}
+
 export interface ControlChangeAddress {
   readonly type: "control-change";
   readonly controller: number; // 0-127

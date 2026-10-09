@@ -64,19 +64,29 @@ import { buildFeedbackMessage, resolveIncomingValue } from "./value.js";
  * Binding several controls (e.g. a device's whole control layout) is just
  * calling this once per mapping; each call returns its own independent
  * `Unsubscribe`.
+ *
+ * `options.shouldApply` (ECS-137) is a generic incoming-message gate, checked before resolving every message: when
+ * it returns `false`, the message is treated exactly as a non-matching one (ignored, no `setValue()`, nothing queued
+ * for echo suppression). Omitted (the default), every matching message applies, exactly as before — this is the
+ * seam `src/surface/bindings.ts` uses to implement modifier-conditional ("Shift+control") bindings generically,
+ * without this device-agnostic runtime knowing what a "modifier" is.
  */
 export function bindControlMapping<D extends ControlDef>(
   mapping: ControlMapping,
   input: MidiInput,
   output: MidiOutput,
   control: Control<D>,
+  options?: { readonly shouldApply?: () => boolean },
 ): Unsubscribe {
   const feedback = mapping.feedback;
   // Only tracked when feedback exists -- nothing ever drains it otherwise.
   const pendingFromMidi: ControlValue<D>[] = [];
 
   const unsubscribeInput = input.onMessage((message) => {
-    const value = resolveIncomingValue(message, mapping.source, control.def);
+    if (options?.shouldApply && !options.shouldApply()) return;
+    const value = mapping.relativeEncoding
+      ? resolveIncomingValue(message, mapping.source, control.def, { encoding: mapping.relativeEncoding, current: control.getValue() })
+      : resolveIncomingValue(message, mapping.source, control.def);
     if (value === undefined) return;
     if (feedback) pendingFromMidi.push(value);
     control.setValue(value);

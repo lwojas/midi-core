@@ -23,9 +23,11 @@ export type {
   ControlRole,
   ControlIdResolution,
   NavigationAction,
+  ModifierCondition,
   ControlBinding,
   NavigationBinding,
   WindowedControlBinding,
+  DisplayBinding,
   ModeBinding,
   SurfaceModeHooks,
   SurfaceModeDefinition,
@@ -46,6 +48,8 @@ export type { WindowedControl } from "./windowed-control.js";
 export { createWindowedControl } from "./windowed-control.js";
 
 export { generateControlMappings, toMidiTarget, toMidiSource } from "./generate.js";
+
+export { buildDisplayMessage } from "./display-binding.js";
 
 export type { EventFeedbackEncoder } from "./event-feedback.js";
 export { bindEventFeedback } from "./event-feedback.js";

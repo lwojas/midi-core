@@ -218,7 +218,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   const faderModeIds = new Set(faderModes.map((definition) => definition.mode));
   const declaredFaderModeIds = new Set((profile.modes ?? []).flatMap((mode) => mode.faders.banks.map((bank) => bank.modeId)));
 
-  const modeBindings: ModeBinding[] = [];
+  const modeBindings: NavigationBinding[] = [];
   for (const { controlId, mode } of layout.modeButtons ?? []) {
     // A fader mode the device can't run is skipped silently: its button is simply not there on that device.
     if (declaredFaderModeIds.has(mode) && !faderModeIds.has(mode)) continue;

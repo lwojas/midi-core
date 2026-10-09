@@ -109,6 +109,7 @@ interface ControlMapping {
   readonly control: ControlId;
   readonly source: MidiSource;
   readonly feedback?: MidiTarget;
+  readonly relativeEncoding?: RelativeEncoding;
 }
 ```
 
@@ -116,6 +117,22 @@ Ties a `MidiSource` to the `ControlId` it drives. `feedback` is optional:
 a mapping with none is input-only — turning the knob changes the control,
 nothing is sent back. Most controls don't need it; it's there, not
 assumed, for the ones that do (a motorized fader, an LED ring).
+
+`relativeEncoding` (ECS-137) is optional, and only meaningful for a
+numeric control: omitted (still the common case), `source`'s raw value is
+normalized straight onto `control`'s range exactly as before. Present —
+copied by `src/surface/generate.ts` from the originating
+`PhysicalControl.relativeEncoding` (a device fact,
+`docs/contracts/device-profile.md`) — it means `source` reports relative
+deltas rather than a position: `decodeRelativeDelta(raw, encoding)`
+(`src/mapping/value.ts`) turns the raw byte into a signed delta, which
+`bindControlMapping()` (`docs/contracts/mapping-runtime.md`) accumulates
+onto the control's *current* value and clamps to its range, instead of
+scaling the raw byte directly. `RelativeEncoding` is mapping's own type
+(`src/mapping/types/address.ts`), kept deliberately separate from the
+profile layer's own `RelativeEncoding` of the same name — the same
+"profile and mapping don't depend on each other" boundary this contract
+already draws for `ControlSurfaceAddress`/`MidiAddress`.
 
 ## What's deliberately not here
 
@@ -130,9 +147,14 @@ assumed, for the ones that do (a motorized fader, an LED ring).
   named extension point (a later `curve` or `transform` field on
   `ControlMapping`, or on `MidiSource`/`MidiTarget`), left undesigned until
   a concrete mapping needs something other than linear/threshold/bucket.
-- **No conditions** — e.g. a mapping that only applies while a modifier
-  button is held, or while a track is selected. Also a named extension
-  point, not built speculatively.
+- **No conditions, still, inside `ControlMapping` itself** — e.g. "this
+  mapping only applies while a modifier button is held." ECS-137 resolved
+  this extension point one layer up, not here: `bindControlMapping()`
+  (`docs/contracts/mapping-runtime.md`) gained a generic `shouldApply()`
+  gate it knows nothing about the meaning of, and
+  `src/surface/bindings.ts` (`docs/contracts/surface-bindings.md`) is what
+  actually supplies a modifier-aware predicate. `ControlMapping` itself
+  still carries no condition field.
 - **No device profiles** — nothing here knows about a specific
   controller's layout or names a collection of `ControlMapping`s as "the
   mapping for a Launchpad." That's ECS-39.

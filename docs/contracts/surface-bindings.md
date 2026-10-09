@@ -129,6 +129,7 @@ declarative shape already covers.
 interface ModeBindingBase {
   physicalControlId: string; // PhysicalControl.id
   role: ControlRole;         // "pad grid", "transport play" — documentation only
+  when?: ModifierCondition;  // ECS-137, see below
 }
 
 interface ControlBinding extends ModeBindingBase {
@@ -141,8 +142,61 @@ interface NavigationBinding extends ModeBindingBase {
   navigate: NavigationAction;
 }
 
-type ModeBinding = ControlBinding | NavigationBinding;
+type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding | IndicatorBinding | DisplayBinding;
 ```
+
+(`WindowedControlBinding` and `IndicatorBinding` — a grid window onto an
+application control, and a feedback-only lit-while-equal indicator — were
+added after this ticket by ECS-89/ECS-95/ECS-114; both still extend
+`ModeBindingBase` exactly as above. `DisplayBinding` is new in ECS-137,
+below.)
+
+## Conditional (modifier) bindings (ECS-137)
+
+```ts
+type ModifierCondition = "modifier-held" | "modifier-released";
+```
+
+`when`, on every `ModeBindingBase`, gates a binding on the mode's
+`DeviceLayout.modifier` button (`docs/contracts/device-profile.md`).
+Omitted — the case for every binding before this field existed —
+reproduces the exact previous behavior, unconditionally; this is the hard
+compatibility requirement. Present, two bindings may target the same
+`physicalControlId` within one mode, each with a different `when`:
+`src/surface/bindings.ts`'s `bindSurfaceMode()` tracks the modifier
+button's live held/released state once per mode-bind and dispatches each
+incoming message to whichever binding currently applies. A profile with
+no `layout.modifier` declared never satisfies either `when` value — a
+conditional binding on such a device is simply never live, not an error.
+
+Ownership split: which button is the modifier is a device fact
+(`DeviceLayout.modifier`, profile-owned); the held/released resolution
+rule is generic, `src/surface/bindings.ts`-owned mechanics, reusable by
+any device with a shift-style button. The MIDI-mapping runtime itself
+(`docs/contracts/mapping-runtime.md`) knows nothing about "modifier" —
+`bindSurfaceMode()` supplies it a bare `shouldApply()` predicate through
+`bindControlMapping()`'s own generic gate.
+
+## Display bindings (ECS-137)
+
+```ts
+interface DisplayBinding {
+  kind: "display";
+  displayId: string; // DeviceDisplayDefinition.id
+  lineId: string;     // DisplayLineTemplate.id within that display
+  resolve: ControlIdResolution;
+}
+```
+
+Not a `ModeBindingBase`: a display has no input semantics, so there's no
+physical-control press to assign a role to — only a resolved string
+`Control` to paint out, through `DeviceDisplayDefinition`'s declarative
+SysEx template (`docs/contracts/device-profile.md`), whenever it changes.
+The same "state → feedback" mechanism every other binding kind already
+uses (see "Feedback: still no new type" below), just for text instead of
+a note/CC value; `src/surface/display-binding.ts`'s `buildDisplayMessage()`
+is the one place that turns a display line plus a string into actual
+bytes.
 
 `role` carries no behavior — nothing reads it to make a decision, the
 same way `ControlDef.label` is purely informational. It's kept because
@@ -230,9 +284,13 @@ already exists and fully covers it.
   mistakes, not these; a future diagnostics pass (the same role
   `docs/contracts/profile-validation.md` plays for device profiles) is
   where that belongs, not this schema.
-- **No curves, transforms, or conditions** on a `ControlMapping` produced
-  from a binding — unchanged from `docs/contracts/mapping.md`'s own
-  deferral; a binding has no field to carry one.
+- **No curves or transforms** on a `ControlMapping` produced from a
+  binding — unchanged from `docs/contracts/mapping.md`'s own deferral.
+- **Conditions**, unlike curves/transforms, are no longer undesigned —
+  see "Conditional (modifier) bindings" above (ECS-137). `ControlMapping`
+  itself still carries no condition field; the condition lives on the
+  binding (`when`) and is applied as a generic runtime predicate, not as
+  new data on the mapping shape `mapping.md` defines.
 - **No richer resolution expression language** — one `"{id}"` placeholder
   only; see `ControlIdResolution` above.
 - **No runtime LLM dependency** — resolution and hook dispatch are

@@ -61,4 +61,19 @@ describe("PUSH_MK1_PROFILE", () => {
     for (const side of [layout.pageUp, layout.pageDown, layout.pageLeft, layout.pageRight]) expect(ids.has(side!)).toBe(true);
     for (const controlId of Object.values(layout.transport ?? {})) expect(ids.has(controlId!)).toBe(true);
   });
+
+  it("every relative-valueMode encoder declares a relativeEncoding (ECS-137)", () => {
+    const relativeEncoders = PUSH_MK1_ENCODERS.filter((control) => control.valueMode === "relative");
+    expect(relativeEncoders).toHaveLength(11);
+    for (const encoder of relativeEncoders) expect(encoder.relativeEncoding).toBe("twos-complement-7bit");
+  });
+
+  it("declares the LCD as a 4-line display, routed to user-port-out (ECS-137)", () => {
+    const display = PUSH_MK1_PROFILE.displays?.[0];
+    expect(display?.portId).toBe("user-port-out");
+    expect(display?.lines).toHaveLength(4);
+    expect(display?.lines.map((line) => line.lineId)).toEqual([0x18, 0x19, 0x1a, 0x1b]);
+    expect(display?.charCount).toBe(68);
+    expect(display?.prefix[0]).toBe(0xf0);
+  });
 });

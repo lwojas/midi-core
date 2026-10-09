@@ -29,6 +29,8 @@ export type ProfileDiagnosticCode =
   | "invalid-control"
   | "unknown-control-kind"
   | "unknown-control-value-mode"
+  | "unknown-relative-encoding"
+  | "relative-control-missing-encoding"
   | "unknown-feedback-kind"
   | "invalid-rgb-prefix"
   | "duplicate-control-id"
@@ -50,7 +52,14 @@ export type ProfileDiagnosticCode =
   | "unresolved-protocol-reference"
   | "duplicate-binding-id"
   | "invalid-mode"
-  | "duplicate-mode-id";
+  | "duplicate-mode-id"
+  | "invalid-display"
+  | "duplicate-display-id"
+  | "duplicate-display-line-id"
+  | "invalid-overrides"
+  | "unsupported-overrides-schema-version"
+  | "overrides-profile-mismatch"
+  | "overrides-stale-profile-schema";
 
 export interface ProfileDiagnostic {
   readonly severity: DiagnosticSeverity;

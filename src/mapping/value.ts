@@ -1,6 +1,6 @@
 import type { ControlDef, ControlValue, NumericControlDef } from "../control-api/types/control.js";
 import { PITCH_BEND_MAX, PITCH_BEND_MIN, type MidiMessage } from "../core/types/message.js";
-import { matchesSource, type MidiSource, type MidiTarget, type RgbColour } from "./types/address.js";
+import { matchesSource, type MidiSource, type MidiTarget, type RelativeEncoding, type RgbColour } from "./types/address.js";
 
 /**
  * Value normalisation between a MIDI message's native range and a
@@ -36,17 +36,48 @@ import { matchesSource, type MidiSource, type MidiTarget, type RgbColour } from 
  */
 
 /**
+ * The signed delta a relative encoder's raw CC byte (0-127) represents, per `encoding` (ECS-137). Pure, generic
+ * accumulate-and-clamp mechanics — reusable by any relative-encoder device, never Push-specific — kept separate from
+ * `normalizeRanged()`'s direct scaling, which assumes the raw byte *is* a position, not a step.
+ *
+ * `"twos-complement-7bit"`: a value under 64 is a positive delta as-is; 64 and above is negative, read as a signed
+ * 7-bit two's-complement byte (`value - 128`) — confirmed hands-on on the Ableton Push mk1 (ECS-136 gate): clockwise
+ * sends `1`, `2`, ...; counter-clockwise sends `127`, `126`, `125`, ... .
+ */
+export function decodeRelativeDelta(raw: number, encoding: RelativeEncoding): number {
+  switch (encoding) {
+    case "twos-complement-7bit":
+      return raw < 64 ? raw : raw - 128;
+  }
+}
+
+/**
  * The control value an incoming `message` resolves to, given `source`
  * (what to match) and `def` (the target control's range/kind). Returns
  * `undefined` when `message` doesn't match `source`, or when the matched
  * source kind doesn't pair with `def.kind` per the table above.
+ *
+ * `relative` (ECS-137), when supplied, means `source` is a relative control: a matching control-change message's raw
+ * value is decoded to a signed delta via `decodeRelativeDelta()` and added onto `relative.current` (clamped/snapped
+ * to `def`'s step), instead of being normalized onto `def`'s range directly. Only defined for a numeric `def` — a
+ * relative delta onto a boolean or enum control isn't a pairing this contract models (same "report, don't guess"
+ * stance as every unsupported pairing below), and only for a `control-change` source, the only MIDI message kind a
+ * relative encoder's turn is modeled as.
  */
 export function resolveIncomingValue<D extends ControlDef>(
   message: MidiMessage,
   source: MidiSource,
   def: D,
+  relative?: { readonly encoding: RelativeEncoding; readonly current: ControlValue<D> },
 ): ControlValue<D> | undefined {
   if (!matchesSource(message, source)) return undefined;
+
+  if (relative && source.address.type === "control-change" && message.type === "control-change") {
+    if (def.kind !== "number") return undefined;
+    const delta = decodeRelativeDelta(message.value, relative.encoding);
+    const current = relative.current as unknown as number;
+    return clampToStep(current + delta, def) as ControlValue<D>;
+  }
 
   if (source.address.type === "control-change" && message.type === "control-change") {
     return normalizeRanged(message.value, 0, 127, def);

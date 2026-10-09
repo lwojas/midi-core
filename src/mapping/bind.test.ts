@@ -153,6 +153,110 @@ describe("bindControlMapping — MIDI -> Control", () => {
   });
 });
 
+describe("bindControlMapping — relative encoder (ECS-137)", () => {
+  const level: NumericControlDef = { id: "mixer.send.1", label: "Send 1", kind: "number", min: 0, max: 127, step: 1, default: 64 };
+
+  it("accumulates successive relative deltas onto the control's current value", () => {
+    const { rawInput, input, output } = wiredPorts();
+    const control = createTestControl(level);
+    const mapping: ControlMapping = {
+      id: "cc71-send1",
+      control: level.id,
+      source: { address: { type: "control-change", controller: 71 }, channel: "any" },
+      relativeEncoding: "twos-complement-7bit",
+    };
+
+    bindControlMapping(mapping, input, output, control);
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 2)); // +2
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 1)); // +1
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 127)); // -1
+
+    expect(control.getValue()).toBe(66); // 64 + 2 + 1 - 1
+  });
+
+  it("clamps accumulation at the control's declared range", () => {
+    const { rawInput, input, output } = wiredPorts();
+    const control = createTestControl({ ...level, default: 125 });
+    const mapping: ControlMapping = {
+      id: "cc71-send1",
+      control: level.id,
+      source: { address: { type: "control-change", controller: 71 }, channel: "any" },
+      relativeEncoding: "twos-complement-7bit",
+    };
+
+    bindControlMapping(mapping, input, output, control);
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 10)); // +10, would overflow past 127
+
+    expect(control.getValue()).toBe(127);
+  });
+
+  it("regression: a mapping with no relativeEncoding still scales CC directly, unaffected by this feature", () => {
+    const { rawInput, input, output } = wiredPorts();
+    const control = createTestControl(level);
+    const mapping: ControlMapping = {
+      id: "cc71-send1",
+      control: level.id,
+      source: { address: { type: "control-change", controller: 71 }, channel: "any" },
+    };
+
+    bindControlMapping(mapping, input, output, control);
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 2));
+
+    expect(control.getValue()).toBe(2); // direct scaling, not accumulation
+  });
+});
+
+describe("bindControlMapping — options.shouldApply (ECS-137)", () => {
+  it("ignores a matching message when shouldApply returns false", () => {
+    const { rawInput, input, output } = wiredPorts();
+    const control = createTestControl(cutoff);
+    const mapping: ControlMapping = {
+      id: "cc74-cutoff",
+      control: cutoff.id,
+      source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+    };
+
+    bindControlMapping(mapping, input, output, control, { shouldApply: () => false });
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 127));
+
+    expect(control.getValue()).toBe(cutoff.default);
+  });
+
+  it("applies a matching message when shouldApply returns true, and re-checks it on every message", () => {
+    const { rawInput, input, output } = wiredPorts();
+    const control = createTestControl(cutoff);
+    let gateOpen = false;
+    const mapping: ControlMapping = {
+      id: "cc74-cutoff",
+      control: cutoff.id,
+      source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+    };
+
+    bindControlMapping(mapping, input, output, control, { shouldApply: () => gateOpen });
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 127));
+    expect(control.getValue()).toBe(cutoff.default); // gate closed: ignored
+
+    gateOpen = true;
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 127));
+    expect(control.getValue()).toBe(18000); // gate open: applied
+  });
+
+  it("regression: omitting options applies every matching message, exactly as before this option existed", () => {
+    const { rawInput, input, output } = wiredPorts();
+    const control = createTestControl(cutoff);
+    const mapping: ControlMapping = {
+      id: "cc74-cutoff",
+      control: cutoff.id,
+      source: { address: { type: "control-change", controller: 74 }, channel: "any" },
+    };
+
+    bindControlMapping(mapping, input, output, control);
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 74, 127));
+
+    expect(control.getValue()).toBe(18000);
+  });
+});
+
 describe("bindControlMapping — Control -> MIDI (feedback)", () => {
   it("sends feedback when the control changes", () => {
     const { input, output, rawOutput } = wiredPorts();

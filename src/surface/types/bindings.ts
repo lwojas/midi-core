@@ -65,10 +65,27 @@ export type NavigationAction =
    */
   | { readonly kind: "page"; readonly gridId: string; readonly direction: GridOffset };
 
+/**
+ * Which state of a mode's `DeviceLayout.modifier` button a conditional binding requires (ECS-137) — the device-fact
+ * half (which button is the modifier) lives on the profile; this is purely the generic resolution rule, reusable by
+ * any device with a shift-style button, never Push-specific. Two bindings may target the same `physicalControlId`
+ * within one mode, each with a different `when`; `bindSurfaceMode()` reads the modifier's live held/released state
+ * and dispatches to whichever one currently applies.
+ */
+export type ModifierCondition = "modifier-held" | "modifier-released";
+
 interface ModeBindingBase {
   /** `PhysicalControl.id` (`docs/contracts/device-profile.md`) this binding assigns meaning to. */
   readonly physicalControlId: string;
   readonly role: ControlRole;
+  /**
+   * Gates this binding on the mode's `DeviceLayout.modifier` button (ECS-137). Omitted (the default) reproduces
+   * exactly the unconditional behavior every binding had before this field existed — this is the hard compatibility
+   * requirement extension 2's regression test checks. Present, the binding only applies while the modifier is held
+   * (`"modifier-held"`) or released (`"modifier-released"`); a profile with no `layout.modifier` declared never
+   * satisfies either, so a conditional binding on such a device is simply never live, not an error.
+   */
+  readonly when?: ModifierCondition;
 }
 
 /**
@@ -168,8 +185,24 @@ export interface IndicatorBinding extends ModeBindingBase {
   readonly colour?: RgbColour;
 }
 
-/** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, a window onto a grid of controls, or an indicator of one value. */
-export type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding | IndicatorBinding;
+/**
+ * One line of a `DeviceDisplayDefinition` (`docs/contracts/device-profile.md`, ECS-137), driven by a string
+ * `Control` instead of a `PhysicalControl` — a display has no input semantics, so this is not a `ModeBindingBase`:
+ * there's no physical control press to assign a role to, only an application string to paint out whenever it
+ * changes, the same "state -> feedback" mechanism every other binding kind already uses, just for text instead of
+ * a note/CC value.
+ */
+export interface DisplayBinding {
+  readonly kind: "display";
+  /** `DeviceDisplayDefinition.id` (`docs/contracts/device-profile.md`) this binding paints. */
+  readonly displayId: string;
+  /** `DisplayLineTemplate.id` within that display. */
+  readonly lineId: string;
+  readonly resolve: ControlIdResolution;
+}
+
+/** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, a window onto a grid of controls, an indicator of one value, or (for `DisplayBinding`) a display line to paint from a string control. */
+export type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding | IndicatorBinding | DisplayBinding;
 
 /**
  * The two genuine escape valves a declarative `bindings` list can't

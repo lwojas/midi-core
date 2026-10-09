@@ -13,6 +13,7 @@ export type {
   ControlAddress,
   ControlKind,
   ControlValueMode,
+  RelativeEncoding,
   FeedbackKind,
   ControlFeedback,
   PhysicalControl,
@@ -22,6 +23,8 @@ export {
   isControlKind,
   CONTROL_VALUE_MODES,
   isControlValueMode,
+  RELATIVE_ENCODINGS,
+  isRelativeEncoding,
   FEEDBACK_KINDS,
   isFeedbackKind,
 } from "./types/control.js";
@@ -36,6 +39,11 @@ export type { ModeButtonRole, TransportRoles, DeviceLayout } from "./types/layou
 
 export type { DeviceProfile } from "./types/profile.js";
 export { DEVICE_PROFILE_SCHEMA_VERSION } from "./types/profile.js";
+
+export type { DisplayLineTemplate, DeviceDisplayDefinition } from "./types/display.js";
+
+export type { DeviceOverrides } from "./types/overrides.js";
+export { DEVICE_OVERRIDES_SCHEMA_VERSION } from "./types/overrides.js";
 
 export type { ProtocolControlTemplate, ProtocolFamily } from "./composition/types/protocol.js";
 
@@ -98,3 +106,4 @@ export type { DiagnosticSeverity, ProfileDiagnosticCode, ProfileDiagnostic } fro
 
 export { validateDeviceProfile } from "./validation/validate-profile.js";
 export { validateProtocolBindings } from "./validation/validate-bindings.js";
+export { validateDeviceOverrides } from "./validation/validate-overrides.js";

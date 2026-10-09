@@ -98,6 +98,26 @@ export function isControlValueMode(value: unknown): value is ControlValueMode {
 }
 
 /**
+ * How a `"relative"` control's raw CC byte decodes to a signed delta (ECS-137) — a device fact, exactly like
+ * `ControlValueMode` itself, describing the encoder's wire behavior and nothing about how a delta is applied to an
+ * application control (that's `src/mapping/`'s `decodeRelativeDelta()`/`resolveIncomingValue()` concern). A separate
+ * type from mapping's own `RelativeEncoding` (`src/mapping/types/address.ts`) rather than an import of it — this
+ * schema's "only dependency pointed at Core, not at the mapping layer" (see `docs/contracts/device-profile.md`'s "Why
+ * not reuse mapping's MidiAddress"), the same reasoning that already keeps `ControlSurfaceAddress` separate from
+ * `MidiAddress`. `src/surface/generate.ts` translates one into the other.
+ *
+ * Only one value is modeled: `"twos-complement-7bit"`, the only relative scheme any profile has hardware evidence
+ * for today (the Ableton Push mk1's encoders, ECS-136 gate).
+ */
+export type RelativeEncoding = "twos-complement-7bit";
+
+export const RELATIVE_ENCODINGS: readonly RelativeEncoding[] = ["twos-complement-7bit"];
+
+export function isRelativeEncoding(value: unknown): value is RelativeEncoding {
+  return typeof value === "string" && (RELATIVE_ENCODINGS as readonly string[]).includes(value);
+}
+
+/**
  * Output/LED feedback a control supports. "motorized" covers physical
  * position feedback (a motorized fader), named in the same terms
  * docs/contracts/mapping.md already uses ("a motorized fader, an LED
@@ -159,4 +179,10 @@ export interface PhysicalControl {
   /** The `DevicePortProfile.id` this control's `feedback` is sent on, when worth naming explicitly and different from `portId`. */
   readonly feedbackPortId?: string;
   readonly valueMode?: ControlValueMode;
+  /**
+   * Required (ECS-137) whenever `valueMode` is `"relative"` and `input` is set — a relative control's raw byte is
+   * meaningless to decode without knowing its encoding, so leaving this unset for a declared-relative, addressed
+   * control is a profile error (`validateDeviceProfile()`), not a silently-ignored gap.
+   */
+  readonly relativeEncoding?: RelativeEncoding;
 }
