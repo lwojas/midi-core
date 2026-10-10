@@ -370,6 +370,20 @@ function bindStepFeedback(
   };
 
   /**
+   * This cell's own precomputed coverage control (ECS-153), at its own virtual position — the fast path
+   * `coverageTemplate`'s presence selects in place of `predecessorAt()`'s backward scan. Re-resolved on every
+   * call (never cached across a navigation change) for the same reason `predecessorAt()` isn't either: a page
+   * turn changes which application control this cell's virtual position names.
+   */
+  const coverageAt = (): Control<BooleanControlDef> | undefined => {
+    if (binding.coverageTemplate === undefined) return undefined;
+    const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
+    const [row, column] = windowPosition(binding, cell, offset);
+    const coverage = deps.registry.getControl(fillTemplate(binding.coverageTemplate, row, column));
+    return coverage?.def.kind === "boolean" ? (coverage as Control<BooleanControlDef>) : undefined;
+  };
+
+  /**
    * How far back (in virtual columns) the predecessor scan below can reach: bounded by the duration control's own
    * declared `max` (every position sharing `durationTemplate` resolves to the same `NumericControlDef` shape, so this
    * cell's own duration control is a representative sample) rather than a fixed number of pages. ECS-147 shipped
@@ -402,7 +416,14 @@ function bindStepFeedback(
       return;
     }
 
-    if (binding.durationTemplate !== undefined) {
+    if (binding.coverageTemplate !== undefined) {
+      // ECS-153 fast path: the client already resolved "is this position covered" itself, so this is the one
+      // precomputed fact to read, not a scan to run.
+      if (coverageAt()?.getValue() === true) {
+        send(true, binding.continuationColour);
+        return;
+      }
+    } else if (binding.durationTemplate !== undefined) {
       // Nearest predecessor first: an overlapping earlier span still reads as "this cell is covered" either way,
       // but checking from the closest one out keeps the scan proportional to the distance that actually matters.
       // Bounded at -lookback() (ECS-147), not 0: physicalColumn going negative lands predecessorAt() on an earlier
@@ -427,7 +448,11 @@ function bindStepFeedback(
     playheadUnsubscribe?.();
     playheadUnsubscribe = undefined;
 
-    if (binding.durationTemplate !== undefined) {
+    if (binding.coverageTemplate !== undefined) {
+      // One control, this cell's own position — not a range of predecessors (ECS-153).
+      const coverage = coverageAt();
+      if (coverage) predecessorUnsubscribes.push(coverage.onChange(paint));
+    } else if (binding.durationTemplate !== undefined) {
       for (let j = -lookback(); j < cell.column; j++) {
         const { active, duration } = predecessorAt(j);
         if (active) predecessorUnsubscribes.push(active.onChange(paint));
@@ -676,7 +701,7 @@ export async function bindSurfaceMode(
 
     // ECS-127 / ECS-131: a toggle step carrying duration and/or playhead feedback owns its LED alone, composing all
     // three signals into one colour rather than racing a second, independent feedback path against the same pad.
-    if (binding.press === "toggle" && (binding.durationTemplate !== undefined || binding.playheadControl !== undefined)) {
+    if (binding.press === "toggle" && (binding.durationTemplate !== undefined || binding.coverageTemplate !== undefined || binding.playheadControl !== undefined)) {
       const handle = bindStepFeedback(binding, physical, cell, grid, deps, navigation, input, source, () => matchesWhen(binding.when));
       unsubscribes.push(handle.unsubscribe);
       if (handle.painter) painters.push(handle.painter);

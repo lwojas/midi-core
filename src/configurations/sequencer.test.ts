@@ -114,10 +114,11 @@ describe("createSequencerBindings on the Launchpad", () => {
     expect(bindingsOf(bindings, "mixer").find((binding) => binding.kind === "window")).toMatchObject({ colour: { red: 0, green: 127, blue: 0 } });
   });
 
-  it("shows no duration or playhead feedback when the contract names neither (ECS-127, ECS-131)", () => {
+  it("shows no duration, coverage, or playhead feedback when the contract names none (ECS-127, ECS-131, ECS-153)", () => {
     const windows = bindingsOf(table, "steps").filter((binding) => binding.kind === "window");
     for (const window of windows) {
       expect(window).not.toHaveProperty("durationTemplate");
+      expect(window).not.toHaveProperty("coverageTemplate");
       expect(window).not.toHaveProperty("playheadControl");
     }
   });
@@ -133,6 +134,30 @@ describe("createSequencerBindings on the Launchpad", () => {
     for (const mute of bindingsOf(bindings, "mixer").filter((binding) => binding.kind === "window")) {
       expect(mute).not.toHaveProperty("durationTemplate");
     }
+  });
+
+  it("carries a coverage template and a dimmed continuation colour on every step when the contract names one, instead of a duration template (ECS-153)", () => {
+    const { bindings } = createSequencerBindings(input, launchpad.profile, { ...contract(), stepCoverageTemplate: "step.{row}.{column}.covered" });
+    const windows = bindingsOf(bindings, "steps").filter((binding) => binding.kind === "window");
+    expect(windows).toHaveLength(64);
+    for (const window of windows) {
+      expect(window).toMatchObject({ coverageTemplate: "step.{row}.{column}.covered", continuationColour: { red: 0, green: 0, blue: 32 } });
+      expect(window).not.toHaveProperty("durationTemplate");
+    }
+  });
+
+  it("carries both templates when the contract names both (ECS-153 additive, not a replacement)", () => {
+    const { bindings } = createSequencerBindings(input, launchpad.profile, {
+      ...contract(),
+      stepDurationTemplate: "step.{row}.{column}.duration",
+      stepCoverageTemplate: "step.{row}.{column}.covered",
+    });
+    const window = bindingsOf(bindings, "steps").find((binding) => binding.kind === "window");
+    expect(window).toMatchObject({
+      durationTemplate: "step.{row}.{column}.duration",
+      coverageTemplate: "step.{row}.{column}.covered",
+      continuationColour: { red: 0, green: 0, blue: 32 },
+    });
   });
 
   it("dims whatever colour the app names for steps, not a fixed default (ECS-127)", () => {

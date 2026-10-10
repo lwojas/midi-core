@@ -81,6 +81,16 @@ export interface SequencerContract {
    */
   readonly stepDurationTemplate?: string;
   /**
+   * Application control (boolean) already holding whether a virtual position is covered by an earlier note's
+   * duration (ECS-153), at the same virtual position `stepTemplate` names. An opt-in fast path in place of
+   * `stepDurationTemplate`'s backward scan, for a sequencer that already holds its notes as a small, indexed list
+   * and can resolve coverage itself rather than have midi-core re-derive it one registry query at a time — see
+   * `WindowedControlBinding.coverageTemplate`'s own doc comment for the full shape and the compatibility rule.
+   * Supplying this *replaces* the scan `stepDurationTemplate` alone would run; omitted, nothing changes from
+   * `stepDurationTemplate`'s existing behavior.
+   */
+  readonly stepCoverageTemplate?: string;
+  /**
    * Application control (a number) holding the virtual column currently playing (ECS-131), matched against every
    * step regardless of its track row, so a whole page of tracks shows the same moving column. A value matching no
    * step on the current page (e.g. a sentinel the application sets while stopped) lights nothing — the sequencer's
@@ -409,8 +419,12 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         columnCountControl: contract.lengthControl,
         rowCountControl: contract.trackCountControl,
         colour: colours.steps,
-        ...(contract.stepDurationTemplate !== undefined
-          ? { durationTemplate: contract.stepDurationTemplate, continuationColour: dimColour(colours.steps, CONTINUATION_DIM_FACTOR) }
+        ...(contract.stepDurationTemplate !== undefined || contract.stepCoverageTemplate !== undefined
+          ? {
+              continuationColour: dimColour(colours.steps, CONTINUATION_DIM_FACTOR),
+              ...(contract.stepDurationTemplate !== undefined ? { durationTemplate: contract.stepDurationTemplate } : {}),
+              ...(contract.stepCoverageTemplate !== undefined ? { coverageTemplate: contract.stepCoverageTemplate } : {}),
+            }
           : {}),
         ...(contract.playheadControl !== undefined ? { playheadControl: contract.playheadControl, playheadColour: colours.playhead } : {}),
       }))

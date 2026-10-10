@@ -36,7 +36,7 @@ const rgb = (led: number, red: number, green: number, blue: number) =>
 /** Pad note for row 0, column `column` (0-7): row 0 is notes 81-88. */
 const padNote = (column: number) => 81 + column;
 
-function build(options: { duration?: boolean; playhead?: boolean } = { duration: true, playhead: true }, length = 8) {
+function build(options: { duration?: boolean; coverage?: boolean; playhead?: boolean } = { duration: true, playhead: true }, length = 8) {
   const portInfo = { name: "Launchpad Mini [MK3]", manufacturer: "Novation" };
   const midiIn = new MockMidiInput({ id: "midi-in", type: "input", ...portInfo });
   const midiOut = new MockMidiOutput({ id: "midi-out", type: "output", ...portInfo });
@@ -47,10 +47,17 @@ function build(options: { duration?: boolean; playhead?: boolean } = { duration:
   const durations = Array.from({ length }, (_, column) =>
     createControl<NumericControlDef>({ id: `step.0.${column}.duration`, label: `Step ${column} duration`, kind: "number", min: 0, max: 1024, default: 0 }),
   );
+  // ECS-153: a sequencer's own precomputed "is this position covered" fact, one boolean control per virtual
+  // position, the shape `stepCoverageTemplate` names — set directly by a test, never derived from `durations`,
+  // to prove the fast path reads this control alone rather than falling back to a scan.
+  const coverage = Array.from({ length }, (_, column) =>
+    createControl<BooleanControlDef>({ id: `step.0.${column}.covered`, label: `Step ${column} covered`, kind: "boolean", default: false }),
+  );
   const playhead = createControl<NumericControlDef>({ id: "transport.playhead", label: "Playhead", kind: "number", min: -1, max: 1024, default: -1 });
   const registry = createControlRegistry([
     ...steps,
     ...durations,
+    ...coverage,
     playhead,
     createControl<NumericControlDef>({ id: "steps.length", label: "length", kind: "number", min: 0, max: 1024, default: length }),
     createControl<NumericControlDef>({ id: "tracks.count", label: "tracks", kind: "number", min: 0, max: 1024, default: 1 }),
@@ -63,6 +70,7 @@ function build(options: { duration?: boolean; playhead?: boolean } = { duration:
     trackCountControl: "tracks.count",
     actions: { play: createAction({ id: "play", label: "play" }, () => {}), stop: createAction({ id: "stop", label: "stop" }, () => {}) },
     ...(options.duration ? { stepDurationTemplate: "step.{row}.{column}.duration" } : {}),
+    ...(options.coverage ? { stepCoverageTemplate: "step.{row}.{column}.covered" } : {}),
     ...(options.playhead ? { playheadControl: "transport.playhead" } : {}),
   };
   const { bindings } = createSequencerBindings(createMidiInput(midiIn), LAUNCHPAD_MINI_MK3_PROFILE, contract);
@@ -85,7 +93,7 @@ function build(options: { duration?: boolean; playhead?: boolean } = { duration:
     await flush();
   };
 
-  return { surface, steps, durations, playhead, pageRight, sent: () => midiOut.sentMessages.map(hex) };
+  return { surface, steps, durations, coverage, playhead, pageRight, sent: () => midiOut.sentMessages.map(hex) };
 }
 
 describe("step duration feedback on the Launchpad (ECS-127)", () => {
@@ -207,6 +215,73 @@ describe("step duration feedback on the Launchpad (ECS-127)", () => {
 
     expect(lastLed(sent(), padNote(0))).toBe(rgb(padNote(0), 0, 0, 127));
     expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 0));
+    await surface.detach();
+  });
+});
+
+describe("precomputed step coverage on the Launchpad (ECS-153)", () => {
+  it("lights a continuation pad straight from the coverage control, with no active/duration data at all", async () => {
+    const { surface, coverage, sent } = build({ duration: false, coverage: true, playhead: false });
+    coverage[1]!.setValue(true);
+    await surface.attach();
+
+    expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 32));
+    expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 0, 0));
+    await surface.detach();
+  });
+
+  it("repaints live when the coverage control itself changes, with no page turn", async () => {
+    const { surface, coverage, sent } = build({ duration: false, coverage: true, playhead: false });
+    await surface.attach();
+    expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 0));
+
+    coverage[1]!.setValue(true);
+    expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 32));
+
+    coverage[1]!.setValue(false);
+    expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 0));
+    await surface.detach();
+  });
+
+  it("ignores stale duration/active data once coverage says a position is not covered (coverage wins, no scan runs)", async () => {
+    const { surface, steps, durations, coverage, sent } = build({ duration: true, coverage: true, playhead: false });
+    steps[0]!.setValue(true);
+    durations[0]!.setValue(4); // would cover pads 1-3 under the scan, but coverage is the source of truth here
+    await surface.attach();
+
+    expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 0));
+    expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 0, 0));
+
+    coverage[2]!.setValue(true);
+    expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 0, 32));
+    await surface.detach();
+  });
+
+  it("re-targets to the coverage control at the new page, not the one it left (ECS-89 paging)", async () => {
+    const { surface, coverage, pageRight, sent } = build({ duration: false, coverage: true, playhead: false }, 16);
+    coverage[1]!.setValue(true); // virtual column 1, page 0
+    await surface.attach();
+    expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 32));
+
+    await pageRight(); // offset.column: 0 -> 8; pad-81..88 now show virtual columns 8-15
+    expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 0)); // virtual column 9: a different coverage control
+
+    coverage[1]!.setValue(false); // changing page 0's control must not reach a pad that no longer represents it
+    expect(lastLed(sent(), padNote(1))).toBe(rgb(padNote(1), 0, 0, 0));
+    await surface.detach();
+  });
+
+  it("still shows the playhead's colour over a covered pad (ECS-131 keeps priority)", async () => {
+    const { surface, coverage, playhead, sent } = build({ duration: false, coverage: true, playhead: true });
+    coverage[2]!.setValue(true);
+    await surface.attach();
+    expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 0, 32));
+
+    playhead.setValue(2);
+    expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 70, 100));
+
+    playhead.setValue(3);
+    expect(lastLed(sent(), padNote(2))).toBe(rgb(padNote(2), 0, 0, 32));
     await surface.detach();
   });
 });

@@ -153,11 +153,31 @@ export interface WindowedControlBinding extends ModeBindingBase {
    * bounded the scan to one page boundary instead, which real multi-bar notes on real hardware showed was too
    * shallow). Omitted, no duration feedback: the window behaves exactly as it did before ECS-127. Only takes effect
    * on a `"toggle"`-press window — a `"hold"` window ignores it, since nothing yet needs continuation feedback on a
-   * held control.
+   * held control. See `coverageTemplate` below for an opt-in fast path that replaces this scan entirely for a
+   * client that can supply the already-resolved fact instead (ECS-153).
    */
   readonly durationTemplate?: string;
-  /** The colour a continuation cell shows (ECS-127), in place of `colour`. Meaningless without `durationTemplate`. */
+  /** The colour a continuation cell shows (ECS-127), in place of `colour`. Meaningless without `durationTemplate`/`coverageTemplate`. */
   readonly continuationColour?: RgbColour;
+  /**
+   * An application control (boolean) already holding whether this virtual position is covered by an earlier note's
+   * duration — `{row}`/`{column}` fill the same way as `template` (ECS-153). An opt-in fast path in place of
+   * `durationTemplate`'s backward scan: the client (e.g. webseq, which already holds `pattern.notes` as a small,
+   * flat, indexed list) computes coverage itself, once per relevant change, directly from that data, and simply
+   * reports the already-resolved fact at each position instead of making midi-core re-derive it one registry query
+   * at a time. `bindStepFeedback()` reads this control's value at the cell's own position only — no lookback, no
+   * resubscribing across a range of predecessor columns — so cost here is O(1) per cell regardless of how far back
+   * a covering note started.
+   *
+   * Presence alone decides which path runs, the same idiom every other optional field on this interface already
+   * uses: when set, this *replaces* `durationTemplate`'s scan for this binding's continuation detection entirely
+   * (both may be declared — e.g. a shared contract some clients drive with `durationTemplate` and others with this
+   * — but a binding that supplies `coverageTemplate` never also runs the scan). A binding supplying only
+   * `durationTemplate` (every binding before this field existed, and any future client with no cheap source of
+   * precomputed coverage) keeps that scan, unchanged, as the default. True lights `continuationColour`, the same
+   * as a scan-detected continuation; false shows nothing from this field, falling through to `own`'s state.
+   */
+  readonly coverageTemplate?: string;
   /**
    * An application control (a number) holding the virtual column currently playing (ECS-131) — compared against
    * every cell this binding covers, regardless of the cell's row, so a whole page of tracks scans together as

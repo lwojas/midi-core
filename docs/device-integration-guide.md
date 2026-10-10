@@ -121,6 +121,7 @@ Writing a `SurfaceBindingTable` by hand, per device, would mean re-deriving "whi
 |---|---|---|
 | `stepTemplate` | `"step.{row}.{column}"` | one boolean control per grid cell |
 | `stepDurationTemplate` | `"step.{row}.{column}.duration"` | feedback-only, how many steps a note spans |
+| `stepCoverageTemplate` | `"step.{row}.{column}.covered"` | feedback-only, opt-in fast path (ECS-153): a boolean already saying whether this position is covered, in place of `stepDurationTemplate`'s backward scan |
 | `muteTemplate` | `"mute.{track}"` | one boolean per track row |
 | `playheadControl` | `"transport.playhead"` | which virtual column is currently playing |
 | `bankControl` / `bankActions` | `"bank.active"` + actions | the app's own A–D track banks (device-agnostic) |
@@ -176,6 +177,19 @@ priority order on every repaint:
 3. **Duration continuation** (`binding.continuationColour`, a quarter-intensity dim of `colour`)
    — if an earlier step on this row is active and its `step.{row}.{column}.duration` control's
    value reaches this column, this pad is lit dim, reading as "still part of that earlier note."
+   This is a backward scan, bounded by the duration control's own `max` (ECS-147) — proportional
+   to how far back the covering note started, not to the sequence length, but still a scan.
+
+   **ECS-153 fast path:** a sequencer that already holds its notes as a small, indexed list
+   (webseq's `pattern.notes`) can skip that scan entirely by setting `stepCoverageTemplate`
+   instead of (or alongside) `stepDurationTemplate`. It computes "is this position covered"
+   itself, once per relevant change, directly from `pattern.notes`, and exposes the answer as a
+   boolean control at the same virtual position. `bindStepFeedback()` then reads that one
+   control at this cell's own position — O(1), no lookback, no resubscribing across a range of
+   predecessor columns. Presence of `coverageTemplate` on the binding (`WindowedControlBinding`,
+   `src/surface/types/bindings.ts`) is what selects this path; a binding supplying only
+   `durationTemplate` keeps the scan, unchanged, as the default for any client without a cheap
+   source of precomputed coverage.
 
 Each of the three signals the pad depends on is re-subscribed on every navigation change (a
 page turn moves which virtual row/column this physical pad currently represents), and the pad
