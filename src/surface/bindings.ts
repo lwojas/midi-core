@@ -266,6 +266,11 @@ function restValue(def: ControlDef): ControlValue<ControlDef> | undefined {
   return undefined;
 }
 
+/** Component-wise equality for the `RgbColour | undefined` pair `bindStepFeedback()`'s `send()` caches (ECS-152) -- two `undefined`s (never lit) match, as do two distinct objects with the same values, since callers never hold onto a colour reference across paints. */
+function coloursMatch(a: RgbColour | undefined, b: RgbColour | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && a.red === b.red && a.green === b.green && a.blue === b.blue);
+}
+
 /**
  * The virtual row and column of a window's cell: its grid position plus the page offset. A horizontal window swaps the
  * grid's axes, so its tracks run across the columns (ECS-95).
@@ -338,7 +343,16 @@ function bindStepFeedback(
     };
   }
 
+  // paint() below re-evaluates on *every* playhead tick, for every cell sharing the playhead's
+  // page (not just the one or two columns actually entering/leaving it) -- see this binding's
+  // own doc comment. Caching the last state actually sent and skipping an identical repeat
+  // (ECS-152) turns that back into "most cells do nothing" instead of "most cells resend the
+  // same off/unlit state to the device every tick", which is what was burying the real device
+  // and the UI's own playhead animation under a flood of redundant MIDI writes.
+  let lastSent: { on: boolean; colour: RgbColour | undefined } | undefined;
   const send = (on: boolean, colour: RgbColour | undefined) => {
+    if (lastSent !== undefined && lastSent.on === on && coloursMatch(lastSent.colour, colour)) return;
+    lastSent = { on, colour };
     const message = buildFeedbackMessage(target, ownDef, on, colour);
     if (message !== undefined) output.send(message);
   };
