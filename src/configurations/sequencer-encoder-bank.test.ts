@@ -27,15 +27,16 @@ function volumeDef(id: string): NumericControlDef {
   return { id, label: "Volume", kind: "number", min: 0, max: 100, default: 50 } satisfies NumericControlDef;
 }
 
-function build(trackCount = 16) {
+function build(trackCount = 16, options: { devices?: boolean } = {}) {
   const portInfo = { name: "Ableton Push", manufacturer: "Ableton" };
   const midiIn = new MockMidiInput({ id: "user-port-in", type: "input", ...portInfo });
   const midiOut = new MockMidiOutput({ id: "user-port-out", type: "output", ...portInfo });
 
   const volumes = Array.from({ length: trackCount }, (_, i) => createControl(volumeDef(`track.${i + 1}.volume`), 50));
   const encoderMode = createControl({ id: "encoder.mode", label: "Encoder bank mode", kind: "number", min: 0, max: 1, default: 0 } satisfies NumericControlDef, 0);
-  const registry = createControlRegistry([...volumes, encoderMode]);
-  const context = createSurfaceContext([]);
+  const fxParams = [0, 1, 2].map((i) => createControl({ id: `fx.selected.param.${i}`, label: `Param ${i}`, kind: "number", min: 0, max: 100, default: 0 } satisfies NumericControlDef, 0));
+  const registry = createControlRegistry([...volumes, encoderMode, ...fxParams]);
+  const context = createSurfaceContext([{ scope: "track", id: "1" }]);
 
   const contract: SequencerContract = {
     stepTemplate: "step.{row}.{column}",
@@ -43,7 +44,8 @@ function build(trackCount = 16) {
     muteTemplate: "mute.{track}",
     trackCountControl: "tracks.count",
     actions: {},
-    encoderBankTemplates: { volume: "track.{track}.volume" },
+    selectionIndexControl: "selection.index",
+    encoderBankTemplates: { volume: "track.{track}.volume", ...(options.devices ? { devices: "fx.selected.param.{row}" } : {}) },
     encoderBankModeControl: "encoder.mode",
     encoderBankModes: { volume: 0, devices: 1 },
     encoderBankModeActions: {
@@ -74,7 +76,7 @@ function build(trackCount = 16) {
     await flush();
   };
 
-  return { surface, unresolved, turn, press, volumes, encoderMode };
+  return { surface, unresolved, turn, press, volumes, encoderMode, fxParams, context, registry };
 }
 
 const ENCODER_CCS = [71, 72, 73, 74, 75, 76, 77, 78];
@@ -161,6 +163,49 @@ describe("Phase 2: the Push mk1's encoder bank (CC71-78) windowed onto track.{tr
     expect(encoderMode.getValue()).toBe(0);
     await turn(ENCODER_CCS[0]!, 1);
     expect(volumes[8]!.getValue()).toBe(51); // track 9 again, not track 1 -- the page survived the mode switch
+    await surface.detach();
+  });
+
+  it("keeps selected-track state out of the volume bank: selecting a track adds no second target to any encoder", async () => {
+    const { surface, turn, context, volumes } = build();
+    await surface.attach();
+
+    context.setSelection({ scope: "track", id: "5" });
+    await turn(ENCODER_CCS[0]!, 1);
+    expect(volumes[0]!.getValue()).toBe(51); // encoder 1 is bank track 1, once
+    expect(volumes[4]!.getValue()).toBe(50); // the selected track is not an additional target of any encoder
+    await surface.detach();
+  });
+
+  it("Devices category: every encoder drives its own parameter through one generic template", async () => {
+    const { surface, press, turn, fxParams, volumes } = build(16, { devices: true });
+    await surface.attach();
+
+    await press(DEVICES_MODE_CC);
+    await turn(ENCODER_CCS[0]!, 1);
+    await turn(ENCODER_CCS[1]!, 1);
+    await turn(ENCODER_CCS[1]!, 1);
+    await turn(ENCODER_CCS[2]!, 1);
+    expect(fxParams.map((param) => param.getValue())).toEqual([1, 2, 1]);
+    await turn(ENCODER_CCS[3]!, 1); // no parameter 3 on this effect: a no-op, not an error
+    for (const volume of volumes) expect(volume.getValue()).toBe(50); // volumes gated off
+    await surface.detach();
+  });
+
+  it("Devices category: re-resolves when the selection context changes (a different effect's controls)", async () => {
+    const { surface, press, turn, fxParams, registry, context } = build(16, { devices: true });
+    await surface.attach();
+    await press(DEVICES_MODE_CC);
+
+    // An application whose "fx.selected.param.0" names a different control after the selection moves.
+    const replacement = createControl({ id: "fx.selected.param.0", label: "Other effect", kind: "number", min: 0, max: 100, default: 0 } satisfies NumericControlDef, 10);
+    const original = registry.getControl.bind(registry);
+    registry.getControl = (id: string) => (id === "fx.selected.param.0" && context.getSelection("track")?.id === "2" ? replacement : original(id));
+
+    context.setSelection({ scope: "track", id: "2" });
+    await turn(ENCODER_CCS[0]!, 1);
+    expect(replacement.getValue()).toBe(11);
+    expect(fxParams[0]!.getValue()).toBe(0);
     await surface.detach();
   });
 });

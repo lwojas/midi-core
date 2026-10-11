@@ -44,7 +44,7 @@ export function validateDeviceProfile(profile: unknown): readonly ProfileDiagnos
 
   const gridIds = new Set<string>();
   diagnostics.push(...checkGrids(profile.grids, controlIds, gridIds));
-  diagnostics.push(...checkLayout(profile.layout, controlIds, gridIds));
+  diagnostics.push(...checkLayout(profile.layout, controlIds, gridIds, profile.grids));
   diagnostics.push(...checkSysEx(profile.sysex));
   diagnostics.push(...checkSetup(profile.setup, profile.ports));
   diagnostics.push(...checkModes(profile.modes, profile.ports, controlIds));
@@ -271,7 +271,7 @@ function checkControls(value: unknown, portIds: Set<string>, controlIds: Set<str
  * ECS-138: `dedicatedMuteGridId` must name a grid on this profile, the same "dangling reference" check a control id
  * gets, just against `gridIds` (computed by `checkGrids`, so `grids` is checked before `layout` in the caller).
  */
-function checkLayout(value: unknown, controlIds: Set<string>, gridIds: Set<string>): ProfileDiagnostic[] {
+function checkLayout(value: unknown, controlIds: Set<string>, gridIds: Set<string>, grids?: unknown): ProfileDiagnostic[] {
   if (value === undefined) return [];
   if (!isRecord(value)) {
     return [{ severity: "error", code: "invalid-layout", path: "layout", message: "layout must be an object when present." }];
@@ -362,6 +362,26 @@ function checkLayout(value: unknown, controlIds: Set<string>, gridIds: Set<strin
       diagnostics.push({ severity: "error", code: "invalid-layout", path: "layout.encoders", message: "layout.encoders must be an object." });
     } else {
       for (const [role, controlId] of Object.entries(value.encoders)) checkReference(controlId, `layout.encoders.${role}`);
+    }
+  }
+
+  // A physical control has one owner: a cell of the generic encoder bank is driven by the bank's per-category
+  // windows, so a fixed `encoders` role on the same control would give one turn two targets.
+  if (isRecord(value.encoders) && isRecord(value.encoderBank) && typeof value.encoderBank.gridId === "string") {
+    const bankGridId = value.encoderBank.gridId;
+    const bankCells = new Set(
+      (Array.isArray(grids) ? grids : []).flatMap((grid) => (isRecord(grid) && grid.id === bankGridId && Array.isArray(grid.cells) ? grid.cells : []))
+        .map((cell) => (isRecord(cell) ? cell.controlId : undefined)),
+    );
+    for (const [role, controlId] of Object.entries(value.encoders)) {
+      if (bankCells.has(controlId)) {
+        diagnostics.push({
+          severity: "error",
+          code: "invalid-layout",
+          path: `layout.encoders.${role}`,
+          message: `layout.encoders.${role} names "${controlId}", which is a cell of the encoder bank grid "${bankGridId}" and so already has a target per category.`,
+        });
+      }
     }
   }
 

@@ -908,7 +908,20 @@ export async function bindSurfaceMode(
         const control = deps.registry.getControl(fillTemplate(binding.template, ...windowPosition(binding, cell, offset)));
         return control?.def.kind === "number" ? (control as Control<NumericControlDef>) : undefined;
       },
-      navigation,
+      // Retarget on a page turn *and* on a selection-context change: a template that resolves through the
+      // application's live selection (e.g. "the selected effect's parameter N") names a different control after
+      // a reselection with no page turn at all, and a window that only retargets on navigation would keep
+      // driving the previously selected target.
+      {
+        onChange: (listener) => {
+          const unsubscribeNavigation = navigation.onChange(listener);
+          const unsubscribeContext = deps.context.onChange(listener);
+          return () => {
+            unsubscribeNavigation();
+            unsubscribeContext();
+          };
+        },
+      },
     );
 
     const relativeEncoding = physical.relativeEncoding !== undefined ? toRelativeEncoding(physical.relativeEncoding) : undefined;

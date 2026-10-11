@@ -326,6 +326,14 @@ describe("validateDeviceProfile", () => {
         expect.objectContaining({ code: "invalid-layout", path: "layout.encoders" }),
       );
     });
+
+    it("reports a fixed encoders role on a control that is also a cell of the encoder bank grid", () => {
+      const profile = { ...(validProfile() as object), grids: [{ id: "bank", label: "Bank", rows: 1, columns: 1, cells: [{ row: 0, column: 0, controlId: "pad-1" }] }] };
+      const layout = (extra: object) => ({ ...profile, layout: { encoderBank: { gridId: "bank" }, ...extra } });
+      expect(validateDeviceProfile(layout({ encoders: { volume: "pad-1" } }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-layout", path: "layout.encoders.volume" }),
+      );
+    });
   });
 
   describe("relativeEncoding (ECS-137)", () => {

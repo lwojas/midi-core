@@ -1,6 +1,9 @@
 import type { Control, ControlDef, ControlValue } from "../control-api/types/control.js";
 import type { Unsubscribe } from "../core/types/discovery.js";
-import type { SurfaceNavigation } from "./types/navigation.js";
+/** Anything that says "re-resolve my target now": a page turn, a selection change, or both composed. */
+export interface RetargetSignal {
+  onChange(listener: () => void): Unsubscribe;
+}
 
 /** A `Control` whose target can change, plus `dispose()` to release its subscriptions. */
 export interface WindowedControl<D extends ControlDef = ControlDef> extends Control<D> {
@@ -23,7 +26,7 @@ export interface WindowedControl<D extends ControlDef = ControlDef> extends Cont
 export function createWindowedControl<D extends ControlDef>(
   def: D,
   resolveTarget: () => Control<D> | undefined,
-  navigation: SurfaceNavigation,
+  navigation: RetargetSignal,
 ): WindowedControl<D> {
   const listeners = new Set<(value: ControlValue<D>, previous: ControlValue<D>) => void>();
   let target: Control<D> | undefined;

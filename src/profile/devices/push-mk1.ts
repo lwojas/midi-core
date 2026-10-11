@@ -132,7 +132,8 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * buttons, a vertical column running CC 43, the topmost, down to CC 36, the bottommost -- see `SELECTION_BUTTONS`'
  * and `PUSH_MK1_SELECTION_GRID`'s own doc comments).
  *
- * **ECS-140**: `PUSH_MK1_LAYOUT.encoders` names three of the 8 generic parameter encoders (`encoder-1`/`encoder-2`/
+ * **ECS-140** (superseded for encoder-1..8 by the generic encoder bank, which now owns them -- `layout.encoders`
+ * is empty here so no cell has a second, selection-bound target): `PUSH_MK1_LAYOUT.encoders` named three of the 8 generic parameter encoders (`encoder-1`/`encoder-2`/
  * `encoder-3`, hands-on confirmed real and relative on this unit already by the ECS-136 gate) for the application's
  * `"volume"`/`"send"`/`"effects"` roles -- representative-first, per this ticket's own instructions: one continuous
  * mapping proven end to end (`encoder-1`/`"volume"`), then the same contract reused unchanged for two more
@@ -590,7 +591,12 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
   modifier: "button-shift",
   selectionGridId: "selection-buttons",
   selectionClear: "button-master",
-  encoders: { volume: "encoder-1", send: "encoder-2", effects: "encoder-3" },
+  /**
+   * No `encoders` roles: encoder-1..8 belong to `encoderBank` below, which already decides what each of them
+   * drives per category (volume/devices). A physical control has exactly one owner -- a fixed `encoders` role on
+   * one of those cells would be a second, selection-bound target for the same turn (validate-profile rejects it).
+   * `encoder-master`/`encoder-swing`/`encoder-tempo` are not bank cells and remain free for fixed roles.
+   */
   /**
    * ECS-139: the 4-line LCD, one line per semantic role the application may fill -- the selected track, its
    * selected effect, that effect's lead parameter (name and value) and the transport. Which control feeds each role

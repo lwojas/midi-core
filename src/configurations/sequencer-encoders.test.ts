@@ -7,6 +7,7 @@ import { MockMidiInput } from "../adapters/mock/mock-input.js";
 import { MockMidiOutput } from "../adapters/mock/mock-output.js";
 import { createMidiInput } from "../core/input/create-midi-input.js";
 import { createMidiOutput } from "../core/output/create-midi-output.js";
+import type { DeviceProfile } from "../profile/types/profile.js";
 import { PUSH_MK1_PROFILE } from "../profile/devices/push-mk1.js";
 import { LAUNCHPAD_MINI_MK3_PROFILE } from "../profile/devices/launchpad-mini-mk3.js";
 import { generateControlMappings } from "../surface/generate.js";
@@ -20,6 +21,16 @@ import { createSequencerBindings, type SequencerContract } from "./sequencer.js"
  * whatever `SequencerContract.encoderParameters` resolves — representative-first: one role proven (volume), then
  * the same contract reused unchanged for two more.
  */
+
+/**
+ * The shipped Push profile gives encoder-1..8 to the generic encoder bank and so declares no fixed `encoders` roles
+ * (a cell with both would have two targets). The fixed-role mechanism is still a supported generic feature, so it's
+ * exercised here on a Push variant without the bank.
+ */
+const PUSH_FIXED_ROLES_PROFILE: DeviceProfile = {
+  ...PUSH_MK1_PROFILE,
+  layout: { ...PUSH_MK1_PROFILE.layout, encoderBank: undefined, encoders: { volume: "encoder-1", send: "encoder-2", effects: "encoder-3" } },
+};
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -51,10 +62,10 @@ function build(options: { encoderParameters?: SequencerContract["encoderParamete
       effects: { kind: "from-selection", scope: "track", template: "track.{id}.fx.cutoff" },
     },
   };
-  const { bindings, unresolved } = createSequencerBindings(createMidiInput(midiIn), PUSH_MK1_PROFILE, contract);
+  const { bindings, unresolved } = createSequencerBindings(createMidiInput(midiIn), PUSH_FIXED_ROLES_PROFILE, contract);
 
   const surface = createControlSurface({
-    profile: { ...PUSH_MK1_PROFILE, setup: undefined },
+    profile: { ...PUSH_FIXED_ROLES_PROFILE, setup: undefined },
     ports: { inputs: { "user-port-in": createMidiInput(midiIn) }, outputs: { "user-port-out": createMidiOutput(midiOut) } },
     bindingTable: bindings,
     context,

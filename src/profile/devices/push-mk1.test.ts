@@ -172,12 +172,10 @@ describe("PUSH_MK1_PROFILE", () => {
     for (const encoder of relativeEncoders) expect(encoder.relativeEncoding).toBe("twos-complement-7bit");
   });
 
-  it("ECS-140: the layout names three of the 8 generic parameter encoders for the application's volume/send/effects roles, leaving the rest and the dedicated encoders unassigned", () => {
-    expect(PUSH_MK1_PROFILE.layout?.encoders).toEqual({ volume: "encoder-1", send: "encoder-2", effects: "encoder-3" });
-    const assigned = new Set(Object.values(PUSH_MK1_PROFILE.layout?.encoders ?? {}));
-    for (const id of ["encoder-4", "encoder-5", "encoder-6", "encoder-7", "encoder-8", "encoder-master", "encoder-swing", "encoder-tempo"]) {
-      expect(assigned.has(id), id).toBe(false);
-    }
+  it("the generic encoder bank owns encoder-1..8: no fixed layout.encoders role shares a control with a bank cell", () => {
+    const bankCells = new Set(PUSH_MK1_PROFILE.grids?.find((grid) => grid.id === PUSH_MK1_PROFILE.layout?.encoderBank?.gridId)?.cells.map((cell) => cell.controlId));
+    expect(bankCells.size).toBe(8);
+    for (const controlId of Object.values(PUSH_MK1_PROFILE.layout?.encoders ?? {})) expect(bankCells.has(controlId), controlId).toBe(false);
   });
 
   it("ECS-150: every pad declares the hands-on confirmed greenish-blue/teal colour palette entry, matching the app-level playhead colour", () => {
