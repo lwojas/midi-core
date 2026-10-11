@@ -123,4 +123,11 @@ export interface DeviceLayout {
     readonly gridId: string;
     readonly modeButtons?: Readonly<Record<string, string>>;
   };
+  /**
+   * Which `DeviceDisplayDefinition` line (ECS-137) plays each application-defined text role (e.g. `"track"`,
+   * `"parameter"`) — the display counterpart to `encoders`: the device says which line a role lands on, the
+   * application (`SequencerContract.displayLines`) says which control's text fills it. A role the application
+   * doesn't name has no binding. Omitted, the device shows no application text.
+   */
+  readonly displayLines?: Readonly<Record<string, { readonly displayId: string; readonly lineId: string }>>;
 }

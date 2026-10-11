@@ -1,3 +1,4 @@
+import type { Control, ControlDef } from "../control-api/types/control.js";
 import type { MidiMessage } from "../core/types/message.js";
 import type { DeviceDisplayDefinition, DisplayLineTemplate } from "../profile/types/display.js";
 
@@ -20,4 +21,23 @@ export function buildDisplayMessage(display: DeviceDisplayDefinition, line: Disp
     type: "sysex",
     raw: Uint8Array.of(...display.prefix, line.lineId, ...display.textPrefix, ...textBytes, 0xf7),
   };
+}
+
+/**
+ * The plain text a display line shows for `control`: a string control's own value, or — for every other kind — the
+ * control's existing `label` and current value (`"Cutoff 0.50 Hz"`, `"Playing on"`), so a parameter's name and
+ * value reach a display from the one place the Control API already keeps them rather than a parallel text control.
+ * Device-agnostic and layout-free: character budget, padding and encoding stay in `buildDisplayMessage()`.
+ */
+export function describeControlText(control: Control<ControlDef>): string {
+  const { def } = control;
+  const value = control.getValue();
+  if (def.kind === "string") return String(value);
+  if (def.kind === "number") {
+    const number = value as number;
+    const text = Number.isInteger(number) ? String(number) : number.toFixed(2);
+    return `${def.label} ${text}${def.unit ? ` ${def.unit}` : ""}`;
+  }
+  if (def.kind === "boolean") return `${def.label} ${value ? "on" : "off"}`;
+  return `${def.label} ${String(value)}`;
 }

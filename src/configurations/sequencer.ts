@@ -159,6 +159,15 @@ export interface SequencerContract {
    * action here still gets an indicator (if `encoderBankModes` names it) but no press binding.
    */
   readonly encoderBankModeActions?: Readonly<Record<string, Action>>;
+  /**
+   * Which application control's text each of the device's `layout.displayLines` roles shows (ECS-139), by that same
+   * role name — the application decides what each role is called and where its text comes from. A string control
+   * shows its own value; any other control shows its existing label and current value (a parameter's name and
+   * value, a transport state), so no parallel text control is needed. A `{kind: "from-selection", ...}` role
+   * follows the application's live `Selection`, like `encoderParameters`. A role the device doesn't declare has no
+   * binding.
+   */
+  readonly displayLines?: Readonly<Record<string, ControlIdResolution>>;
 }
 
 export interface SequencerColours {
@@ -423,6 +432,20 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
     if (!hasControl(controlId)) unresolved.push(`encoder: ${role} (control ${controlId})`);
   }
 
+  // Display lines (ECS-139): the device's `layout.displayLines` roles, each painted only when the application also
+  // names a resolution for that same role. Available everywhere, like `encoderBindings`: a display is not a mode.
+  const displayBindings: ModeBinding[] = [];
+  for (const [role, target] of Object.entries(layout.displayLines ?? {})) {
+    const resolve = contract.displayLines?.[role];
+    if (resolve === undefined) continue;
+    const display = profile.displays?.find((candidate) => candidate.id === target.displayId);
+    if (!display?.lines.some((candidate) => candidate.id === target.lineId)) {
+      unresolved.push(`display: ${role} (line ${target.displayId}/${target.lineId})`);
+      continue;
+    }
+    displayBindings.push({ kind: "display", displayId: target.displayId, lineId: target.lineId, resolve });
+  }
+
   // Generic encoder bank: a window of relative encoders onto a page of numeric controls (e.g. the Push mk1's 8
   // parameter encoders, each driving one track's volume in the currently visible bank). Shares the step grid's
   // own page offset — no second paging control. Available everywhere, like dedicatedMuteBindings/encoderBindings:
@@ -579,6 +602,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         selectionBindings,
         selectionClearBindings,
         encoderBindings,
+        displayBindings,
         encoderBankBindings,
         encoderBankModeIndicators,
         encoderBankModeHooks,
@@ -690,6 +714,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         ...selectionBindings,
         ...selectionClearBindings,
         ...encoderBindings,
+        ...displayBindings,
         ...encoderBankBindings,
         ...encoderBankModeIndicators,
       ],
@@ -709,6 +734,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         ...selectionBindings,
         ...selectionClearBindings,
         ...encoderBindings,
+        ...displayBindings,
         ...encoderBankBindings,
         ...encoderBankModeIndicators,
       ],
@@ -726,6 +752,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         ...selectionBindings,
         ...selectionClearBindings,
         ...encoderBindings,
+        ...displayBindings,
         ...encoderBankBindings,
         ...encoderBankModeIndicators,
       ],
@@ -751,6 +778,7 @@ function faderModeDefinitions(
     selectionBindings: readonly ModeBinding[];
     selectionClearBindings: readonly ModeBinding[];
     encoderBindings: readonly ModeBinding[];
+    displayBindings: readonly ModeBinding[];
     encoderBankBindings: readonly ModeBinding[];
     encoderBankModeIndicators: readonly ModeBinding[];
     encoderBankModeHooks: () => SurfaceModeHooks | undefined;
@@ -814,6 +842,7 @@ function faderModeDefinitions(
         ...shared.selectionBindings,
         ...shared.selectionClearBindings,
         ...shared.encoderBindings,
+        ...shared.displayBindings,
         ...shared.encoderBankBindings,
         ...shared.encoderBankModeIndicators,
       ],

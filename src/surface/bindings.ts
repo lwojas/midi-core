@@ -14,7 +14,7 @@ import type { ControlGrid, GridCell } from "../profile/types/grid.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActionTrigger } from "./action-binding.js";
 import { createContextBoundControl } from "./context-bound-control.js";
-import { buildDisplayMessage } from "./display-binding.js";
+import { buildDisplayMessage, describeControlText } from "./display-binding.js";
 import { toMidiSource, toMidiTarget, toRelativeEncoding } from "./generate.js";
 import { resolveControlId } from "./types/bindings.js";
 import type {
@@ -961,33 +961,42 @@ export async function bindSurfaceMode(
 
     const send = (text: string) => output.send(buildDisplayMessage(display, line, text));
 
-    // ECS-140: a "from-selection" display line follows the same live selection change a reactive control binding
-    // does (e.g. the LCD line naming whichever track an encoder currently controls) — the same
-    // `createContextBoundControl()` wrapper, just for a string control instead of a numeric one. A "static" line
-    // keeps the exact previous one-shot lookup, unchanged.
+    // The line follows its resolved control live: a "static" one is looked up once, a "from-selection" one
+    // re-resolves whenever the application's `Selection` changes (ECS-140) — the same `SurfaceContext.onChange()`
+    // retarget-and-repaint-only-if-the-text-changed idiom `createContextBoundControl()` uses, here kind-agnostic
+    // since a line can show a string, or any other control's own label and value (`describeControlText()`).
+    // Nothing resolved shows blank text. No "off" state otherwise, unlike an LED or a motorized fader's position:
+    // a display has nothing natural to revert to on exit, so leaving the mode simply stops updating it, rather
+    // than inventing a blank state to send.
+    let target: Control<ControlDef> | undefined;
+    let unsubscribeTarget: Unsubscribe | undefined;
+    let lastText = "";
+    const textNow = () => (target ? describeControlText(target) : "");
+    const resolveTarget = () => {
+      const controlId = resolveControlId(binding.resolve, deps.context);
+      return controlId !== undefined ? deps.registry.getControl(controlId) : undefined;
+    };
+    const emitIfChanged = () => {
+      const next = textNow();
+      if (next === lastText) return;
+      lastText = next;
+      send(next);
+    };
+    const retarget = () => {
+      unsubscribeTarget?.();
+      target = resolveTarget();
+      unsubscribeTarget = target?.onChange(() => emitIfChanged());
+    };
+    retarget();
+    lastText = textNow();
     if (binding.resolve.kind === "from-selection") {
-      const fallbackDef: StringControlDef = {
-        id: `selection.${binding.displayId}.${binding.lineId}`,
-        label: `${binding.displayId} ${binding.lineId}`,
-        kind: "string",
-        default: "",
-      };
-      const bound = createContextBoundControl(binding.resolve, deps.registry, deps.context, fallbackDef);
-      unsubscribes.push(() => bound.dispose());
-      unsubscribes.push(bound.onChange((value) => send(value)));
-      painters.push({ paint: () => send(bound.getValue()), clear: () => {} });
-      continue;
+      unsubscribes.push(deps.context.onChange(() => {
+        retarget();
+        emitIfChanged();
+      }));
     }
-
-    const controlId = resolveControlId(binding.resolve, deps.context);
-    const control = controlId !== undefined ? deps.registry.getControl(controlId) : undefined;
-    if (!control || control.def.kind !== "string") continue;
-
-    const stringControl = control as Control<StringControlDef>;
-    unsubscribes.push(stringControl.onChange((value) => send(value)));
-    // No "off" state for text, unlike an LED or a motorized fader's position: a display has nothing natural to
-    // revert to on exit, so leaving the mode simply stops updating it, rather than inventing a blank state to send.
-    painters.push({ paint: () => send(stringControl.getValue()), clear: () => {} });
+    unsubscribes.push(() => unsubscribeTarget?.());
+    painters.push({ paint: () => send(textNow()), clear: () => {} });
   }
 
   for (const painter of painters) painter.paint();

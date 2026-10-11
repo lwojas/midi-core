@@ -517,9 +517,9 @@ export const PUSH_MK1_SYSEX: DeviceSysExProfile = {
  * The 4-line LCD (ECS-137), confirmed hands-on and independently re-confirmed at the ECS-136 gate:
  * `F0 47 7F 15 {lineId} 00 45 00 [68 ASCII bytes] F7` rewrites one line. `lineId` is 0x18-0x1b for lines 1-4 --
  * see `PUSH_MK1_SYSEX.notes` above, now re-expressed as a declarative `DeviceDisplayDefinition` (ECS-137's contract
- * extension) instead of free text only. Driving an actual string `Control` through this (e.g. showing the current
- * mode/track/parameter) is ECS-139's job, not this ticket's -- this profile declares the display contract, nothing
- * wires a `DisplayBinding` to it yet.
+ * extension) instead of free text only. ECS-139 wires it: `PUSH_MK1_LAYOUT.displayLines` names which line plays
+ * each application text role, and `createSequencerBindings()` emits a `DisplayBinding` per role the application
+ * fills. This template and its byte layout are unchanged by that wiring.
  */
 export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
   id: "lcd",
@@ -591,6 +591,17 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
   selectionGridId: "selection-buttons",
   selectionClear: "button-master",
   encoders: { volume: "encoder-1", send: "encoder-2", effects: "encoder-3" },
+  /**
+   * ECS-139: the 4-line LCD, one line per semantic role the application may fill -- the selected track, its
+   * selected effect, that effect's lead parameter (name and value) and the transport. Which control feeds each role
+   * is the application's own (`SequencerContract.displayLines`); which physical line it lands on is this profile's.
+   */
+  displayLines: {
+    track: { displayId: "lcd", lineId: "line-1" },
+    effect: { displayId: "lcd", lineId: "line-2" },
+    parameter: { displayId: "lcd", lineId: "line-3" },
+    transport: { displayId: "lcd", lineId: "line-4" },
+  },
   /**
    * Phase 2: the generic encoder bank (`PUSH_MK1_ENCODER_BANK_GRID`). `Volume` (CC114) selects the application's
    * "volume" category -- the one with a window in this phase, driving the bank's own per-track volumes. `Devices`
