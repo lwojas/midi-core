@@ -171,13 +171,13 @@ export interface SequencerContract {
 }
 
 export interface SequencerColours {
-  /** A lit step at an even virtual column (0-based) -- the sequencer's original single step colour. */
+  /** A lit step on an even track row (0-based) -- the sequencer's original single step colour. */
   readonly steps: RgbColour;
   /** Alias of `steps` for the even/odd naming below: when set, it wins over `steps`. */
   readonly stepEven?: RgbColour;
-  /** A lit step at an odd virtual column. Omitted, the same as the even one. */
+  /** A lit step on an odd track row. Omitted, the same as the even one. */
   readonly stepOdd?: RgbColour;
-  /** A duration-continuation cell at an even/odd column. Omitted, a dimmed (ECS-127) step colour of the same parity. */
+  /** A duration-continuation cell on an even/odd track row. Omitted, a dimmed (ECS-127) step colour of the same parity. */
   readonly stepLengthEven?: RgbColour;
   readonly stepLengthOdd?: RgbColour;
   readonly mutes: RgbColour;

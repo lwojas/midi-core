@@ -20,7 +20,7 @@ doc comments.
   and its mode button is not shown on that device. The key is a fader mode's bank id (`volume`, `pan`, `send`), a
   group of CCs on the device. It is not an application bank: the application's own banks A-D are `bankActions` and
   `bankControl` (ECS-114).
-- **`colours`** — `Partial<{ steps, mutes, banks }>` (ECS-95, ECS-114). Left out, each takes `DEFAULT_SEQUENCER_COLOURS`. Also `stepEven`/`stepOdd` (a lit step by its 0-based virtual column's parity), `stepLengthEven`/`stepLengthOdd` (a duration-continuation cell, by the same parity; default a dimmed step colour) and `unmuted` (an unmuted track's mute button; default dark). Precedence: the contract's own, then the device profile's `layout.colours` (the Push sets its whole scheme in `GRID_COLOURS`/`MUTE_COLOURS` at the top of `push-mk1.ts`), then the defaults.
+- **`colours`** — `Partial<{ steps, mutes, banks }>` (ECS-95, ECS-114). Left out, each takes `DEFAULT_SEQUENCER_COLOURS`. Also `stepEven`/`stepOdd` (a lit step by its 0-based virtual track row's parity), `stepLengthEven`/`stepLengthOdd` (a duration-continuation cell, by the same row parity; default a dimmed step colour) and `unmuted` (an unmuted track's mute button; default dark). Precedence: the contract's own, then the device profile's `layout.colours` (the Push sets its whole scheme in `GRID_COLOURS`/`MUTE_COLOURS` at the top of `push-mk1.ts`), then the defaults.
 
 ## Bank buttons (ECS-114)
 

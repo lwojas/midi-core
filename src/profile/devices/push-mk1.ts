@@ -27,7 +27,10 @@ interface PushColour {
   readonly velocity: number;
 }
 
-/** The step grid. "Even"/"odd" is the cell's 0-based column in the sequence (so it survives paging). */
+/**
+ * The step grid. "Even"/"odd" is the track row's 0-based index (so it survives track paging); step vs. stepLength is
+ * whether the cell starts a note or continues one.
+ */
 const GRID_COLOURS = {
   stepEven: { colour: { red: 0, green: 0, blue: 127 }, velocity: 127 }, // unchanged from before: plain full-on
   stepOdd: { colour: { red: 0, green: 100, blue: 0 }, velocity: 22 }, // green

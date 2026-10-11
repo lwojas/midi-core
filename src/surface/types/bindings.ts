@@ -160,9 +160,9 @@ export interface WindowedControlBinding extends ModeBindingBase {
   /** The colour a continuation cell shows (ECS-127), in place of `colour`. Meaningless without `durationTemplate`/`coverageTemplate`. */
   readonly continuationColour?: RgbColour;
   /**
-   * `colour`/`continuationColour` for cells at an odd virtual column (0-based, i.e. after paging: the cell's own
-   * position in the sequence, not its physical column), so alternating steps can be told apart. Omitted, an odd
-   * column uses `colour`/`continuationColour` exactly like an even one. Only read by a step-feedback window.
+   * `colour`/`continuationColour` for cells on an odd virtual row (0-based, i.e. after track paging: the track's own
+   * index, not its physical row), so alternating tracks can be told apart. Omitted, an odd row uses
+   * `colour`/`continuationColour` exactly like an even one. The column never matters. Only read by a step-feedback window.
    */
   readonly colourOdd?: RgbColour;
   readonly continuationColourOdd?: RgbColour;

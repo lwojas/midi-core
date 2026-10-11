@@ -428,7 +428,7 @@ function bindStepFeedback(
 
   const paint = () => {
     const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
-    const [, column] = windowPosition(binding, cell, offset);
+    const [row, column] = windowPosition(binding, cell, offset);
 
     if (binding.playheadControl !== undefined) {
       const playhead = deps.registry.getControl(binding.playheadControl);
@@ -438,7 +438,8 @@ function bindStepFeedback(
       }
     }
 
-    const odd = column % 2 !== 0;
+    // Row parity (the virtual track index, so it survives track paging) picks even/odd; never the column.
+    const odd = row % 2 !== 0;
     const stepColour = odd ? (binding.colourOdd ?? binding.colour) : binding.colour;
     const lengthColour = odd ? (binding.continuationColourOdd ?? binding.continuationColour) : binding.continuationColour;
 

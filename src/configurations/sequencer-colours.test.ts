@@ -23,27 +23,32 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const COLUMNS = 8;
 const TRACKS = 16;
 
-/** The Push's top pad row (the sequencer's row 0): notes 92-99, one per column. */
-const padNote = (column: number) => 92 + column;
+/** The Push's pad for sequencer `row` (row 0 is the top pad row, notes 92-99) and `column`. */
+const padNote = (column: number, row = 0) => 92 - 8 * row + column;
+const ROWS = 4;
 
 function build() {
   const portInfo = { name: "Ableton Push User Port", manufacturer: "Ableton" };
   const midiIn = new MockMidiInput({ id: "user-in", type: "input", ...portInfo });
   const midiOut = new MockMidiOutput({ id: "user-out", type: "output", ...portInfo });
 
-  const steps = Array.from({ length: COLUMNS }, (_, column) =>
-    createControl<BooleanControlDef>({ id: `step.0.${column}`, label: `Step ${column}`, kind: "boolean", default: false }),
+  const steps = Array.from({ length: ROWS }, (_, row) =>
+    Array.from({ length: COLUMNS }, (_, column) =>
+      createControl<BooleanControlDef>({ id: `step.${row}.${column}`, label: `Step ${row}.${column}`, kind: "boolean", default: false }),
+    ),
   );
-  const durations = Array.from({ length: COLUMNS }, (_, column) =>
-    createControl<NumericControlDef>({ id: `step.0.${column}.duration`, label: `Duration ${column}`, kind: "number", min: 0, max: 64, default: 0 }),
+  const durations = Array.from({ length: ROWS }, (_, row) =>
+    Array.from({ length: COLUMNS }, (_, column) =>
+      createControl<NumericControlDef>({ id: `step.${row}.${column}.duration`, label: `Duration ${row}.${column}`, kind: "number", min: 0, max: 64, default: 0 }),
+    ),
   );
   const mutes = Array.from({ length: TRACKS }, (_, index) =>
     createControl<BooleanControlDef>({ id: `mute.${index + 1}`, label: `Mute ${index + 1}`, kind: "boolean", default: false }),
   );
   const playhead = createControl<NumericControlDef>({ id: "transport.playhead", label: "Playhead", kind: "number", min: -1, max: 64, default: -1 });
   const registry = createControlRegistry([
-    ...steps,
-    ...durations,
+    ...steps.flat(),
+    ...durations.flat(),
     ...mutes,
     playhead,
     createControl<NumericControlDef>({ id: "steps.length", label: "length", kind: "number", min: 0, max: 64, default: COLUMNS }),
@@ -91,35 +96,41 @@ function build() {
 }
 
 describe("Push sequencer grid colours", () => {
-  it("lights an even-column step with stepEven and an odd-column step with stepOdd", async () => {
+  it("colours a step by its track row's parity: even rows stepEven, odd rows stepOdd, whatever the column", async () => {
     const { surface, steps, lastNote } = build();
-    steps[0]!.setValue(true);
-    steps[1]!.setValue(true);
+    for (const [row, column] of [[0, 0], [0, 1], [1, 0], [1, 1], [2, 3], [3, 2]] as const) steps[row]![column]!.setValue(true);
     await surface.attach();
 
-    expect(lastNote(padNote(0))).toBe(127); // stepEven
-    expect(lastNote(padNote(1))).toBe(22); // stepOdd
+    expect(lastNote(padNote(0, 0))).toBe(127); // row 0 (even)
+    expect(lastNote(padNote(1, 0))).toBe(127); // row 0, odd column: still even
+    expect(lastNote(padNote(0, 1))).toBe(22); // row 1 (odd)
+    expect(lastNote(padNote(1, 1))).toBe(22); // row 1, odd column: odd
+    expect(lastNote(padNote(3, 2))).toBe(127); // row 2 (even)
+    expect(lastNote(padNote(2, 3))).toBe(22); // row 3 (odd)
     await surface.detach();
   });
 
-  it("lights the continuation of a four-step note with the even/odd step-length colours, the start with the step colour", async () => {
+  it("lights a note's continuation with its row's step-length colour, the start with the row's step colour", async () => {
     const { surface, steps, durations, lastNote } = build();
-    steps[0]!.setValue(true);
-    durations[0]!.setValue(4);
+    steps[0]![0]!.setValue(true);
+    durations[0]![0]!.setValue(4);
+    steps[1]![0]!.setValue(true);
+    durations[1]![0]!.setValue(4);
     await surface.attach();
 
-    expect(lastNote(padNote(0))).toBe(127); // the step itself: stepEven
-    expect(lastNote(padNote(1))).toBe(1); // stepLengthOdd
-    expect(lastNote(padNote(2))).toBe(2); // stepLengthEven
-    expect(lastNote(padNote(3))).toBe(1); // stepLengthOdd
-    expect(lastNote(padNote(4))).toBeUndefined(); // past the note: dark (never a lit note-on)
+    expect(lastNote(padNote(0, 0))).toBe(127); // the step itself: stepEven
+    for (const column of [1, 2, 3]) expect(lastNote(padNote(column, 0))).toBe(2); // stepLengthEven, every column
+    expect(lastNote(padNote(4, 0))).toBeUndefined(); // past the note: dark (never a lit note-on)
+
+    expect(lastNote(padNote(0, 1))).toBe(22); // stepOdd
+    for (const column of [1, 2, 3]) expect(lastNote(padNote(column, 1))).toBe(1); // stepLengthOdd, every column
     await surface.detach();
   });
 
   it("paints the playhead over a step and a continuation alike, and restores them after it moves on", async () => {
     const { surface, steps, durations, playhead, lastNote } = build();
-    steps[0]!.setValue(true);
-    durations[0]!.setValue(3);
+    steps[0]![0]!.setValue(true);
+    durations[0]![0]!.setValue(3);
     await surface.attach();
 
     playhead.setValue(0);
@@ -128,7 +139,7 @@ describe("Push sequencer grid colours", () => {
     expect(lastNote(padNote(0))).toBe(127);
     expect(lastNote(padNote(1))).toBe(36);
     playhead.setValue(2);
-    expect(lastNote(padNote(1))).toBe(1);
+    expect(lastNote(padNote(1))).toBe(2); // row 0 is even: stepLengthEven
     expect(lastNote(padNote(2))).toBe(36);
     await surface.detach();
   });
