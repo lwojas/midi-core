@@ -9,6 +9,7 @@ reference, checked against the independent `AbletonPushUserModeHack.png` diagram
 Source of truth: [`demo/push-mk1-surface.js`](../demo/push-mk1-surface.js), [`scripts/push-mk1-live.mjs`](../scripts/push-mk1-live.mjs),
 [`scripts/push-mk1-led-level-probe.mjs`](../scripts/push-mk1-led-level-probe.mjs) (ECS-145),
 [`scripts/push-mk1-pad-color-probe.mjs`](../scripts/push-mk1-pad-color-probe.mjs) (ECS-150)
+Editing the sequencer's LED colours: [`push-colours.md`](push-colours.md)
 
 ## Purpose
 
