@@ -38,13 +38,14 @@ describe("PUSH_MK1_PROFILE", () => {
     }
   });
 
-  it("ECS-155: the selection buttons (CC 36-43) share the utility buttons' monochrome dim/full feedback", () => {
+  it("ECS-155 hardware correction: the selection buttons (CC 36-43) are a velocity-color-led family, confirmed hands-on -- not the monochrome family UTILITY_BUTTONS uses", () => {
     expect(PUSH_MK1_SELECTION_BUTTONS.map((control) => control.input?.address)).toEqual(
       [36, 37, 38, 39, 40, 41, 42, 43].map((controller) => ({ type: "control-change", controller })),
     );
     for (const button of PUSH_MK1_SELECTION_BUTTONS) {
-      expect(button.feedback?.kind, button.id).toBe("monochrome-led");
-      expect(button.feedback?.dimValue, button.id).toBe(1);
+      expect(button.feedback?.kind, button.id).toBe("velocity-color-led");
+      expect(button.feedback?.dimValue, button.id).toBe(10); // confirmed: a steady tier within the white-ish range
+      expect(button.feedback?.colourPalette, button.id).toEqual([{ colour: { red: 127, green: 0, blue: 127 }, velocity: 22 }]); // confirmed: a steady green
       expect(button.feedbackPortId, button.id).toBe("user-port-out");
     }
   });

@@ -931,6 +931,68 @@ describe("bindSurfaceMode — selection window and clear bindings (ECS-155)", ()
   });
 });
 
+describe("bindSurfaceMode — selection window with a velocity-color-led target (ECS-155 hardware correction)", () => {
+  // The Push mk1's contextual selection buttons turned out to be a velocity-color-led family, not the
+  // monochrome one assumed above: a declared colourPalette entry for the selected tier, dimValue for the
+  // resting one -- the same combination `ControlFeedback.dimValue`'s own doc comment already anticipates
+  // ("any boolean-paired feedback kind addressed by... control-change").
+  const index: NumericControlDef = { id: "selection.index", label: "Selected index", kind: "number", min: -1, max: 1024, default: -1 };
+  const green = { red: 0, green: 127, blue: 0 };
+
+  function selectionButton(n: number, cc: number): PhysicalControl {
+    return {
+      id: `button-select-${n}`,
+      label: `Selection button ${n}`,
+      kind: "button",
+      portId: "in-1",
+      input: { address: { type: "control-change", controller: cc }, channel: 0 },
+      feedback: {
+        kind: "velocity-color-led",
+        address: { address: { type: "control-change", controller: cc }, channel: 0 },
+        dimValue: 10,
+        colourPalette: [{ colour: green, velocity: 22 }],
+      },
+      feedbackPortId: "out-1",
+    };
+  }
+
+  const buttons = [selectionButton(1, 36), selectionButton(2, 37)];
+  const grid = { id: "selection-buttons", label: "selection", rows: 1, columns: 2, cells: buttons.map((button, column) => ({ row: 0, column, controlId: button.id })) };
+  const bindings: SelectionWindowBinding[] = buttons.map((button, column) => ({
+    kind: "selection",
+    physicalControlId: button.id,
+    role: `selection slot ${column + 1}`,
+    gridId: grid.id,
+    indexControl: index.id,
+    orientation: "horizontal",
+    colour: green,
+  }));
+
+  function lastValue(sent: readonly Uint8Array[], controller: number): number | undefined {
+    const matches = sent.filter((bytes) => bytes[0] === 0xb0 && bytes[1] === controller);
+    return matches[matches.length - 1]?.[2];
+  }
+
+  it("sends the palette's velocity for the selected cell, and dimValue's resting tier for every other one", async () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const indexControl = createTestControl({ ...index });
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: buttons, grids: [grid] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [index.id]: indexControl }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+      navigation: createSurfaceNavigation({ mode: "steps", gridOffset: { row: 0, column: 0 } }),
+    };
+
+    await bindSurfaceMode({ mode: "steps", bindings }, deps);
+    indexControl.setValue(0);
+
+    expect(lastValue(rawOutput.sentMessages, 36)).toBe(22); // selected: the palette's velocity, not 127
+    expect(lastValue(rawOutput.sentMessages, 37)).toBe(10); // available, unselected: dimValue's own tier
+  });
+});
+
 describe("bindSurfaceMode — navigation binding LED feedback (ECS-145 follow-up)", () => {
   const arrowButton: PhysicalControl = {
     id: "button-arrow-right",

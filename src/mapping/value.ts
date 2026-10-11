@@ -110,6 +110,13 @@ export function resolveIncomingValue<D extends ControlDef>(
  * `true` is the native maximum. Turning a control fully, truly off (e.g. when a mode stops binding it at all) is a
  * separate concern a caller gets by stripping `dimValue` from `target` before calling this, not a third value
  * passed in here — see `src/surface/bindings.ts`'s `offTarget()`.
+ *
+ * `target.colourPalette` (ECS-150, extended to control-change by ECS-155): for a boolean control lit with a
+ * colour matching a declared palette entry, `true` sends that entry's velocity instead of the native maximum.
+ * Checked before `dimValue` — a palette hit is a more specific fact than the generic dim/full tier. Originally
+ * "note" (pads) only; the Push mk1's contextual selection buttons (CC-addressed) confirmed the same "known
+ * (colour, raw value) correspondences" shape applies there too, so this now applies uniformly to both address
+ * kinds rather than needing a device-specific workaround.
  */
 export function buildFeedbackMessage<D extends ControlDef>(
   target: MidiTarget,
@@ -120,9 +127,22 @@ export function buildFeedbackMessage<D extends ControlDef>(
   if (target.rgbPrefix !== undefined) return buildRgbFeedbackMessage(target, def, value, lit);
   switch (target.address.type) {
     case "control-change": {
-      if (def.kind === "boolean" && target.dimValue !== undefined) {
+      if (def.kind === "boolean") {
         const on = value as unknown as boolean;
-        return { type: "control-change", channel: target.channel, controller: target.address.controller, value: on ? 127 : target.dimValue };
+        // ECS-155 hardware correction: a CC-addressed boolean can be a velocity-color-led family too, not only
+        // monochrome-led -- the Push mk1's contextual selection buttons confirmed a raw CC range (not just
+        // off/dim/full) selecting distinct hues, the same "known (colour, value) correspondences" shape the note
+        // case already models for pads (ECS-150). Checked before dimValue for the same reason the note case
+        // already orders it that way: a palette hit is a more specific fact than the generic dim/full tier.
+        if (on && lit !== undefined && target.colourPalette !== undefined) {
+          const match = target.colourPalette.find((entry) => coloursEqual(entry.colour, lit));
+          if (match !== undefined) {
+            return { type: "control-change", channel: target.channel, controller: target.address.controller, value: match.velocity };
+          }
+        }
+        if (target.dimValue !== undefined) {
+          return { type: "control-change", channel: target.channel, controller: target.address.controller, value: on ? 127 : target.dimValue };
+        }
       }
       const native = denormalizeRanged(value, def, 0, 127);
       return native === undefined

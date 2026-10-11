@@ -385,6 +385,35 @@ plain on/off on this device, unchanged.
 ECS-135's own gap, not reopened here — this ticket adds exactly one confirmed colour (the playhead's), not a
 general RGB-to-velocity encoding.
 
+## ECS-155: the contextual selection buttons (CC 36-43), confirmed on a real unit (2026-10-11)
+
+CC 36-43 were declared straight from the Linear ticket's own explicit mapping, with no research-doc
+or diagram precedent, and (the first version of this profile addition guessed) with the same
+monochrome on/off/dim feedback family `UTILITY_BUTTONS` already uses. Hands-on testing in webseq
+against real hardware confirmed the mapping itself (eight real, distinct buttons at CC 36-43) but
+found the feedback family wrong: not monochrome — a raw value range of roughly 1-26, each sub-range
+selecting a distinct hue (white-ish starting at 1, green in the low 20s), with the same
+dim-steady/dim-flashing/bright-steady/bright-flashing four-state shape ECS-145's own monochrome
+family already has, just per-colour here instead of once overall — the same `velocity-color-led`
+component family ECS-150 already confirmed for the pads and ECS-145 qualitatively saw on the mute
+strip, not an independently-behaving control.
+
+Two values were actually tried and confirmed to render correctly, not the full range:
+
+- **`10`** — a steady tier within the white-ish range; used as every selection button's resting
+  ("available, not selected") colour.
+- **`22`** — a steady green; used only for the currently selected button.
+
+Declared on `PUSH_MK1_SELECTION_BUTTONS` as `kind: "velocity-color-led"` with both `dimValue: 10`
+(the resting tier) and a `colourPalette` entry (`{ colour: <matches
+DEFAULT_SEQUENCER_COLOURS.selection>, velocity: 22 }`, the selected tier) — the same two-field
+combination `dimValue`'s own doc comment already anticipated ("any boolean-paired feedback kind
+addressed by... control-change"), not a new mechanism. The one piece of real, generic code this
+correction needed: `buildFeedbackMessage()` (`src/mapping/value.ts`) only resolved `colourPalette`
+for a note-addressed target before this ticket (ECS-150's own scope); it now resolves it for a
+control-change-addressed boolean the same way, which the selection buttons are the first control in
+this profile to actually need.
+
 ## What's still unverified
 
 - Encoders 2-8 and the Master Encoder's exact relative-encoding bytes
@@ -404,11 +433,8 @@ general RGB-to-velocity encoding.
 - (ECS-145) whether the blink states (CC values 2/3/5/6) are worth a
   third/fourth feedback level for a future ticket — real and confirmed,
   just unused: nothing in this contract models "blinking" today
-- (ECS-155) CC 36-43, declared as this ticket's own "contextual selection
-  buttons" straight from the Linear ticket's explicit mapping — not probed
-  on hardware at all, unlike every other control in this file. Neither
-  research doc documents a control at these CCs. A follow-up hands-on pass
-  (one more `push-mk1-contract-probe.mjs`-style session) should confirm
-  these eight CCs actually address real, distinct buttons, and that the
-  monochrome dim/full feedback reused from `UTILITY_BUTTONS` actually
-  renders on them, before this profile addition ships to real hardware.
+- (ECS-155) the selection buttons' full raw range (1-26) is reported qualitatively (white-ish at 1,
+  green in the low 20s) but only two specific values — 10 and 22 — were actually tried and confirmed
+  to render correctly; the rest of the range, and which exact sub-ranges are "dim-steady" versus
+  "dim-flashing" versus "bright-flashing" per colour, is not individually mapped out (same "declare
+  only the confirmed fact" stance ECS-145/ECS-150 already take for their own partially-probed ranges)

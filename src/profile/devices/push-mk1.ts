@@ -123,15 +123,12 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * as plain on/off here exactly as before, since this ticket's own scope is the playhead only, not the pads' full
  * bright/standard/dim RGB tiers (still ECS-135's gap, not reopened here).
  *
- * **ECS-155**: CC 36-43, this ticket's own "contextual selection buttons," per the ticket's own explicit mapping --
- * **not yet hands-on verified on hardware**, unlike every other control above, which was independently checked against
- * `AbletonPushUserModeHack.png` or physically probed. Neither research doc (`midi-usermode-mapping-verified.md`,
- * the diagram) documents a control at CC 36-43; the ticket specifies the mapping outright rather than asking this
- * profile to discover it. Declared with the same monochrome dim/full feedback `UTILITY_BUTTONS` already uses (ECS-145's
- * confirmed `PUSH_MK1_DIM_VALUE`), since both tiers this feature needs (available/dim, selected/full) are exactly that
- * family -- but that reuse is itself unverified for these eight CCs specifically. A follow-up hardware pass (the same
- * `scripts/push-mk1-contract-probe.mjs`-style check `docs/hardware-validation-push-mk1.md` already records for every
- * other control here) should confirm these CCs actually address real buttons before this ships to real hardware.
+ * **ECS-155**: CC 36-43, this ticket's own "contextual selection buttons," per the ticket's own explicit mapping,
+ * now hands-on confirmed real and distinct (the mapping itself was right first try; neither research doc documents
+ * a control here, so this profile's CCs were the only source). The *feedback* family first declared, though, was
+ * wrong: not the monochrome on/off/dim `UTILITY_BUTTONS` family, but a `velocity-color-led` one with its own raw
+ * range (1-26, confirmed: white-ish starting at 1, green in the low 20s) -- see `PUSH_MK1_SELECTION_COLOUR_PALETTE`'s
+ * own doc comment for the corrected declaration and the values actually confirmed to render.
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {
@@ -360,12 +357,28 @@ export const PUSH_MK1_MUTE_STRIP_BUTTONS: readonly PhysicalControl[] = MUTE_STRI
 }));
 
 /**
- * ECS-155: CC 36-43, one row of 8 buttons representing one page of a generic, ordered collection of selectable
- * items -- named "select", never "track", so neither this profile nor anything reading it hard-codes what's
- * selectable; see this file's own ECS-155 doc comment above for this mapping's verification status. Monochrome
- * dim/full feedback, the same family and confirmed dim value `UTILITY_BUTTONS` already uses: "available" renders
- * dim, "selected" renders full, exactly the two tiers ECS-155 needs, with no new rendering mechanism.
+ * ECS-155 hardware correction (confirmed hands-on): CC 36-43 are NOT the same monochrome on/off/dim family
+ * `UTILITY_BUTTONS` uses. The device's actual LED byte is a raw value 1-26 selecting a distinct hue per sub-range,
+ * each with its own dim-steady/dim-flashing/bright-steady/bright-flashing tiers (the same four-state shape
+ * `PUSH_MK1_DIM_VALUE`'s own doc comment already found for the monochrome family, just per-colour here instead of
+ * once overall) -- raw value 1 reads white-ish, the low 20s read green. Modeled as `velocity-color-led`
+ * (`PUSH_MK1_SELECTION_COLOUR_PALETTE`), the same family `PUSH_MK1_PAD_COLOUR_PALETTE` already uses for the pads'
+ * confirmed playhead colour, with `dimValue` (ECS-145's own field, whose doc comment already anticipates "any
+ * boolean-paired feedback kind addressed by... control-change") layered on top for the "available, not selected"
+ * resting state -- the mapping layer's `buildFeedbackMessage()` was extended (ECS-155) to resolve `colourPalette`
+ * for a control-change address the same way it already did for a note one, rather than this profile needing a
+ * one-off workaround. Chosen operating values, confirmed to render correctly: `10` (a steady tier within the
+ * white-ish range, used as every selection button's resting colour) and `22` (a steady green, used only for the
+ * currently selected one) -- not the only values that would work, just the two actually tried.
  */
+const PUSH_MK1_SELECTION_DIM_VALUE = 10;
+
+/**
+ * Must match `DEFAULT_SEQUENCER_COLOURS.selection` (`src/configurations/sequencer.ts`) exactly, byte for byte --
+ * see `PUSH_MK1_PAD_COLOUR_PALETTE`'s own doc comment for why this is a literal here rather than a shared import.
+ */
+const PUSH_MK1_SELECTION_COLOUR_PALETTE = [{ colour: { red: 127, green: 0, blue: 127 }, velocity: 22 }] as const;
+
 const SELECTION_BUTTONS = [
   ["select-1", "Selection button 1", 36],
   ["select-2", "Selection button 2", 37],
@@ -384,9 +397,10 @@ export const PUSH_MK1_SELECTION_BUTTONS: readonly PhysicalControl[] = SELECTION_
   portId: "user-port-in",
   input: { address: { type: "control-change", controller: cc }, channel: 0 },
   feedback: {
-    kind: "monochrome-led",
+    kind: "velocity-color-led",
     address: { address: { type: "control-change", controller: cc }, channel: 0 },
-    dimValue: PUSH_MK1_DIM_VALUE,
+    dimValue: PUSH_MK1_SELECTION_DIM_VALUE,
+    colourPalette: PUSH_MK1_SELECTION_COLOUR_PALETTE,
   },
   feedbackPortId: "user-port-out",
 }));

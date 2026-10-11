@@ -304,6 +304,42 @@ describe("buildFeedbackMessage — note with colourPalette (ECS-150)", () => {
   });
 });
 
+describe("buildFeedbackMessage — control-change with colourPalette (ECS-155 hardware correction)", () => {
+  const purple = { red: 127, green: 0, blue: 127 };
+  const target: MidiTarget = {
+    address: { type: "control-change", controller: 36 },
+    channel: 0,
+    dimValue: 10,
+    colourPalette: [{ colour: purple, velocity: 22 }],
+  };
+
+  it("sends the matching entry's velocity when lit with that exact colour", () => {
+    expect(buildFeedbackMessage(target, muted, true, purple)).toEqual({ type: "control-change", channel: 0, controller: 36, value: 22 });
+  });
+
+  it("falls back to dimValue's tier when lit with a colour not in the palette", () => {
+    expect(buildFeedbackMessage(target, muted, true, { red: 0, green: 0, blue: 127 })).toEqual({
+      type: "control-change",
+      channel: 0,
+      controller: 36,
+      value: 127,
+    });
+  });
+
+  it("falls back to dimValue's tier when lit with no colour at all", () => {
+    expect(buildFeedbackMessage(target, muted, true)).toEqual({ type: "control-change", channel: 0, controller: 36, value: 127 });
+  });
+
+  it("never applies the palette to the off state, even when lit with the matching colour -- dimValue owns it instead", () => {
+    expect(buildFeedbackMessage(target, muted, false, purple)).toEqual({ type: "control-change", channel: 0, controller: 36, value: 10 });
+  });
+
+  it("falls back to plain 0/127 when dimValue is also omitted", () => {
+    const noDim: MidiTarget = { address: { type: "control-change", controller: 36 }, channel: 0, colourPalette: [{ colour: purple, velocity: 22 }] };
+    expect(buildFeedbackMessage(noDim, muted, false, purple)).toEqual({ type: "control-change", channel: 0, controller: 36, value: 0 });
+  });
+});
+
 describe("buildFeedbackMessage — rgb-led (ECS-95)", () => {
   const lamp: BooleanControlDef = { id: "lamp", label: "Lamp", kind: "boolean", default: false };
   const target: MidiTarget = {
