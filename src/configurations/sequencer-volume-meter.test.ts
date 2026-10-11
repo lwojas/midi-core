@@ -226,8 +226,9 @@ describe("selection + Devices button + encoder interaction", () => {
     await vi.advanceTimersByTimeAsync(DISPLAY_LINE_MIN_INTERVAL_MS * 2);
 
     const lcdWrites = midiOut.sentMessages.slice(before).filter((bytes) => bytes[0] === 0xf0);
-    // One line is rewritten per distinct change at most once per interval; the whole burst stays in single digits.
-    expect(lcdWrites.length).toBeLessThanOrEqual(6);
+    // One line is rewritten per distinct change at most once per interval; the whole burst stays in single digits
+    // (the mode switch itself repaints the volume, value and label lines once each, the burst a line or two more).
+    expect(lcdWrites.length).toBeLessThanOrEqual(9);
     for (const bytes of lcdWrites) expect(bytes.length).toBe(77); // every write is one complete, well-formed line
     expect(cutoff.getValue()).toBeLessThan(18000);
     await surface.detach();
@@ -284,6 +285,84 @@ describe("encoder scaling by the controls' own metadata, through the Push's Devi
     expect(on.getValue()).toBe(true);
     await turn(ENCODER_CCS[3]!, 127);
     expect(on.getValue()).toBe(false);
+    await surface.detach();
+  });
+});
+
+const LINE_3 = 0x1a;
+const LINE_4 = 0x1b;
+
+describe("FX parameter values and names on the Push mk1's lines 3 and 4 while Devices is live", () => {
+  it("shows each parameter's value above its name, aligned to its encoder, with the right form per control kind", async () => {
+    const { surface, press, writes } = build();
+    await surface.attach();
+    await press(DEVICES_MODE_CC);
+    await vi.advanceTimersByTimeAsync(DISPLAY_LINE_MIN_INTERVAL_MS);
+
+    const values = last(writes(LINE_3));
+    const labels = last(writes(LINE_4));
+    expect(values).toHaveLength(68);
+    expect(labels).toHaveLength(68);
+    expect(segment(values, 0)).toBe("[======]"); // cutoff at its maximum
+    expect(segment(values, 1)).toBe("[ OFF  ]"); // a 0/1 stepped number is two-state, not a bar
+    expect(segment(values, 2)).toBe("[ SINE ]"); // an enum shows its option
+    expect(segment(values, 3)).toBe("[ OFF  ]"); // a boolean
+    expect(segment(values, 4)).toBe("        "); // nothing behind encoder 5
+    expect(segment(labels, 0)).toBe("CUTOFF  ");
+    expect(segment(labels, 1)).toBe("MODE    ");
+    expect(segment(labels, 2)).toBe("SHAPE   ");
+    expect(segment(labels, 3)).toBe("ON      ");
+    expect(segment(labels, 4)).toBe("        ");
+    await surface.detach();
+  });
+
+  it("rewrites only the value line when a value changes, and the bar tracks it proportionally", async () => {
+    const { surface, press, writes, cutoff, shape } = build();
+    await surface.attach();
+    await press(DEVICES_MODE_CC);
+    await vi.advanceTimersByTimeAsync(DISPLAY_LINE_MIN_INTERVAL_MS);
+    const labelWrites = writes(LINE_4).length;
+    const valueWrites = writes(LINE_3).length;
+
+    cutoff.setValue(40);
+    shape.setValue("square");
+    await vi.advanceTimersByTimeAsync(DISPLAY_LINE_MIN_INTERVAL_MS * 2);
+
+    expect(writes(LINE_4).length).toBe(labelWrites);
+    expect(writes(LINE_3).length).toBe(valueWrites + 1); // both changes land in one coalesced write
+    expect(segment(last(writes(LINE_3)), 0)).toBe("[      ]");
+    expect(segment(last(writes(LINE_3)), 2)).toBe("[SQUARE]");
+    await surface.detach();
+  });
+
+  it("coalesces a rapid burst of turns on the value line and leaves the label line alone", async () => {
+    const { surface, press, turn, writes } = build();
+    await surface.attach();
+    await press(DEVICES_MODE_CC);
+    await vi.advanceTimersByTimeAsync(DISPLAY_LINE_MIN_INTERVAL_MS);
+    const labelWrites = writes(LINE_4).length;
+    const valueWrites = writes(LINE_3).length;
+
+    for (let index = 0; index < 40; index += 1) await turn(ENCODER_CCS[0]!, 127);
+    await vi.advanceTimersByTimeAsync(DISPLAY_LINE_MIN_INTERVAL_MS * 2);
+
+    expect(writes(LINE_4).length).toBe(labelWrites);
+    // 40 detents shift a 12-half-cell bar by a handful of glyph steps, never one write per detent.
+    expect(writes(LINE_3).length - valueWrites).toBeLessThanOrEqual(12);
+    await surface.detach();
+  });
+
+  it("shows the lead parameter and transport text again outside the Devices category", async () => {
+    const { surface, press, writes } = build();
+    await surface.attach();
+    await press(DEVICES_MODE_CC);
+    await vi.advanceTimersByTimeAsync(DISPLAY_LINE_MIN_INTERVAL_MS);
+    await press(VOLUME_MODE_CC);
+    await vi.advanceTimersByTimeAsync(DISPLAY_LINE_MIN_INTERVAL_MS);
+
+    // Not the FX bars/names: the plain role text (no role resolves in this test's contract for lines 3-4, so blank).
+    expect(last(writes(LINE_3)).trim()).toBe("");
+    expect(last(writes(LINE_4)).trim()).toBe("");
     await surface.detach();
   });
 });

@@ -255,14 +255,33 @@ interface DisplayMeterBinding {
   orientation?: "vertical" | "horizontal";
   enabledWhen?: { controlId: string; equals: number };
   fallback?: ControlIdResolution; // text shown while the gate doesn't hold
+  labelLineId?: string;           // a second line naming each segment's control
+  labelFallback?: ControlIdResolution;
 }
 ```
 
-One display line showing a window of numeric controls as per-segment level
-bars, e.g. the Push mk1's per-track volumes above its 8 encoders. It reads
-the same controls an `EncoderWindowBinding` turns (same grid, template,
-orientation and page offset), normalized against each control's live
-`min`/`max`; there is no display-only state. `DeviceDisplayDefinition`
+One display line showing a window of controls as per-segment values, e.g.
+the Push mk1's per-track volumes above its 8 encoders, and optionally a
+second line (`labelLineId`) naming each one beneath it. It reads the same
+controls an `EncoderWindowBinding` turns (same grid, template, orientation
+and page offset); there is no display-only state. A segment's value form
+and name come from the control's own `ControlDef`
+(`describeSegmentValue()`, `describeSegmentLabel()`):
+
+| control | value |
+| --- | --- |
+| number, continuous | level bar, normalized against live `min`/`max` |
+| number with one `step` across its range, or boolean | `ON` / `OFF` in the brackets |
+| number with few steps (at most the bar's half-cell count) | its value in the brackets |
+| enum | the current option's label in the brackets |
+| string | blank |
+
+The label is `def.label` uppercased and cut to one column short of the
+segment (neighbouring segments sit flush). Each line has its own writer
+and last-sent text, so a value change rewrites only the value line; the
+label line is rewritten only when the window retargets (page turn, FX
+reselection). The Push's `devices` category puts values on line 3 and
+names on line 4. `DeviceDisplayDefinition`
 supplies the segment offsets/width (`segments`) and the glyphs (`meter`);
 `buildMeterText()` only composes them, so the generic layer never names a
 character. A line has one writer: outside `enabledWhen` the binding shows

@@ -43,12 +43,84 @@ export function describeControlText(control: Control<ControlDef>): string {
 }
 
 /**
+ * What one segment shows for `control`, chosen by what the control *is* (its own `kind`/`min`/`max`/`step`/`options`,
+ * the same metadata the encoder's scaling reads) -- one `width`-character string:
+ *
+ * - a continuous number: a level bar, `open`, `width - 2` interior cells (`full`/`half`/`empty`), `close`, so a value
+ *   resolves to half-cell steps and only changes the text when it crosses one;
+ * - a two-state number (one `step` across its range) or a boolean: `ON`/`OFF` in the brackets, not a bar that
+ *   pretends to be continuous;
+ * - a number with only a few steps (fewer positions than the bar has half-cells): its value, in the brackets;
+ * - an enum: the current option's label, in the brackets.
+ *
+ * A text value is uppercased and truncated to the interior, centred. `undefined` for a string control, which has no
+ * compact value form.
+ */
+export function describeSegmentValue(control: Control<ControlDef>, glyphs: DisplayMeterGlyphs, width: number): string | undefined {
+  const { def } = control;
+  const interior = width - 2;
+  const framed = (text: string) => {
+    const clipped = text.toUpperCase().slice(0, interior);
+    const left = Math.floor((interior - clipped.length) / 2);
+    return glyphs.open + " ".repeat(left) + clipped + " ".repeat(interior - clipped.length - left) + glyphs.close;
+  };
+  if (def.kind === "string") return undefined;
+  const value = control.getValue();
+  if (def.kind === "boolean") return framed(value ? "on" : "off");
+  if (def.kind === "enum") return framed(def.options.find((option) => option.value === value)?.label ?? String(value));
+
+  const { min, max } = def;
+  const positions = def.step !== undefined && def.step > 0 && max > min ? Math.round((max - min) / def.step) + 1 : Infinity;
+  if (positions === 2) return framed(value === min ? "off" : "on");
+  const number = value as number;
+  if (positions <= interior * 2) return framed(Number.isInteger(number) ? String(number) : number.toFixed(1));
+  return levelBar(max > min ? (number - min) / (max - min) : 0, glyphs, width);
+}
+
+/** One level bar: `open`, `width - 2` interior cells at half-cell resolution, `close`. `level` is clamped to 0-1. */
+function levelBar(level: number, glyphs: DisplayMeterGlyphs, width: number): string {
+  const interior = width - 2;
+  const halves = Math.round(Math.min(1, Math.max(0, level)) * interior * 2);
+  const bar = [glyphs.open];
+  for (let cell = 0; cell < interior; cell += 1) {
+    const filled = halves - cell * 2;
+    bar.push(filled >= 2 ? glyphs.full : filled === 1 ? glyphs.half : glyphs.empty);
+  }
+  bar.push(glyphs.close);
+  return bar.join("");
+}
+
+/**
+ * A line of per-segment text: `cells[i]` is written into segment `i` of `segments`, clipped to the segment's width
+ * (`undefined` leaves that segment blank, for a position with no control behind it). Pure placement from declared
+ * data (`DisplaySegmentLayout`) -- no device knowledge, so which offsets a given LCD uses stays in its profile.
+ */
+export function buildSegmentText(charCount: number, segments: DisplaySegmentLayout, cells: ReadonlyArray<string | undefined>): string {
+  const characters = new Array<string>(charCount).fill(" ");
+  segments.offsets.forEach((offset, index) => {
+    const cell = cells[index];
+    if (cell === undefined) return;
+    Array.from(cell.slice(0, segments.width)).forEach((character, position) => {
+      characters[offset + position] = character;
+    });
+  });
+  return characters.join("");
+}
+
+/**
+ * A segment's name, from the control's existing `label`: uppercased and truncated to one column short of the
+ * segment, so two labels in neighbouring segments (which sit flush) never run together. Deterministic and simple:
+ * a name is cut to fit, never abbreviated (`"Filter Cutoff"` in an 8-wide segment reads `"FILTER "`, `"Resonance"`
+ * reads `"RESONAN"`).
+ */
+export function describeSegmentLabel(control: Control<ControlDef>, width: number): string {
+  return control.def.label.toUpperCase().slice(0, Math.max(0, width - 1));
+}
+
+/**
  * The line text for a row of per-segment level bars: `levels[i]` is a 0-1 fraction drawn into segment `i` of
- * `segments` (`undefined` leaves that segment blank, for a position with no control behind it). Pure formatting from
- * declared data (`DisplaySegmentLayout`, `DisplayMeterGlyphs`) -- no device knowledge, so which characters and
- * offsets a given LCD uses stays in its profile. A bar is `open`, `width - 2` interior cells, `close`; the
- * interior resolves to half-cell steps (`full`/`half`/`empty`), so a level reads at a glance and only changes the
- * text (and so only costs a display write) when it crosses one of those steps.
+ * `segments` (`undefined` leaves that segment blank). See `describeSegmentValue()` for the value forms a live control
+ * gets; this is the bar alone, from a bare fraction.
  */
 export function buildMeterText(
   charCount: number,
@@ -56,23 +128,11 @@ export function buildMeterText(
   glyphs: DisplayMeterGlyphs,
   levels: ReadonlyArray<number | undefined>,
 ): string {
-  const characters = new Array<string>(charCount).fill(" ");
-  const interior = segments.width - 2;
-  segments.offsets.forEach((offset, index) => {
-    const level = levels[index];
-    if (level === undefined || !Number.isFinite(level)) return;
-    const halves = Math.round(Math.min(1, Math.max(0, level)) * interior * 2);
-    const bar = [glyphs.open];
-    for (let cell = 0; cell < interior; cell += 1) {
-      const filled = halves - cell * 2;
-      bar.push(filled >= 2 ? glyphs.full : filled === 1 ? glyphs.half : glyphs.empty);
-    }
-    bar.push(glyphs.close);
-    bar.forEach((character, position) => {
-      characters[offset + position] = character;
-    });
-  });
-  return characters.join("");
+  return buildSegmentText(
+    charCount,
+    segments,
+    levels.map((level) => (level === undefined || !Number.isFinite(level) ? undefined : levelBar(level, glyphs, segments.width))),
+  );
 }
 
 /**

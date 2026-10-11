@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PUSH_MK1_DISPLAY, PUSH_MK1_PROFILE } from "../profile/devices/push-mk1.js";
 import { validateDeviceProfile } from "../profile/validation/validate-profile.js";
-import { buildMeterText, createLineWriter, DISPLAY_LINE_MIN_INTERVAL_MS } from "./display-binding.js";
+import { createControl } from "../control-api/control.js";
+import { buildMeterText, createLineWriter, describeSegmentLabel, describeSegmentValue, DISPLAY_LINE_MIN_INTERVAL_MS } from "./display-binding.js";
 
 const { charCount, segments, meter } = PUSH_MK1_DISPLAY;
 
@@ -110,5 +111,33 @@ describe("display meter profile validation", () => {
     expect(validate({ segments: { width: 8, offsets: [0, 62] } })).toContainEqual(expect.objectContaining({ code: "invalid-display", path: "displays[0].segments.offsets[1]" }));
     expect(validate({ meter: { ...PUSH_MK1_DISPLAY.meter, full: "█" } })).toContainEqual(expect.objectContaining({ code: "invalid-display", path: "displays[0].meter" }));
     expect(validate({ meter: undefined })).toContainEqual(expect.objectContaining({ code: "invalid-display", path: "displays[0].meter" }));
+  });
+});
+
+describe("describeSegmentValue / describeSegmentLabel", () => {
+  const num = (min: number, max: number, value: number, step?: number) =>
+    createControl({ id: "p", label: "Filter Cutoff", kind: "number", min, max, default: min, ...(step !== undefined ? { step } : {}) }, value);
+
+  it("draws a continuous number as a proportional bar", () => {
+    expect(describeSegmentValue(num(0, 1, 0), meter!, 8)).toBe("[      ]");
+    expect(describeSegmentValue(num(0, 1, 0.5), meter!, 8)).toBe("[===   ]");
+    expect(describeSegmentValue(num(0, 1, 1), meter!, 8)).toBe("[======]");
+  });
+
+  it("does not draw a bar for two-state, few-step, boolean or enum controls", () => {
+    expect(describeSegmentValue(num(0, 1, 1, 1), meter!, 8)).toBe("[  ON  ]");
+    expect(describeSegmentValue(num(0, 3, 2, 1), meter!, 8)).toBe("[  2   ]");
+    const flag = createControl({ id: "b", label: "Bypass", kind: "boolean", default: false }, true);
+    expect(describeSegmentValue(flag, meter!, 8)).toBe("[  ON  ]");
+    const mode = createControl({ id: "e", label: "Type", kind: "enum", options: [{ label: "Low pass", value: "lp" }], default: "lp" }, "lp");
+    expect(describeSegmentValue(mode, meter!, 8)).toBe("[LOW PA]");
+    const text = createControl({ id: "s", label: "Name", kind: "string", default: "" }, "x");
+    expect(describeSegmentValue(text, meter!, 8)).toBeUndefined();
+  });
+
+  it("uppercases a label and cuts it one column short of the segment", () => {
+    expect(describeSegmentLabel(num(0, 1, 0), 8)).toBe("FILTER ");
+    expect(describeSegmentLabel(createControl({ id: "r", label: "Resonance", kind: "number", min: 0, max: 1, default: 0 }, 0), 8)).toBe("RESONAN");
+    expect(describeSegmentLabel(createControl({ id: "m", label: "Mix", kind: "number", min: 0, max: 1, default: 0 }, 0), 8)).toBe("MIX");
   });
 });

@@ -14,11 +14,12 @@ import type { ControlGrid, GridCell } from "../profile/types/grid.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActionTrigger } from "./action-binding.js";
 import { createContextBoundControl } from "./context-bound-control.js";
-import { buildDisplayMessage, buildMeterText, createLineWriter, describeControlText } from "./display-binding.js";
+import { buildDisplayMessage, buildSegmentText, createLineWriter, describeControlText, describeSegmentLabel, describeSegmentValue } from "./display-binding.js";
 import { toMidiSource, toMidiTarget, toRelativeEncoding } from "./generate.js";
 import { resolveControlId } from "./types/bindings.js";
 import type {
   ControlBinding,
+  ControlIdResolution,
   ControlPress,
   DisplayBinding,
   DisplayMeterBinding,
@@ -1022,46 +1023,61 @@ export async function bindSurfaceMode(
     painters.push({ paint: () => writer.paint(textNow()), clear: () => {} });
   }
 
-  // A line of per-segment level bars over a window of numeric controls (`DisplayMeterBinding`), e.g. the Push
-  // mk1's per-track volumes above its 8 encoders. It reads the very controls an `EncoderWindowBinding` turns, so
-  // there is no display-only copy of the state, and it is the line's only writer: outside its `enabledWhen` gate it
-  // shows `fallback`'s text itself, rather than sharing the line with a plain `DisplayBinding`.
+  // A line of per-segment values over a window of controls (`DisplayMeterBinding`), e.g. the Push mk1's per-track
+  // volumes above its 8 encoders, and optionally the line under it naming each one. Both come from the very controls
+  // an `EncoderWindowBinding` turns -- a segment's value form from its kind/range, its name from its `label` -- so
+  // there is no display-only copy of the state. The binding is the only writer of its line(s): outside its
+  // `enabledWhen` gate each shows its own fallback's text, rather than sharing a line with a plain `DisplayBinding`.
+  // Each line has its own coalescing writer and last-sent text, so a value change rewrites only the value line.
   for (const binding of bindings.filter(isDisplayMeterBinding)) {
     const display = deps.profile.displays?.find((candidate) => candidate.id === binding.displayId);
     const line = display?.lines.find((candidate) => candidate.id === binding.lineId);
+    const labelLine = binding.labelLineId !== undefined ? display?.lines.find((candidate) => candidate.id === binding.labelLineId) : undefined;
     const output = display ? deps.ports.outputs[display.portId] : undefined;
     const grid = deps.profile.grids?.find((candidate) => candidate.id === binding.gridId);
     if (!navigation || !display || !line || !output || !grid || !display.segments || !display.meter) continue;
     const { segments, meter } = display;
 
-    const writer = createLineWriter((text) => output.send(buildDisplayMessage(display, line, text)));
     const gateControl = binding.enabledWhen ? deps.registry.getControl(binding.enabledWhen.controlId) : undefined;
     const gated = (): boolean => {
       if (!binding.enabledWhen) return true;
       return gateControl?.def.kind === "number" && (gateControl as Control<NumericControlDef>).getValue() === binding.enabledWhen.equals;
     };
 
-    // One slot per segment, in physical order; a cell with no numeric control behind it leaves its segment blank.
+    // One slot per segment, in physical order; a cell with no (non-string) control behind it leaves its segment blank.
     const slotOf = (cell: { row: number; column: number }) => (binding.orientation === "horizontal" ? cell.column : cell.row);
-    let targets: Array<Control<NumericControlDef> | undefined> = [];
+    let targets: Array<Control<ControlDef> | undefined> = [];
     let fallback: Control<ControlDef> | undefined;
+    let labelFallback: Control<ControlDef> | undefined;
     let subscriptions: Unsubscribe[] = [];
-    let lastText = "";
 
-    const textNow = (): string => {
+    const valueText = (): string => {
       if (!gated()) return fallback ? describeControlText(fallback) : "";
-      const levels = targets.map((target) => {
-        if (!target) return undefined;
-        const { min, max } = target.def;
-        return max > min ? (target.getValue() - min) / (max - min) : 0;
-      });
-      return buildMeterText(display.charCount, segments, meter, levels);
+      return buildSegmentText(display.charCount, segments, targets.map((target) => (target ? describeSegmentValue(target, meter, segments.width) : undefined)));
     };
+    const labelText = (): string => {
+      if (!gated()) return labelFallback ? describeControlText(labelFallback) : "";
+      return buildSegmentText(display.charCount, segments, targets.map((target) => (target ? describeSegmentLabel(target, segments.width) : undefined)));
+    };
+
+    const lines = [
+      { line, text: valueText },
+      ...(labelLine ? [{ line: labelLine, text: labelText }] : []),
+    ].map((entry) => {
+      const writer = createLineWriter((text) => output.send(buildDisplayMessage(display, entry.line, text)));
+      return { writer, text: entry.text, last: "" };
+    });
     const emitIfChanged = () => {
-      const next = textNow();
-      if (next === lastText) return;
-      lastText = next;
-      writer.write(next);
+      for (const entry of lines) {
+        const next = entry.text();
+        if (next === entry.last) continue;
+        entry.last = next;
+        entry.writer.write(next);
+      }
+    };
+    const resolveFallback = (resolution: ControlIdResolution | undefined) => {
+      const id = resolution ? resolveControlId(resolution, deps.context) : undefined;
+      return id !== undefined ? deps.registry.getControl(id) : undefined;
     };
     const refresh = () => {
       for (const unsubscribe of subscriptions) unsubscribe();
@@ -1069,14 +1085,14 @@ export async function bindSurfaceMode(
       targets = [];
       for (const cell of grid.cells) {
         const control = deps.registry.getControl(fillTemplate(binding.template, ...windowPosition(binding, cell, offset)));
-        targets[slotOf(cell)] = control?.def.kind === "number" ? (control as Control<NumericControlDef>) : undefined;
+        targets[slotOf(cell)] = control !== undefined && control.def.kind !== "string" ? control : undefined;
       }
-      const fallbackId = binding.fallback ? resolveControlId(binding.fallback, deps.context) : undefined;
-      fallback = fallbackId !== undefined ? deps.registry.getControl(fallbackId) : undefined;
-      subscriptions = [...targets, fallback, gateControl].flatMap((control) => (control ? [(control as Control<ControlDef>).onChange(emitIfChanged)] : []));
+      fallback = resolveFallback(binding.fallback);
+      labelFallback = resolveFallback(binding.labelFallback);
+      subscriptions = [...targets, fallback, labelFallback, gateControl].flatMap((control) => (control ? [(control as Control<ControlDef>).onChange(emitIfChanged)] : []));
     };
     refresh();
-    lastText = textNow();
+    for (const entry of lines) entry.last = entry.text();
     const retarget = () => {
       refresh();
       emitIfChanged();
@@ -1086,8 +1102,16 @@ export async function bindSurfaceMode(
     unsubscribes.push(() => {
       for (const unsubscribe of subscriptions) unsubscribe();
     });
-    unsubscribes.push(writer.dispose);
-    painters.push({ paint: () => writer.paint(textNow()), clear: () => {} });
+    for (const entry of lines) {
+      unsubscribes.push(entry.writer.dispose);
+      painters.push({
+        paint: () => {
+          entry.last = entry.text();
+          entry.writer.paint(entry.last);
+        },
+        clear: () => {},
+      });
+    }
   }
 
   for (const painter of painters) painter.paint();

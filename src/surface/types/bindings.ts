@@ -317,8 +317,9 @@ export interface DisplayBinding {
 }
 
 /**
- * One display line showing a window of numeric controls as per-segment level bars (e.g. the Push mk1's per-track
- * volumes above its 8 encoders), driven by the same authoritative controls an `EncoderWindowBinding` turns -- there
+ * One display line showing a window of controls as per-segment values (e.g. the Push mk1's per-track volumes above its
+ * 8 encoders): a level bar for a continuous number, ON/OFF for a boolean or two-state number, the option for an enum
+ * (see `describeSegmentValue()`), driven by the same authoritative controls an `EncoderWindowBinding` turns -- there
  * is no separate display state. Segment `i` shows the control at grid cell `i`'s virtual position, resolved exactly
  * as `EncoderWindowBinding` does (`gridId`, `template`, `orientation`, the shared page offset), and normalized
  * against that control's own live `min`/`max`. The device's `DeviceDisplayDefinition` supplies the segment offsets
@@ -339,6 +340,14 @@ export interface DisplayMeterBinding {
    * Omitted, the line is blank outside the gate.
    */
   readonly fallback?: ControlIdResolution;
+  /**
+   * Optional second line under the values naming what each segment's control is: its existing `ControlDef.label`,
+   * cut to fit its segment. Written by this binding only, so it follows the same retargeting as the values and
+   * costs a write only when the window's controls change, not when a value does.
+   */
+  readonly labelLineId?: string;
+  /** `fallback`, for `labelLineId`: its text outside the gate. */
+  readonly labelFallback?: ControlIdResolution;
 }
 
 /** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, a window onto a grid of controls, a page of selectable items (or the button that clears the selection), an indicator of one value or of the active mode, or (for `DisplayBinding`) a display line to paint from a string control. */

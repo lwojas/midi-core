@@ -631,8 +631,13 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
   encoderBank: {
     gridId: "encoder-bank",
     modeButtons: { volume: "button-volume", devices: "button-devices" },
-    // The top line shows each track's volume as a level bar above its encoder while Volume is live.
-    meterLines: { volume: { displayId: "lcd", lineId: "line-1" } },
+    // The top line shows each track's volume as a level bar above its encoder while Volume is live. Devices puts
+    // each FX parameter's value on line 3 (replacing the lead-parameter text, which the bars supersede) with its
+    // name directly beneath on line 4, so the selected track and effect stay readable on lines 1-2.
+    meterLines: {
+      volume: { displayId: "lcd", lineId: "line-1" },
+      devices: { displayId: "lcd", lineId: "line-3", labelLineId: "line-4" },
+    },
   },
 };
 

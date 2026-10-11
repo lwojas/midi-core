@@ -445,7 +445,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
       const display = profile.displays?.find((candidate) => candidate.id === meter.displayId);
       return (
         meter.displayId === target.displayId &&
-        meter.lineId === target.lineId &&
+        (meter.lineId === target.lineId || meter.labelLineId === target.lineId) &&
         contract.encoderBankTemplates?.[category] !== undefined &&
         display?.segments !== undefined &&
         display.meter !== undefined
@@ -551,15 +551,25 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
       const template = contract.encoderBankTemplates?.[category];
       if (template === undefined) continue;
       const display = profile.displays?.find((candidate) => candidate.id === target.displayId);
-      if (!display?.lines.some((candidate) => candidate.id === target.lineId) || !display.segments || !display.meter) {
+      if (
+        !display?.lines.some((candidate) => candidate.id === target.lineId) ||
+        (target.labelLineId !== undefined && !display.lines.some((candidate) => candidate.id === target.labelLineId)) ||
+        !display.segments ||
+        !display.meter
+      ) {
         unresolved.push(`encoder bank meter: ${category} (line ${target.displayId}/${target.lineId})`);
         continue;
       }
       const modeValue = contract.encoderBankModes?.[category];
       const gated = modeValue !== undefined && contract.encoderBankModeControl !== undefined;
-      const fallbackRole = Object.entries(layout.displayLines ?? {}).find(
-        ([, line]) => line.displayId === target.displayId && line.lineId === target.lineId,
-      )?.[0];
+      // Each line the meter owns shows the text of whichever `displayLines` role lands on it while the category
+      // isn't live.
+      const fallbackFor = (lineId: string | undefined) => {
+        const role = lineId === undefined ? undefined : Object.entries(layout.displayLines ?? {}).find(([, line]) => line.displayId === target.displayId && line.lineId === lineId)?.[0];
+        return role !== undefined ? contract.displayLines?.[role] : undefined;
+      };
+      const fallback = fallbackFor(target.lineId);
+      const labelFallback = fallbackFor(target.labelLineId);
       displayBindings.push({
         kind: "display-meter",
         displayId: target.displayId,
@@ -568,7 +578,9 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         template,
         orientation: "horizontal",
         ...(gated ? { enabledWhen: { controlId: contract.encoderBankModeControl!, equals: modeValue! } } : {}),
-        ...(fallbackRole !== undefined && contract.displayLines?.[fallbackRole] !== undefined ? { fallback: contract.displayLines[fallbackRole] } : {}),
+        ...(fallback !== undefined ? { fallback } : {}),
+        ...(target.labelLineId !== undefined ? { labelLineId: target.labelLineId } : {}),
+        ...(labelFallback !== undefined ? { labelFallback } : {}),
       });
     }
   }
