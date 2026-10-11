@@ -138,6 +138,20 @@ describe("resolveIncomingValue — relative control-change (ECS-137)", () => {
     // Direct scaling, not accumulation: raw 2 onto a 0-127 range is just 2, regardless of any "current" value.
     expect(resolveIncomingValue(message, source, level)).toBe(2);
   });
+
+  it("scales one detent by the control's own declared step, not a raw delta of 1 (a real Push mk1 bug: one encoder tick drove a 0-1.5 volume control straight to its max)", () => {
+    const seconds: NumericControlDef = { id: "fx.delay.time", label: "Time", kind: "number", min: 0.02, max: 1.5, step: 0.01, default: 0.25 };
+    const message: MidiMessage = { type: "control-change", channel: 0, controller: 71, value: 1 };
+    const result = resolveIncomingValue(message, source, seconds, { encoding: "twos-complement-7bit", current: 0.25 });
+    expect(result).toBeCloseTo(0.26, 5); // +1 step (0.01), not +1 raw unit
+  });
+
+  it("falls back to one hundredth of the range when no step is declared, instead of a raw delta of 1", () => {
+    const narrowVolume: NumericControlDef = { id: "track.1.volume", label: "Volume", kind: "number", min: 0, max: 1.5, default: 1 };
+    const message: MidiMessage = { type: "control-change", channel: 0, controller: 71, value: 1 };
+    const result = resolveIncomingValue(message, source, narrowVolume, { encoding: "twos-complement-7bit", current: 1 });
+    expect(result).toBeCloseTo(1.015, 5); // +1.5/100, not +1 (which would have clamped straight to the 1.5 max)
+  });
 });
 
 describe("resolveIncomingValue — pitch-bend", () => {

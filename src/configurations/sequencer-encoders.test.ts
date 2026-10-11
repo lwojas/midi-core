@@ -107,7 +107,10 @@ describe("ECS-140: the Push mk1's parameter encoders (CC 71-73), representative 
     expect(track1Send.getValue()).toBe(11);
 
     await turn(73, 1);
-    expect(track1Fx.getValue()).toBe(2001);
+    // track1Fx declares no `step`, so one detent moves it by the fallback 1% of its 0-18000 range (180), not a raw
+    // delta of 1 — see relativeIncrement()'s own doc comment for why a fixed raw delta would be the wrong default
+    // for a control this wide (and catastrophically wrong for a narrow one, like track volume).
+    expect(track1Fx.getValue()).toBe(2180);
     await surface.detach();
   });
 

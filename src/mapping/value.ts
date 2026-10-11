@@ -58,11 +58,12 @@ export function decodeRelativeDelta(raw: number, encoding: RelativeEncoding): nu
  * source kind doesn't pair with `def.kind` per the table above.
  *
  * `relative` (ECS-137), when supplied, means `source` is a relative control: a matching control-change message's raw
- * value is decoded to a signed delta via `decodeRelativeDelta()` and added onto `relative.current` (clamped/snapped
- * to `def`'s step), instead of being normalized onto `def`'s range directly. Only defined for a numeric `def` — a
- * relative delta onto a boolean or enum control isn't a pairing this contract models (same "report, don't guess"
- * stance as every unsupported pairing below), and only for a `control-change` source, the only MIDI message kind a
- * relative encoder's turn is modeled as.
+ * value is decoded to a signed delta via `decodeRelativeDelta()`, scaled by one detent's own increment (see
+ * `relativeIncrement()`), and added onto `relative.current` (clamped/snapped to `def`'s step), instead of being
+ * normalized onto `def`'s range directly. Only defined for a numeric `def` — a relative delta onto a boolean or
+ * enum control isn't a pairing this contract models (same "report, don't guess" stance as every unsupported
+ * pairing below), and only for a `control-change` source, the only MIDI message kind a relative encoder's turn is
+ * modeled as.
  */
 export function resolveIncomingValue<D extends ControlDef>(
   message: MidiMessage,
@@ -76,7 +77,7 @@ export function resolveIncomingValue<D extends ControlDef>(
     if (def.kind !== "number") return undefined;
     const delta = decodeRelativeDelta(message.value, relative.encoding);
     const current = relative.current as unknown as number;
-    return clampToStep(current + delta, def) as ControlValue<D>;
+    return clampToStep(current + delta * relativeIncrement(def), def) as ControlValue<D>;
   }
 
   if (source.address.type === "control-change" && message.type === "control-change") {
@@ -244,6 +245,25 @@ function denormalizeRanged<D extends ControlDef>(
 function bucketIndex(t: number, bucketCount: number): number {
   if (bucketCount <= 0) return -1;
   return Math.min(bucketCount - 1, Math.floor(t * bucketCount));
+}
+
+/**
+ * How much value one relative-encoder detent moves `def` by. A raw decoded delta (±1, ±2, ...) was previously
+ * added directly onto the control's current value with no scaling at all — correct only by coincidence for a
+ * wide range (a BPM control, say) and badly overshooting a narrow one: one detent on a 0-1.5 volume range (a
+ * real case, not hypothetical — see the Push mk1's track-volume encoder bank) moved the value by two-thirds of
+ * its entire range in a single tick.
+ *
+ * `def.step`, when declared, is reused here rather than inventing a second field: it already means "the
+ * granularity values are expected to land on," and one encoder click landing on the next step is exactly that
+ * granularity applied to a relative gesture instead of an absolute one. A `def` with no declared step (e.g. a
+ * continuous fader with no natural grid) falls back to one hundredth of its range — about a hundred detents to
+ * sweep the full range, deliberately not exact or configurable per-mapping, since nothing yet needs finer
+ * control than "coarse but not instant."
+ */
+function relativeIncrement(def: NumericControlDef): number {
+  if (def.step !== undefined && def.step > 0) return def.step;
+  return (def.max - def.min) / 100;
 }
 
 function clampToStep(value: number, def: NumericControlDef): number {
