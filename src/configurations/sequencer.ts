@@ -131,6 +131,34 @@ export interface SequencerContract {
    * resolves to, kept entirely in the application's own `ControlId` namespace.
    */
   readonly encoderParameters?: Readonly<Record<string, ControlIdResolution>>;
+  /**
+   * Which application control each cell of the device's `layout.encoderBank` currently drives, keyed by the same
+   * category name `layout.encoderBank.modeButtons` names — `{track}` (1-based) fills the same way
+   * `muteTemplate`/`stepTemplate` already do, so paging the step grid's own rows also moves which tracks the
+   * encoder bank drives, with no second paging control. A category with no template here has no window bindings
+   * generated for it, even if it has a mode button: the button still switches the active category, just drives
+   * nothing yet — the same "entry point, not an implementation" treatment `transport.clear` gets on a device
+   * with no button for it.
+   */
+  readonly encoderBankTemplates?: Readonly<Record<string, string>>;
+  /**
+   * Application control (a number) holding which of `layout.encoderBank.modeButtons`' categories currently
+   * applies — written by whichever category's own action (`encoderBankModeActions`) last ran, read by every
+   * encoder-bank window binding to decide whether its own category is the live one. Required, alongside
+   * `encoderBankModes`, for more than one category to coexist on one device without racing to apply the same
+   * physical turn at once; omitted, every category with a template is always live at once (fine for a device
+   * with only one, like a first category's own volume bank).
+   */
+  readonly encoderBankModeControl?: string;
+  /** The numeric value `encoderBankModeControl` holds for each category, keyed the same way `encoderBankTemplates`/`encoderBankModeActions` are. */
+  readonly encoderBankModes?: Readonly<Record<string, number>>;
+  /**
+   * The action each of the device's `layout.encoderBank.modeButtons` invokes on press, keyed by category — the
+   * application decides how switching categories is represented in its own state (e.g. a plain ref, the same way
+   * `bankActions` already does for the A-D bank). A category named in `layout.encoderBank.modeButtons` with no
+   * action here still gets an indicator (if `encoderBankModes` names it) but no press binding.
+   */
+  readonly encoderBankModeActions?: Readonly<Record<string, Action>>;
 }
 
 export interface SequencerColours {
@@ -395,6 +423,85 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
     if (!hasControl(controlId)) unresolved.push(`encoder: ${role} (control ${controlId})`);
   }
 
+  // Generic encoder bank: a window of relative encoders onto a page of numeric controls (e.g. the Push mk1's 8
+  // parameter encoders, each driving one track's volume in the currently visible bank). Shares the step grid's
+  // own page offset — no second paging control. Available everywhere, like dedicatedMuteBindings/encoderBindings:
+  // which category is live is a button press (below), not a mode switch, so the pad grid is never given up to
+  // reach it.
+  const encoderBankLayout = layout.encoderBank;
+  const encoderBankGrid = encoderBankLayout ? profile.grids?.find((candidate) => candidate.id === encoderBankLayout.gridId) : undefined;
+  if (encoderBankLayout && !encoderBankGrid) unresolved.push(`encoder bank (grid ${encoderBankLayout.gridId})`);
+
+  // Each category's mode button (e.g. CC114 "Volume"): a press invokes the application's own action for that
+  // category (if any) and an indicator lights while that category is the live one (if the application names a
+  // mode control and a value for it) — the same "trigger + indicator, both optional, both independent" shape
+  // bankTriggers/bankIndicators above already use for the A-D bank select buttons.
+  const encoderBankModeTriggers: Array<{ input: MidiInput; source: MidiSource; action: Action }> = [];
+  const encoderBankModeIndicators: ModeBinding[] = [];
+  for (const [category, controlId] of Object.entries(encoderBankLayout?.modeButtons ?? {})) {
+    if (!hasControl(controlId)) {
+      unresolved.push(`encoder bank mode: ${category} (control ${controlId})`);
+      continue;
+    }
+    const action = contract.encoderBankModeActions?.[category];
+    if (action) {
+      const control = profile.controls.find((candidate) => candidate.id === controlId)!;
+      const source = toMidiSource(control);
+      const triggerInput = inputFor(control.portId);
+      if (source && triggerInput) encoderBankModeTriggers.push({ input: triggerInput, source, action });
+    }
+    const modeValue = contract.encoderBankModes?.[category];
+    if (modeValue !== undefined && contract.encoderBankModeControl !== undefined) {
+      encoderBankModeIndicators.push({
+        kind: "indicator",
+        physicalControlId: controlId,
+        role: `encoder bank mode: ${category} lit`,
+        resolve: { kind: "static", controlId: contract.encoderBankModeControl },
+        lit: modeValue,
+        colour: colours.selection,
+      });
+    }
+  }
+  const encoderBankModeHooks = (): SurfaceModeHooks | undefined => {
+    if (encoderBankModeTriggers.length === 0) return undefined;
+    let unbinds: Array<() => void> = [];
+    return {
+      onEnter: () => {
+        unbinds = encoderBankModeTriggers.map(({ input: triggerInput, source, action }) => bindActionTrigger(triggerInput, source, action));
+      },
+      onExit: () => {
+        for (const unbind of unbinds) unbind();
+        unbinds = [];
+      },
+    };
+  };
+
+  // One EncoderWindowBinding per grid cell per category the application both named a mode button for and gave a
+  // template — a category with a button but no template (e.g. a future category with no backing parameter model
+  // yet) gets its button/indicator above but no window bindings, same "declared, not used" treatment every other
+  // optional layout role already gets. Horizontal orientation, like the mute strip: the bank's cells run across
+  // physical positions while its tracks run down the shared page offset's rows.
+  const encoderBankBindings: ModeBinding[] = encoderBankGrid
+    ? encoderBankGrid.cells.flatMap((cell): ModeBinding[] =>
+        Object.entries(contract.encoderBankTemplates ?? {}).flatMap(([category, template]): ModeBinding[] => {
+          if (!encoderBankLayout?.modeButtons?.[category]) return [];
+          const modeValue = contract.encoderBankModes?.[category];
+          const gated = modeValue !== undefined && contract.encoderBankModeControl !== undefined;
+          return [
+            {
+              kind: "encoder-window",
+              physicalControlId: cell.controlId,
+              role: `encoder bank: ${category} ${cell.column + 1}`,
+              gridId: encoderBankGrid.id,
+              template,
+              orientation: "horizontal",
+              ...(gated ? { enabledWhen: { controlId: contract.encoderBankModeControl!, equals: modeValue! } } : {}),
+            },
+          ];
+        }),
+      )
+    : [];
+
   const transportSources: Array<{ name: (typeof TRANSPORT_NAMES)[number]; controlId: string; control: PhysicalControl; source: MidiSource; action: Action }> =
     [];
   for (const name of TRANSPORT_NAMES) {
@@ -472,6 +579,9 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         selectionBindings,
         selectionClearBindings,
         encoderBindings,
+        encoderBankBindings,
+        encoderBankModeIndicators,
+        encoderBankModeHooks,
         transportHooksFor,
       })
     : [];
@@ -580,8 +690,10 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         ...selectionBindings,
         ...selectionClearBindings,
         ...encoderBindings,
+        ...encoderBankBindings,
+        ...encoderBankModeIndicators,
       ],
-      hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds)),
+      hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds), encoderBankModeHooks()),
       activateOn: { scope: "step" },
     },
     {
@@ -597,8 +709,10 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         ...selectionBindings,
         ...selectionClearBindings,
         ...encoderBindings,
+        ...encoderBankBindings,
+        ...encoderBankModeIndicators,
       ],
-      hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds)),
+      hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds), encoderBankModeHooks()),
       activateOn: { scope: "track" },
     },
     {
@@ -612,8 +726,10 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         ...selectionBindings,
         ...selectionClearBindings,
         ...encoderBindings,
+        ...encoderBankBindings,
+        ...encoderBankModeIndicators,
       ],
-      hooks: joinHooks(bankHooks(), transportHooksFor(transportModeButtonControlIds)),
+      hooks: joinHooks(bankHooks(), transportHooksFor(transportModeButtonControlIds), encoderBankModeHooks()),
     },
     ...faderModes,
   ];
@@ -635,6 +751,9 @@ function faderModeDefinitions(
     selectionBindings: readonly ModeBinding[];
     selectionClearBindings: readonly ModeBinding[];
     encoderBindings: readonly ModeBinding[];
+    encoderBankBindings: readonly ModeBinding[];
+    encoderBankModeIndicators: readonly ModeBinding[];
+    encoderBankModeHooks: () => SurfaceModeHooks | undefined;
     transportHooksFor: (claimedControlIds: ReadonlySet<string>) => SurfaceModeHooks | undefined;
   },
 ): SurfaceModeDefinition[] {
@@ -695,6 +814,8 @@ function faderModeDefinitions(
         ...shared.selectionBindings,
         ...shared.selectionClearBindings,
         ...shared.encoderBindings,
+        ...shared.encoderBankBindings,
+        ...shared.encoderBankModeIndicators,
       ],
       // The surface refuses to enter this mode while one of its ports isn't connected (ECS-104).
       requiredPortIds: mode.requiredPortIds,
@@ -715,6 +836,7 @@ function faderModeDefinitions(
         },
         shared.bankHooks(),
         shared.transportHooksFor(claimedControlIds),
+        shared.encoderBankModeHooks(),
       ),
     };
   });

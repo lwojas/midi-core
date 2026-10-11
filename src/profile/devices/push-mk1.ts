@@ -482,6 +482,23 @@ export const PUSH_MK1_SELECTION_GRID: ControlGrid = {
 };
 
 /**
+ * Phase 2: the 8 generic parameter encoders (`encoder-1`..`encoder-8`, left to right), as a dedicated one-row
+ * grid -- the same "model a control row as a `ControlGrid` purely to reuse windowing math" shape
+ * `PUSH_MK1_MUTE_STRIP_GRID`/`PUSH_MK1_SELECTION_GRID` already use. No `paging` of its own: `layout.encoderBank`
+ * shares the step grid's own page offset, so vertical paging (the same Arrow Up/Down that already pages tracks
+ * for the step grid and the mute strip) also moves which 8 tracks the encoders drive -- "the Push as a hardware
+ * view onto webseq's existing mixer state," not a second, Push-only paging model. `encoder-9`/`-10`/`-11`
+ * (Master/Swing/Tempo, see `PUSH_MK1_ENCODERS`' own doc comment) are dedicated controls, not part of this bank.
+ */
+export const PUSH_MK1_ENCODER_BANK_GRID: ControlGrid = {
+  id: "encoder-bank",
+  label: "The 8 generic parameter encoders, as a dedicated bank of per-track controls",
+  rows: 1,
+  columns: 8,
+  cells: Array.from({ length: 8 }, (_, column) => ({ row: 0, column, controlId: `encoder-${column + 1}` })),
+};
+
+/**
  * Vendor SysEx (F0 47 7F ...) is used for the LCD text display and global configuration (aftertouch mode, Live/User
  * mode force) -- confirmed hands-on for the display and the aftertouch-mode toggle. Normal pad/button/encoder
  * operation doesn't depend on any of it; the LCD is the only feedback with no Note/CC alternative, and this profile
@@ -574,6 +591,15 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
   selectionGridId: "selection-buttons",
   selectionClear: "button-master",
   encoders: { volume: "encoder-1", send: "encoder-2", effects: "encoder-3" },
+  /**
+   * Phase 2: the generic encoder bank (`PUSH_MK1_ENCODER_BANK_GRID`). `Volume` (CC114) selects the application's
+   * "volume" category -- the one with a window in this phase, driving the bank's own per-track volumes. `Devices`
+   * (CC110) is declared as the future "Device/FX parameter" category's own entry point, per this ticket's explicit
+   * scope -- it gets a button and (once the application names a mode value for it) an indicator, but no window
+   * bindings exist for it yet, the same "entry point, not an implementation" treatment `transport.clear` gets on a
+   * device with no button for it.
+   */
+  encoderBank: { gridId: "encoder-bank", modeButtons: { volume: "button-volume", devices: "button-devices" } },
 };
 
 export const PUSH_MK1_PROFILE: DeviceProfile = {
@@ -581,7 +607,7 @@ export const PUSH_MK1_PROFILE: DeviceProfile = {
   identity: PUSH_MK1_IDENTITY,
   ports: PUSH_MK1_PORTS,
   controls: PUSH_MK1_CONTROLS,
-  grids: [PUSH_MK1_PAD_GRID, PUSH_MK1_MUTE_STRIP_GRID, PUSH_MK1_SELECTION_GRID],
+  grids: [PUSH_MK1_PAD_GRID, PUSH_MK1_MUTE_STRIP_GRID, PUSH_MK1_SELECTION_GRID, PUSH_MK1_ENCODER_BANK_GRID],
   sysex: PUSH_MK1_SYSEX,
   layout: PUSH_MK1_LAYOUT,
   displays: [PUSH_MK1_DISPLAY],

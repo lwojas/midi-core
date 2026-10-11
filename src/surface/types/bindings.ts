@@ -270,6 +270,37 @@ export interface ModeIndicatorBinding extends ModeBindingBase {
 }
 
 /**
+ * A physical grid of relative encoders mapped onto a window of numeric application controls — the generic
+ * counterpart to `WindowedControlBinding` for a device's parameter-encoder bank (e.g. the Push mk1's 8 encoders,
+ * each driving one track's volume in the currently visible bank, instead of `encoders`' one-encoder-one-fixed-role
+ * shape). Each physical cell drives the numeric control at its virtual position — page offset plus the cell's own
+ * position, exactly `WindowedControlBinding`'s own windowing convention (`{row}`/`{column}`/`{track}` in
+ * `template`, `orientation` swapping the axes the same way). Unlike `WindowedControlBinding` there is no press and
+ * no boolean target: an encoder's turn is resolved via its own `PhysicalControl.relativeEncoding` straight into
+ * whichever control the window currently names, the same mechanism a `"from-selection"` `ControlBinding` already
+ * uses for a fixed single target — this just re-resolves by page instead of by selection. No LED feedback is
+ * modeled: no concrete device this exists for has one on its generic encoders, and an encoder's own position
+ * already shows nothing (it's a free-spinning relative control, not a potentiometer). Pages are turned by a
+ * navigation binding elsewhere in the mode; this binding is installed once per mode and never rebuilt on a page
+ * turn.
+ */
+export interface EncoderWindowBinding extends ModeBindingBase {
+  readonly kind: "encoder-window";
+  readonly gridId: string;
+  readonly template: string;
+  /** Same meaning as `WindowedControlBinding.orientation`. */
+  readonly orientation?: "vertical" | "horizontal";
+  /**
+   * Gates this binding on a live application control's value, distinct from `when`'s device-modifier gate: an
+   * incoming turn only applies while the number control named here currently holds `equals`. Omitted, the binding
+   * always applies — the same "declared, not used" default every other optional gate in this project takes. This
+   * is how one physical encoder bank can be assigned to more than one parameter category over time (e.g. a
+   * device's own category-select buttons) without every category racing to apply the same physical turn at once.
+   */
+  readonly enabledWhen?: { readonly controlId: string; readonly equals: number };
+}
+
+/**
  * One line of a `DeviceDisplayDefinition` (`docs/contracts/device-profile.md`, ECS-137), driven by a string
  * `Control` instead of a `PhysicalControl` — a display has no input semantics, so this is not a `ModeBindingBase`:
  * there's no physical control press to assign a role to, only an application string to paint out whenever it
@@ -290,6 +321,7 @@ export type ModeBinding =
   | ControlBinding
   | NavigationBinding
   | WindowedControlBinding
+  | EncoderWindowBinding
   | SelectionWindowBinding
   | SelectionClearBinding
   | IndicatorBinding

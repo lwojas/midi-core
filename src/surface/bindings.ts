@@ -21,6 +21,7 @@ import type {
   ControlBinding,
   ControlPress,
   DisplayBinding,
+  EncoderWindowBinding,
   IndicatorBinding,
   ModeBinding,
   ModeIndicatorBinding,
@@ -70,6 +71,10 @@ function isNavigationBinding(binding: ModeBinding): binding is NavigationBinding
 
 function isWindowedBinding(binding: ModeBinding): binding is WindowedControlBinding {
   return binding.kind === "window";
+}
+
+function isEncoderWindowBinding(binding: ModeBinding): binding is EncoderWindowBinding {
+  return binding.kind === "encoder-window";
 }
 
 function isSelectionBinding(binding: ModeBinding): binding is SelectionWindowBinding {
@@ -874,6 +879,47 @@ export async function bindSurfaceMode(
     if (target && output) {
       painters.push(painterFor(target, windowed as Control<ControlDef>, output, physical.feedback?.kind));
     }
+  }
+
+  // A device's generic encoder bank (e.g. the Push mk1's 8 parameter encoders): each cell's turn drives whichever
+  // numeric control the window currently names, re-targeted by `createWindowedControl()` on every navigation
+  // change exactly like a boolean window cell. No feedback and no press/toggle — an encoder's turn is relative
+  // input only, resolved through `bindControlMapping()`'s own existing `relativeEncoding` support, the same
+  // mechanism a `"from-selection"` `ControlBinding` already uses for a single fixed target.
+  for (const binding of bindings.filter(isEncoderWindowBinding)) {
+    const physical = deps.profile.controls.find((candidate) => candidate.id === binding.physicalControlId);
+    const grid = deps.profile.grids?.find((candidate) => candidate.id === binding.gridId);
+    const cell = grid?.cells.find((candidate) => candidate.controlId === binding.physicalControlId);
+    const source = physical && toMidiSource(physical);
+    const input = physical && deps.ports.inputs[physical.portId];
+    if (!navigation || !physical || !grid || !cell || !source || !input) continue;
+
+    const gateControl = binding.enabledWhen ? deps.registry.getControl(binding.enabledWhen.controlId) : undefined;
+    const gateSatisfied = (): boolean => {
+      if (!binding.enabledWhen) return true;
+      return gateControl?.def.kind === "number" && (gateControl as Control<NumericControlDef>).getValue() === binding.enabledWhen.equals;
+    };
+
+    const def: NumericControlDef = { id: `encoder-window.${binding.gridId}.${cell.row}.${cell.column}`, label: physical.label, kind: "number", min: 0, max: 1, default: 0 };
+    const windowed = createWindowedControl(
+      def,
+      () => {
+        const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
+        const control = deps.registry.getControl(fillTemplate(binding.template, ...windowPosition(binding, cell, offset)));
+        return control?.def.kind === "number" ? (control as Control<NumericControlDef>) : undefined;
+      },
+      navigation,
+    );
+
+    const relativeEncoding = physical.relativeEncoding !== undefined ? toRelativeEncoding(physical.relativeEncoding) : undefined;
+    const mapping: ControlMapping = {
+      id: binding.physicalControlId,
+      control: def.id,
+      source,
+      ...(relativeEncoding ? { relativeEncoding } : {}),
+    };
+    unsubscribes.push(() => windowed.dispose());
+    unsubscribes.push(bindControlMapping(mapping, input, NULL_OUTPUT, windowed, { shouldApply: () => matchesWhen(binding.when) && gateSatisfied() }));
   }
 
   for (const binding of bindings.filter(isSelectionBinding)) {

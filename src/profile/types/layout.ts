@@ -109,4 +109,18 @@ export interface DeviceLayout {
    * already gets. Omitted, the device has no such controls.
    */
   readonly encoders?: Readonly<Record<string, string>>;
+  /**
+   * A device's generic encoder bank: a window of relative encoders onto a page of numeric application controls
+   * (e.g. the Push mk1's 8 parameter encoders, each driving one track's volume in the currently visible bank),
+   * instead of `encoders`' one-encoder-one-fixed-role shape. `gridId` names a profile grid (one row, in order) the
+   * same way `dedicatedMuteGridId`/`selectionGridId` already do, sharing the step grid's own page offset so no
+   * separate paging control is needed. `modeButtons` are buttons that switch which named category (e.g.
+   * `"volume"`) the bank currently drives — keyed the same way `bank.select` keys its buttons, by the category
+   * name rather than an index, since the application decides what each category means and whether it's wired to
+   * anything yet (`SequencerContract.encoderBankTemplates`). Omitted, the device has no generic encoder bank.
+   */
+  readonly encoderBank?: {
+    readonly gridId: string;
+    readonly modeButtons?: Readonly<Record<string, string>>;
+  };
 }
