@@ -39,7 +39,7 @@ const GRID_COLOURS = {
   stepOdd: { colour: { red: 0, green: 100, blue: 0 }, velocity: 37 }, // green
   stepLengthEven: { colour: { red: 0, green: 0, blue: 32 }, velocity: 30 }, // brighter white: the rest of a held note
   stepLengthOdd: { colour: { red: 0, green: 32, blue: 0 }, velocity: 38 }, // dim white
-  playhead: { colour: { red: 0, green: 70, blue: 100 }, velocity: 36 }, // teal, confirmed
+  playhead: { colour: { red: 0, green: 70, blue: 100 }, velocity: 9 }, // teal, confirmed
 } as const satisfies Record<string, PushColour>;
 
 /** The track mute buttons (the upper control row; also the mixer's pad row). Lit state follows each visible track. */
