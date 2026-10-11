@@ -42,8 +42,8 @@ stepOdd: { colour: { red: 0, green: 100, blue: 0 }, velocity: 22 }, // green
   real colour, but:
   - it must be **different between roles** (two roles with identical `colour` resolve to the first entry's velocity,
     and the second role's velocity is ignored);
-  - it must **not be edited in only one place**: both the layout and the palette are built from the same entry, so
-    editing the entry itself is always safe.
+
+Edit the entry in place: the layout and the palette are both built from it, so they cannot drift apart.
 
 ## Choosing a velocity
 
