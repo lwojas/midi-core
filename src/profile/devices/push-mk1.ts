@@ -5,7 +5,10 @@ import type { DeviceIdentity } from "../types/identity.js";
 import type { DeviceLayout, DeviceLayoutColours } from "../types/layout.js";
 import type { RgbColour } from "../../mapping/types/address.js";
 import type { DevicePortProfile } from "../types/port.js";
-import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "../types/profile.js";
+import {
+  DEVICE_PROFILE_SCHEMA_VERSION,
+  type DeviceProfile,
+} from "../types/profile.js";
 import type { DeviceSysExProfile } from "../types/sysex.js";
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -32,10 +35,10 @@ interface PushColour {
  * whether the cell starts a note or continues one.
  */
 const GRID_COLOURS = {
-  stepEven: { colour: { red: 0, green: 0, blue: 127 }, velocity: 127 }, // unchanged from before: plain full-on
-  stepOdd: { colour: { red: 0, green: 100, blue: 0 }, velocity: 22 }, // green
-  stepLengthEven: { colour: { red: 0, green: 0, blue: 32 }, velocity: 2 }, // brighter white: the rest of a held note
-  stepLengthOdd: { colour: { red: 0, green: 32, blue: 0 }, velocity: 1 }, // dim white
+  stepEven: { colour: { red: 0, green: 0, blue: 127 }, velocity: 29 }, // unchanged from before: plain full-on
+  stepOdd: { colour: { red: 0, green: 100, blue: 0 }, velocity: 37 }, // green
+  stepLengthEven: { colour: { red: 0, green: 0, blue: 32 }, velocity: 30 }, // brighter white: the rest of a held note
+  stepLengthOdd: { colour: { red: 0, green: 32, blue: 0 }, velocity: 38 }, // dim white
   playhead: { colour: { red: 0, green: 70, blue: 100 }, velocity: 36 }, // teal, confirmed
 } as const satisfies Record<string, PushColour>;
 
@@ -212,7 +215,15 @@ export const PUSH_MK1_PORTS: readonly DevicePortProfile[] = [
     type: "input",
     role: "main",
     required: true,
-    messageTypes: ["note-on", "note-off", "control-change", "poly-pressure", "channel-pressure", "pitch-bend", "sysex"],
+    messageTypes: [
+      "note-on",
+      "note-off",
+      "control-change",
+      "poly-pressure",
+      "channel-pressure",
+      "pitch-bend",
+      "sysex",
+    ],
   },
   {
     id: "user-port-out",
@@ -233,33 +244,43 @@ const ENCODERS = [
   { id: "encoder-6", label: "Encoder 6", cc: 76, touchNote: 5 },
   { id: "encoder-7", label: "Encoder 7", cc: 77, touchNote: 6 },
   { id: "encoder-8", label: "Encoder 8", cc: 78, touchNote: 7 },
-  { id: "encoder-master", label: "Master Encoder (rightmost)", cc: 79, touchNote: 8 },
+  {
+    id: "encoder-master",
+    label: "Master Encoder (rightmost)",
+    cc: 79,
+    touchNote: 8,
+  },
   { id: "encoder-swing", label: "Swing Encoder", cc: 15, touchNote: 9 },
   { id: "encoder-tempo", label: "Tempo Encoder", cc: 14, touchNote: 10 },
 ] as const;
 
-export const PUSH_MK1_ENCODERS: readonly PhysicalControl[] = ENCODERS.flatMap(({ id, label, cc, touchNote }) => [
-  {
-    id,
-    label: `${label} (CC ${cc}, relative turn)`,
-    kind: "encoder",
-    portId: "user-port-in",
-    input: { address: { type: "control-change", controller: cc }, channel: 0 },
-    valueMode: "relative",
-    // ECS-136 gate: hands-on confirmed signed 7-bit two's-complement delta encoding on Encoder 1 and the Tempo
-    // encoder, independently re-confirmed on a second MIDI monitor; the other 9 are the same component family,
-    // assumed but not individually turned -- same "declare the fact, flag the unconfirmed extent" stance this
-    // profile already takes for its other partially-verified controls.
-    relativeEncoding: "twos-complement-7bit",
-  },
-  {
-    id: `${id}-touch`,
-    label: `${label} touch (Note ${touchNote})`,
-    kind: "button",
-    portId: "user-port-in",
-    input: { address: { type: "note", note: touchNote }, channel: 0 },
-  },
-]);
+export const PUSH_MK1_ENCODERS: readonly PhysicalControl[] = ENCODERS.flatMap(
+  ({ id, label, cc, touchNote }) => [
+    {
+      id,
+      label: `${label} (CC ${cc}, relative turn)`,
+      kind: "encoder",
+      portId: "user-port-in",
+      input: {
+        address: { type: "control-change", controller: cc },
+        channel: 0,
+      },
+      valueMode: "relative",
+      // ECS-136 gate: hands-on confirmed signed 7-bit two's-complement delta encoding on Encoder 1 and the Tempo
+      // encoder, independently re-confirmed on a second MIDI monitor; the other 9 are the same component family,
+      // assumed but not individually turned -- same "declare the fact, flag the unconfirmed extent" stance this
+      // profile already takes for its other partially-verified controls.
+      relativeEncoding: "twos-complement-7bit",
+    },
+    {
+      id: `${id}-touch`,
+      label: `${label} touch (Note ${touchNote})`,
+      kind: "button",
+      portId: "user-port-in",
+      input: { address: { type: "note", note: touchNote }, channel: 0 },
+    },
+  ],
+);
 
 /** The touch strip: a pitch-bend wheel plus its own capacitive tap (Note 12), independent of the bend stream. */
 export const PUSH_MK1_TOUCH_STRIP: readonly PhysicalControl[] = [
@@ -292,10 +313,14 @@ export const PUSH_MK1_TOUCH_STRIP: readonly PhysicalControl[] = [
  * velocity scheme is confirmed beyond this one entry -- see `ControlFeedback.colourPalette`'s own doc comment for
  * why an unmatched colour still renders as plain on/off, not a guessed byte.
  */
-const PUSH_MK1_PAD_COLOUR_PALETTE: readonly PushColour[] = [...Object.values(GRID_COLOURS), ...Object.values(MUTE_COLOURS)];
+const PUSH_MK1_PAD_COLOUR_PALETTE: readonly PushColour[] = [
+  ...Object.values(GRID_COLOURS),
+  ...Object.values(MUTE_COLOURS),
+];
 
 /** The mute strip only ever shows the two mute colours. */
-const PUSH_MK1_MUTE_STRIP_COLOUR_PALETTE: readonly PushColour[] = Object.values(MUTE_COLOURS);
+const PUSH_MK1_MUTE_STRIP_COLOUR_PALETTE: readonly PushColour[] =
+  Object.values(MUTE_COLOURS);
 
 /** Bottom-left-origin, row-major note numbering (notes 36-99): row 0 (bottom) is 36-43, row 7 (top) is 92-99. */
 function padControl(rowFromBottom: number, column: number): PhysicalControl {
@@ -316,7 +341,10 @@ function padControl(rowFromBottom: number, column: number): PhysicalControl {
   };
 }
 
-export const PUSH_MK1_PADS: readonly PhysicalControl[] = Array.from({ length: 8 }, (_, rowFromBottom) => rowFromBottom).flatMap((rowFromBottom) =>
+export const PUSH_MK1_PADS: readonly PhysicalControl[] = Array.from(
+  { length: 8 },
+  (_, rowFromBottom) => rowFromBottom,
+).flatMap((rowFromBottom) =>
   Array.from({ length: 8 }, (_, column) => padControl(rowFromBottom, column)),
 );
 
@@ -375,19 +403,23 @@ const UTILITY_BUTTONS = [
  */
 const PUSH_MK1_DIM_VALUE = 1;
 
-export const PUSH_MK1_UTILITY_BUTTONS: readonly PhysicalControl[] = UTILITY_BUTTONS.map(([id, label, cc]) => ({
-  id: `button-${id}`,
-  label: `${label} (CC ${cc})`,
-  kind: "button",
-  portId: "user-port-in",
-  input: { address: { type: "control-change", controller: cc }, channel: 0 },
-  feedback: {
-    kind: "monochrome-led",
-    address: { address: { type: "control-change", controller: cc }, channel: 0 },
-    dimValue: PUSH_MK1_DIM_VALUE,
-  },
-  feedbackPortId: "user-port-out",
-}));
+export const PUSH_MK1_UTILITY_BUTTONS: readonly PhysicalControl[] =
+  UTILITY_BUTTONS.map(([id, label, cc]) => ({
+    id: `button-${id}`,
+    label: `${label} (CC ${cc})`,
+    kind: "button",
+    portId: "user-port-in",
+    input: { address: { type: "control-change", controller: cc }, channel: 0 },
+    feedback: {
+      kind: "monochrome-led",
+      address: {
+        address: { type: "control-change", controller: cc },
+        channel: 0,
+      },
+      dimValue: PUSH_MK1_DIM_VALUE,
+    },
+    feedbackPortId: "user-port-out",
+  }));
 
 /**
  * ECS-145 finding, correcting a previously-unverified assumption: the upper control row (CC 102-109), used as the
@@ -414,20 +446,24 @@ const MUTE_STRIP_BUTTONS = [
   ["upper-8", "Upper control row button 8 (rightmost)", 109],
 ] as const;
 
-export const PUSH_MK1_MUTE_STRIP_BUTTONS: readonly PhysicalControl[] = MUTE_STRIP_BUTTONS.map(([id, label, cc]) => ({
-  id: `button-${id}`,
-  label: `${label} (CC ${cc})`,
-  kind: "button",
-  portId: "user-port-in",
-  input: { address: { type: "control-change", controller: cc }, channel: 0 },
-  feedback: {
-    kind: "velocity-color-led",
-    address: { address: { type: "control-change", controller: cc }, channel: 0 },
-    paletteSize: 128,
-    colourPalette: PUSH_MK1_MUTE_STRIP_COLOUR_PALETTE,
-  },
-  feedbackPortId: "user-port-out",
-}));
+export const PUSH_MK1_MUTE_STRIP_BUTTONS: readonly PhysicalControl[] =
+  MUTE_STRIP_BUTTONS.map(([id, label, cc]) => ({
+    id: `button-${id}`,
+    label: `${label} (CC ${cc})`,
+    kind: "button",
+    portId: "user-port-in",
+    input: { address: { type: "control-change", controller: cc }, channel: 0 },
+    feedback: {
+      kind: "velocity-color-led",
+      address: {
+        address: { type: "control-change", controller: cc },
+        channel: 0,
+      },
+      paletteSize: 128,
+      colourPalette: PUSH_MK1_MUTE_STRIP_COLOUR_PALETTE,
+    },
+    feedbackPortId: "user-port-out",
+  }));
 
 /**
  * ECS-155 hardware correction (confirmed hands-on): CC 36-43 are NOT the same monochrome on/off/dim family
@@ -450,7 +486,9 @@ const PUSH_MK1_SELECTION_DIM_VALUE = 10;
  * Must match `DEFAULT_SEQUENCER_COLOURS.selection` (`src/configurations/sequencer.ts`) exactly, byte for byte --
  * see `PUSH_MK1_PAD_COLOUR_PALETTE`'s own doc comment for why this is a literal here rather than a shared import.
  */
-const PUSH_MK1_SELECTION_COLOUR_PALETTE = [{ colour: { red: 127, green: 0, blue: 127 }, velocity: 22 }] as const;
+const PUSH_MK1_SELECTION_COLOUR_PALETTE = [
+  { colour: { red: 127, green: 0, blue: 127 }, velocity: 22 },
+] as const;
 
 /**
  * ECS-155 hardware correction: these are side buttons, a vertical column, not a horizontal row -- confirmed
@@ -470,20 +508,24 @@ const SELECTION_BUTTONS = [
   ["select-8", "Selection button 8 (bottommost)", 36],
 ] as const;
 
-export const PUSH_MK1_SELECTION_BUTTONS: readonly PhysicalControl[] = SELECTION_BUTTONS.map(([id, label, cc]) => ({
-  id: `button-${id}`,
-  label: `${label} (CC ${cc})`,
-  kind: "button",
-  portId: "user-port-in",
-  input: { address: { type: "control-change", controller: cc }, channel: 0 },
-  feedback: {
-    kind: "velocity-color-led",
-    address: { address: { type: "control-change", controller: cc }, channel: 0 },
-    dimValue: PUSH_MK1_SELECTION_DIM_VALUE,
-    colourPalette: PUSH_MK1_SELECTION_COLOUR_PALETTE,
-  },
-  feedbackPortId: "user-port-out",
-}));
+export const PUSH_MK1_SELECTION_BUTTONS: readonly PhysicalControl[] =
+  SELECTION_BUTTONS.map(([id, label, cc]) => ({
+    id: `button-${id}`,
+    label: `${label} (CC ${cc})`,
+    kind: "button",
+    portId: "user-port-in",
+    input: { address: { type: "control-change", controller: cc }, channel: 0 },
+    feedback: {
+      kind: "velocity-color-led",
+      address: {
+        address: { type: "control-change", controller: cc },
+        channel: 0,
+      },
+      dimValue: PUSH_MK1_SELECTION_DIM_VALUE,
+      colourPalette: PUSH_MK1_SELECTION_COLOUR_PALETTE,
+    },
+    feedbackPortId: "user-port-out",
+  }));
 
 /** 135 controls total: 11 encoders + 11 touch notes, the touch strip + its tap, 64 pads, 8 mute-strip buttons, 8 selection buttons, 31 other utility/nav/mode buttons. */
 export const PUSH_MK1_CONTROLS: readonly PhysicalControl[] = [
@@ -521,7 +563,11 @@ export const PUSH_MK1_MUTE_STRIP_GRID: ControlGrid = {
   label: "Upper control row, as a dedicated mute strip",
   rows: 1,
   columns: 8,
-  cells: Array.from({ length: 8 }, (_, column) => ({ row: 0, column, controlId: `button-upper-${column + 1}` })),
+  cells: Array.from({ length: 8 }, (_, column) => ({
+    row: 0,
+    column,
+    controlId: `button-upper-${column + 1}`,
+  })),
 };
 
 /**
@@ -536,7 +582,11 @@ export const PUSH_MK1_SELECTION_GRID: ControlGrid = {
   label: "CC 36-43, as a dedicated column of contextual selection buttons",
   rows: 8,
   columns: 1,
-  cells: Array.from({ length: 8 }, (_, row) => ({ row, column: 0, controlId: `button-select-${row + 1}` })),
+  cells: Array.from({ length: 8 }, (_, row) => ({
+    row,
+    column: 0,
+    controlId: `button-select-${row + 1}`,
+  })),
 };
 
 /**
@@ -550,10 +600,15 @@ export const PUSH_MK1_SELECTION_GRID: ControlGrid = {
  */
 export const PUSH_MK1_ENCODER_BANK_GRID: ControlGrid = {
   id: "encoder-bank",
-  label: "The 8 generic parameter encoders, as a dedicated bank of per-track controls",
+  label:
+    "The 8 generic parameter encoders, as a dedicated bank of per-track controls",
   rows: 1,
   columns: 8,
-  cells: Array.from({ length: 8 }, (_, column) => ({ row: 0, column, controlId: `encoder-${column + 1}` })),
+  cells: Array.from({ length: 8 }, (_, column) => ({
+    row: 0,
+    column,
+    controlId: `encoder-${column + 1}`,
+  })),
 };
 
 /**
@@ -655,7 +710,11 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
   pageDown: "button-arrow-down",
   pageLeft: "button-arrow-left",
   pageRight: "button-arrow-right",
-  transport: { play: "button-play", stop: "button-stop-clip", record: "button-record" },
+  transport: {
+    play: "button-play",
+    stop: "button-stop-clip",
+    record: "button-record",
+  },
   dedicatedMuteGridId: "mute-strip",
   colours: PUSH_SEQUENCER_COLOURS,
   modifier: "button-shift",
@@ -704,7 +763,12 @@ export const PUSH_MK1_PROFILE: DeviceProfile = {
   identity: PUSH_MK1_IDENTITY,
   ports: PUSH_MK1_PORTS,
   controls: PUSH_MK1_CONTROLS,
-  grids: [PUSH_MK1_PAD_GRID, PUSH_MK1_MUTE_STRIP_GRID, PUSH_MK1_SELECTION_GRID, PUSH_MK1_ENCODER_BANK_GRID],
+  grids: [
+    PUSH_MK1_PAD_GRID,
+    PUSH_MK1_MUTE_STRIP_GRID,
+    PUSH_MK1_SELECTION_GRID,
+    PUSH_MK1_ENCODER_BANK_GRID,
+  ],
   sysex: PUSH_MK1_SYSEX,
   layout: PUSH_MK1_LAYOUT,
   displays: [PUSH_MK1_DISPLAY],
