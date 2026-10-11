@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createControl } from "../control-api/control.js";
 import { createSurfaceContext } from "../control-api/context.js";
 import { createControlRegistry } from "../control-api/registry.js";
@@ -10,6 +10,7 @@ import { PUSH_MK1_PROFILE } from "../profile/devices/push-mk1.js";
 import { LAUNCHPAD_MINI_MK3_PROFILE } from "../profile/devices/launchpad-mini-mk3.js";
 import { generateControlMappings } from "../surface/generate.js";
 import { createControlSurface } from "../surface/runtime.js";
+import { DISPLAY_LINE_MIN_INTERVAL_MS } from "../surface/display-binding.js";
 import { createSequencerBindings, type SequencerContract } from "./sequencer.js";
 
 /**
@@ -67,6 +68,10 @@ function build(displayLines: SequencerContract["displayLines"] | undefined = und
 }
 
 describe("ECS-139: application text on the Push mk1's LCD", () => {
+  // Display writes are coalesced per line: fake timers let a test step past the interval between changes.
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
   it("paints each role's control text through the verified template on attach: strings as-is, other kinds as label and value", async () => {
     const { surface, midiOut, unresolved } = build();
     await surface.attach();
@@ -83,11 +88,13 @@ describe("ECS-139: application text on the Push mk1's LCD", () => {
     const { surface, midiOut, context, cutoff, playing } = build();
     await surface.attach();
 
+    vi.advanceTimersByTime(DISPLAY_LINE_MIN_INTERVAL_MS);
     cutoff.setValue(4000);
     playing.setValue(true);
     expect(lastLineText(midiOut, LINE_IDS.effect)).toBe("Cutoff 4000 Hz");
     expect(lastLineText(midiOut, LINE_IDS.transport)).toBe("Playing on");
 
+    vi.advanceTimersByTime(DISPLAY_LINE_MIN_INTERVAL_MS);
     context.setSelection({ scope: "track", id: "2" });
     expect(lastLineText(midiOut, LINE_IDS.track)).toBe("Snare");
     await surface.detach();
@@ -101,6 +108,7 @@ describe("ECS-139: application text on the Push mk1's LCD", () => {
     volume.setValue(0.501); // still "Volume 0.50"
     expect(midiOut.sentMessages.length).toBe(before);
 
+    vi.advanceTimersByTime(DISPLAY_LINE_MIN_INTERVAL_MS);
     context.setSelection({ scope: "track", id: "9" }); // no track.9.name
     expect(lastLineText(midiOut, LINE_IDS.track)).toBe("");
     await surface.detach();

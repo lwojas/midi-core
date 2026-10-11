@@ -316,6 +316,31 @@ export interface DisplayBinding {
   readonly resolve: ControlIdResolution;
 }
 
+/**
+ * One display line showing a window of numeric controls as per-segment level bars (e.g. the Push mk1's per-track
+ * volumes above its 8 encoders), driven by the same authoritative controls an `EncoderWindowBinding` turns -- there
+ * is no separate display state. Segment `i` shows the control at grid cell `i`'s virtual position, resolved exactly
+ * as `EncoderWindowBinding` does (`gridId`, `template`, `orientation`, the shared page offset), and normalized
+ * against that control's own live `min`/`max`. The device's `DeviceDisplayDefinition` supplies the segment offsets
+ * and glyphs; nothing here names a character.
+ */
+export interface DisplayMeterBinding {
+  readonly kind: "display-meter";
+  readonly displayId: string;
+  readonly lineId: string;
+  readonly gridId: string;
+  readonly template: string;
+  readonly orientation?: "vertical" | "horizontal";
+  /** Same gate as `EncoderWindowBinding.enabledWhen`: bars show while it holds, otherwise `fallback`'s text. */
+  readonly enabledWhen?: { readonly controlId: string; readonly equals: number };
+  /**
+   * What the line shows while `enabledWhen` doesn't hold: the text a plain `DisplayBinding` with this resolution
+   * would show. A line has one writer, so the meter owns it in both states rather than racing a second binding.
+   * Omitted, the line is blank outside the gate.
+   */
+  readonly fallback?: ControlIdResolution;
+}
+
 /** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, a window onto a grid of controls, a page of selectable items (or the button that clears the selection), an indicator of one value or of the active mode, or (for `DisplayBinding`) a display line to paint from a string control. */
 export type ModeBinding =
   | ControlBinding
@@ -326,7 +351,8 @@ export type ModeBinding =
   | SelectionClearBinding
   | IndicatorBinding
   | ModeIndicatorBinding
-  | DisplayBinding;
+  | DisplayBinding
+  | DisplayMeterBinding;
 
 /**
  * The two genuine escape valves a declarative `bindings` list can't

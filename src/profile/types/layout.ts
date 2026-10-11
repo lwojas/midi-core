@@ -122,6 +122,13 @@ export interface DeviceLayout {
   readonly encoderBank?: {
     readonly gridId: string;
     readonly modeButtons?: Readonly<Record<string, string>>;
+    /**
+     * Which `DeviceDisplayDefinition` line shows a category's values as per-segment level bars while that category
+     * is live, keyed by the same category name `modeButtons` uses. Each of the grid's cells maps to the display
+     * segment at the same position, so a value sits above the encoder that drives it. The display must declare
+     * `segments` and `meter`. While the category isn't live, the line shows whatever `displayLines` names for it.
+     */
+    readonly meterLines?: Readonly<Record<string, { readonly displayId: string; readonly lineId: string }>>;
   };
   /**
    * Which `DeviceDisplayDefinition` line (ECS-137) plays each application-defined text role (e.g. `"track"`,

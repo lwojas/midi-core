@@ -166,3 +166,23 @@ the other end.
   just-made change; it has no notion of "soft takeover," a time window, or
   coordinating across multiple mappings/controls. A device-specific
   takeover behavior is a profile-layer (ECS-39) concern, not this one.
+
+## Relative turns scale by the control's own metadata
+
+A relative encoder's decoded delta is applied by `applyRelativeDelta()`
+(`src/mapping/value.ts`) according to the target `ControlDef`, not by one
+universal increment:
+
+- **number**: one `step` per detent when the range has at most 256 step
+  positions. Otherwise a range with `min > 0` and `max / min >= 100`
+  (frequencies, times) moves by a constant ratio per detent, about 100
+  detents end to end; any other range moves by `range / 100`, rounded up
+  to a whole `step`. A turn always moves at least one `step`, and values
+  clamp to `min`/`max`.
+- **boolean**: the direction sets the value (clockwise on).
+- **enum**: one option per turn in its direction, clamped at the ends.
+- **string**: no relative meaning; ignored.
+
+A faster turn arrives as a larger delta and counts as that many detents.
+Windowed and selection-bound encoder targets accept number, boolean and
+enum controls; the live target's own `def` decides the behavior.

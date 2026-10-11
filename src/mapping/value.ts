@@ -58,12 +58,11 @@ export function decodeRelativeDelta(raw: number, encoding: RelativeEncoding): nu
  * source kind doesn't pair with `def.kind` per the table above.
  *
  * `relative` (ECS-137), when supplied, means `source` is a relative control: a matching control-change message's raw
- * value is decoded to a signed delta via `decodeRelativeDelta()`, scaled by one detent's own increment (see
- * `relativeIncrement()`), and added onto `relative.current` (clamped/snapped to `def`'s step), instead of being
- * normalized onto `def`'s range directly. Only defined for a numeric `def` — a relative delta onto a boolean or
- * enum control isn't a pairing this contract models (same "report, don't guess" stance as every unsupported
- * pairing below), and only for a `control-change` source, the only MIDI message kind a relative encoder's turn is
- * modeled as.
+ * value is decoded to a signed delta via `decodeRelativeDelta()`, applied to `relative.current` the way `def`'s own kind
+ * calls for (see `applyRelativeDelta()`: a stepped, linear or geometric move for a number, the turn's direction for
+ * a boolean, one option per turn for an enum), instead of being normalized onto `def`'s range directly. Only for a
+ * `control-change` source, the only MIDI message kind a relative encoder's turn is modeled as; a string control has
+ * no relative meaning (same "report, don't guess" stance as every unsupported pairing below).
  */
 export function resolveIncomingValue<D extends ControlDef>(
   message: MidiMessage,
@@ -74,10 +73,8 @@ export function resolveIncomingValue<D extends ControlDef>(
   if (!matchesSource(message, source)) return undefined;
 
   if (relative && source.address.type === "control-change" && message.type === "control-change") {
-    if (def.kind !== "number") return undefined;
     const delta = decodeRelativeDelta(message.value, relative.encoding);
-    const current = relative.current as unknown as number;
-    return clampToStep(current + delta * relativeIncrement(def), def) as ControlValue<D>;
+    return applyRelativeDelta(def, relative.current, delta);
   }
 
   if (source.address.type === "control-change" && message.type === "control-change") {
@@ -248,22 +245,78 @@ function bucketIndex(t: number, bucketCount: number): number {
 }
 
 /**
- * How much value one relative-encoder detent moves `def` by. A raw decoded delta (±1, ±2, ...) was previously
- * added directly onto the control's current value with no scaling at all — correct only by coincidence for a
- * wide range (a BPM control, say) and badly overshooting a narrow one: one detent on a 0-1.5 volume range (a
- * real case, not hypothetical — see the Push mk1's track-volume encoder bank) moved the value by two-thirds of
- * its entire range in a single tick.
- *
- * `def.step`, when declared, is reused here rather than inventing a second field: it already means "the
- * granularity values are expected to land on," and one encoder click landing on the next step is exactly that
- * granularity applied to a relative gesture instead of an absolute one. A `def` with no declared step (e.g. a
- * continuous fader with no natural grid) falls back to one hundredth of its range — about a hundred detents to
- * sweep the full range, deliberately not exact or configurable per-mapping, since nothing yet needs finer
- * control than "coarse but not instant."
+ * A numeric control with this many step positions or fewer across its range moves one `step` per detent -- every
+ * value stays individually reachable, with no coarsening (a 0-1.5 volume in 0.01 steps, a 20-300 BPM in whole beats).
  */
-function relativeIncrement(def: NumericControlDef): number {
-  if (def.step !== undefined && def.step > 0) return def.step;
-  return (def.max - def.min) / 100;
+const RELATIVE_FINE_STEP_LIMIT = 256;
+/** Detents a full sweep of a coarsened numeric range takes at one click per detent. */
+const RELATIVE_DETENTS = 100;
+/** A strictly positive range spanning at least this max/min ratio (two decades, e.g. 40-18000 Hz) moves by a constant factor per detent, not a constant amount. */
+const RELATIVE_GEOMETRIC_RATIO = 100;
+
+/**
+ * The value a relative-encoder turn of `delta` detents (signed; a faster turn arrives as a larger magnitude) moves
+ * `current` to, shaped by what `def` says the control *is* rather than one universal increment (previously a raw
+ * `def.step` per detent: a 40-18000 Hz cutoff with `step: 1` took ~18000 detents to sweep, and a 0-1.5 volume with
+ * no step moved two thirds of its range in one click):
+ *
+ * - **number**: one `step` per detent while the range has few enough steps to walk (`RELATIVE_FINE_STEP_LIMIT`).
+ *   Beyond that, a range with `min > 0` spanning two decades or more (a frequency, an attack time) moves by a
+ *   constant ratio per detent, so a sweep takes about `RELATIVE_DETENTS` clicks and low values stay as usable as
+ *   high ones; any other range moves by `range / RELATIVE_DETENTS`, rounded up to a whole `step` when one is
+ *   declared. The result is clamped and snapped to `step`, and a turn never rounds back onto `current`
+ *   (it moves at least one `step`), so the whole range stays reachable at every scale.
+ * - **boolean**: the turn's direction sets the value (clockwise on, counter-clockwise off), not a flip per click,
+ *   so a fast spin settles instead of flickering.
+ * - **enum**: one option per turn in its direction, clamped at the ends, so every option is visited.
+ *
+ * Nothing here names a control: it reads only the metadata `ControlDef` already carries (`min`, `max`, `step`,
+ * `options`). `undefined` for a kind with no relative meaning (string).
+ */
+function applyRelativeDelta<D extends ControlDef>(def: D, current: ControlValue<D>, delta: number): ControlValue<D> | undefined {
+  if (delta === 0) return current;
+  switch (def.kind) {
+    case "number":
+      return relativeNumber(def, current as unknown as number, delta) as ControlValue<D>;
+    case "boolean":
+      return (delta > 0) as ControlValue<D>;
+    case "enum": {
+      if (def.options.length === 0) return undefined;
+      const index = def.options.findIndex((option) => option.value === (current as unknown as string));
+      const target = index === -1 ? (delta > 0 ? 0 : def.options.length - 1) : Math.min(def.options.length - 1, Math.max(0, index + Math.sign(delta)));
+      return def.options[target]!.value as ControlValue<D>;
+    }
+    case "string":
+      return undefined;
+  }
+}
+
+function relativeNumber(def: NumericControlDef, current: number, delta: number): number {
+  const { min, max } = def;
+  const range = max - min;
+  const step = def.step !== undefined && def.step > 0 ? def.step : undefined;
+  const direction = Math.sign(delta);
+  const detents = Math.abs(delta);
+
+  let next: number;
+  if (step !== undefined && range / step <= RELATIVE_FINE_STEP_LIMIT) {
+    next = current + delta * step;
+  } else if (min > 0 && max / min >= RELATIVE_GEOMETRIC_RATIO) {
+    const ratio = Math.pow(max / min, 1 / RELATIVE_DETENTS);
+    next = Math.max(current, min) * Math.pow(ratio, direction * detents);
+  } else {
+    const increment = step === undefined ? range / RELATIVE_DETENTS : Math.ceil(range / RELATIVE_DETENTS / step - 1e-9) * step;
+    next = current + delta * increment;
+  }
+
+  let result = clampToStep(next, def);
+  // Rounding onto the step grid must not swallow a turn that has room to move (a small ratio at the low end of a
+  // geometric range): it moves one step instead.
+  if (step !== undefined && result === current) {
+    const moved = clampToStep(current + direction * step, def);
+    if (moved !== current) result = moved;
+  }
+  return result;
 }
 
 function clampToStep(value: number, def: NumericControlDef): number {

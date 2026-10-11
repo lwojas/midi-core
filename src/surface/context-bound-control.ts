@@ -22,7 +22,7 @@ export interface ContextBoundControl<D extends ControlDef> extends Control<D> {
  * selected (or the resolved id isn't in `registry`, or resolves to a control of a different `kind`) and so no
  * target resolves at all: `getValue()` reports `fallbackDef.default` and `setValue()` is a no-op, same as
  * `createWindowedControl` reporting `false` with no target. Every concrete target a given role can ever resolve to
- * is expected to share one `ControlDef` shape (every track's volume is the same range) — once any target resolves,
+ * is expected to share one `ControlDef` kind (every track's volume is a number, on the same range) — once any target resolves,
  * `def` reports *that* target's own def in place of the fallback, so range/step/unit always reflect live
  * application state rather than a guess baked in at bind time.
  */
@@ -41,7 +41,10 @@ export function createContextBoundControl<D extends ControlDef>(
     const controlId = resolveControlId(resolution, context);
     if (controlId === undefined) return undefined;
     const control = registry.getControl(controlId);
-    return control?.def.kind === fallbackDef.kind ? (control as Control<D>) : undefined;
+    // Any settable, relative-turnable kind (number, boolean, enum): `resolveIncomingValue()` reads the live target's
+    // own `def`, so a toggle or an enum is stepped as one rather than being refused for not matching a numeric
+    // fallback. A string has no relative meaning, so it is still not a target.
+    return control !== undefined && control.def.kind !== "string" ? (control as unknown as Control<D>) : undefined;
   };
 
   const currentValue = (): ControlValue<D> => target?.getValue() ?? (fallbackDef.default as ControlValue<D>);

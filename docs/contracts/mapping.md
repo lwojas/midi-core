@@ -118,8 +118,9 @@ a mapping with none is input-only — turning the knob changes the control,
 nothing is sent back. Most controls don't need it; it's there, not
 assumed, for the ones that do (a motorized fader, an LED ring).
 
-`relativeEncoding` (ECS-137) is optional, and only meaningful for a
-numeric control: omitted (still the common case), `source`'s raw value is
+`relativeEncoding` (ECS-137) is optional, and applies to a number, boolean
+or enum control (scaling by the control's own metadata, see
+`docs/contracts/mapping-runtime.md`): omitted (still the common case), `source`'s raw value is
 normalized straight onto `control`'s range exactly as before. Present —
 copied by `src/surface/generate.ts` from the originating
 `PhysicalControl.relativeEncoding` (a device fact,
@@ -127,7 +128,7 @@ copied by `src/surface/generate.ts` from the originating
 deltas rather than a position: `decodeRelativeDelta(raw, encoding)`
 (`src/mapping/value.ts`) turns the raw byte into a signed delta, which
 `bindControlMapping()` (`docs/contracts/mapping-runtime.md`) accumulates
-onto the control's *current* value and clamps to its range, instead of
+onto the control's *current* value (stepped, clamped to its range), instead of
 scaling the raw byte directly. `RelativeEncoding` is mapping's own type
 (`src/mapping/types/address.ts`), kept deliberately separate from the
 profile layer's own `RelativeEncoding` of the same name — the same

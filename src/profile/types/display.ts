@@ -18,6 +18,30 @@ export interface DisplayLineTemplate {
   readonly lineId: number;
 }
 
+/**
+ * Where a display's encoder-aligned segments sit within a line's `charCount` text (e.g. the Push mk1's 8 segments of
+ * 8 characters, one above each encoder). Declarative data only: a segment is `width` characters starting at
+ * `offsets[i]`, in physical left-to-right order, so a generic renderer can place per-column content without knowing
+ * which device's LCD this is.
+ */
+export interface DisplaySegmentLayout {
+  readonly width: number;
+  readonly offsets: readonly number[];
+}
+
+/**
+ * The characters a segment's level bar is drawn with. A segment of `width` characters renders as `open`, then
+ * `width - 2` interior cells (each `empty`, `half` or `full`), then `close`, so a level resolves to half-cell steps.
+ * Each is one printable character the device's display is verified to render (for the Push mk1, ASCII 32-126 only).
+ */
+export interface DisplayMeterGlyphs {
+  readonly open: string;
+  readonly close: string;
+  readonly empty: string;
+  readonly half: string;
+  readonly full: string;
+}
+
 export interface DeviceDisplayDefinition {
   /** Profile-document-scoped id, unique among the profile's `displays`. Named by a `DisplayBinding.displayId`. */
   readonly id: string;
@@ -31,4 +55,8 @@ export interface DeviceDisplayDefinition {
   readonly textPrefix: readonly number[];
   /** The fixed number of ASCII text bytes the line carries; shorter text is space-padded, longer text truncated. */
   readonly charCount: number;
+  /** Optional: where the encoder-aligned segments sit in a line. Needed (with `meter`) for a `DisplayMeterBinding`. */
+  readonly segments?: DisplaySegmentLayout;
+  /** Optional: the characters a segment's level bar is drawn with. Needed (with `segments`) for a `DisplayMeterBinding`. */
+  readonly meter?: DisplayMeterGlyphs;
 }

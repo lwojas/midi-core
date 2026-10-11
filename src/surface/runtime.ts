@@ -96,7 +96,7 @@ export function createControlSurface(deps: ControlSurfaceDeps): ControlSurface {
     const used = new Set<string>();
     const bindings = deps.bindingTable.find((definition) => definition.mode === mode)?.bindings ?? [];
     for (const binding of bindings) {
-      if (binding.kind === "display") {
+      if (binding.kind === "display" || binding.kind === "display-meter") {
         const display = deps.profile.displays?.find((candidate) => candidate.id === binding.displayId);
         if (display) used.add(display.portId);
         continue;

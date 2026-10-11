@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BooleanControlDef, EnumControlDef, NumericControlDef } from "../control-api/types/control.js";
+import type { BooleanControlDef, ControlDef, ControlValue, EnumControlDef, NumericControlDef, StringControlDef } from "../control-api/types/control.js";
 import type { MidiMessage } from "../core/types/message.js";
 import type { MidiSource, MidiTarget } from "./types/address.js";
 import { buildFeedbackMessage, decodeRelativeDelta, resolveIncomingValue } from "./value.js";
@@ -123,9 +123,10 @@ describe("resolveIncomingValue — relative control-change (ECS-137)", () => {
     expect(result).toBe(0);
   });
 
-  it("returns undefined for a non-numeric control -- a relative delta onto a boolean/enum isn't a modeled pairing", () => {
+  it("returns undefined for a string control: a relative delta has no meaning for free text", () => {
     const message: MidiMessage = { type: "control-change", channel: 0, controller: 71, value: 2 };
-    expect(resolveIncomingValue(message, source, muted, { encoding: "twos-complement-7bit", current: false })).toBeUndefined();
+    const text: StringControlDef = { id: "pattern.name", label: "Name", kind: "string", default: "" };
+    expect(resolveIncomingValue(message, source, text, { encoding: "twos-complement-7bit", current: "" })).toBeUndefined();
   });
 
   it("still returns undefined for a non-matching source, exactly as the non-relative path does", () => {
@@ -151,6 +152,105 @@ describe("resolveIncomingValue — relative control-change (ECS-137)", () => {
     const message: MidiMessage = { type: "control-change", channel: 0, controller: 71, value: 1 };
     const result = resolveIncomingValue(message, source, narrowVolume, { encoding: "twos-complement-7bit", current: 1 });
     expect(result).toBeCloseTo(1.015, 5); // +1.5/100, not +1 (which would have clamped straight to the 1.5 max)
+  });
+});
+
+describe("resolveIncomingValue — relative scaling by control semantics", () => {
+  const source: MidiSource = { address: { type: "control-change", controller: 71 }, channel: 0 };
+  const encoding = "twos-complement-7bit" as const;
+  // webseq's real FX parameter shapes (model/fx.ts), as plain numeric defs.
+  const cutoff: NumericControlDef = { id: "fx.filter.cutoff", label: "Cutoff", kind: "number", min: 40, max: 18000, step: 1, unit: "Hz", default: 18000 };
+  const resonance: NumericControlDef = { id: "fx.filter.resonance", label: "Resonance", kind: "number", min: 0.1, max: 20, step: 0.01, default: 0.707 };
+  const mix: NumericControlDef = { id: "fx.delay.mix", label: "Mix", kind: "number", min: 0, max: 1, step: 0.01, default: 0 };
+  const attack: NumericControlDef = { id: "fx.comp.attack", label: "Attack", kind: "number", min: 0.0001, max: 1, step: 0.0001, unit: "s", default: 0.01 };
+  const threshold: NumericControlDef = { id: "fx.comp.threshold", label: "Threshold", kind: "number", min: -60, max: 0, step: 0.1, unit: "dB", default: -18 };
+  const filterMode: NumericControlDef = { id: "fx.filter.mode", label: "Mode", kind: "number", min: 0, max: 1, step: 1, default: 0 };
+  const bypass: BooleanControlDef = { id: "fx.enabled", label: "On", kind: "boolean", default: true };
+  const shape: EnumControlDef = {
+    id: "fx.shape",
+    label: "Shape",
+    kind: "enum",
+    options: [
+      { label: "Sine", value: "sine" },
+      { label: "Square", value: "square" },
+      { label: "Saw", value: "saw" },
+    ],
+    default: "sine",
+  };
+
+  const turn = (def: ControlDef, current: ControlValue<ControlDef>, raw: number) =>
+    resolveIncomingValue({ type: "control-change", channel: 0, controller: 71, value: raw }, source, def, { encoding, current });
+  /** Detents it takes to get from one end of `def` to the other (raw 1 = one clockwise detent), capped to catch a stuck turn. */
+  const detentsToSweep = (def: NumericControlDef, from: number, to: number): number => {
+    let value = from;
+    for (let count = 1; count <= 100_000; count += 1) {
+      value = turn(def, value, to > from ? 1 : 127) as number;
+      if (value === to) return count;
+    }
+    return Infinity;
+  };
+
+  it("sweeps a wide filter cutoff in around a hundred detents, not eighteen thousand", () => {
+    const up = detentsToSweep(cutoff, 40, 18000);
+    expect(up).toBeGreaterThan(50);
+    expect(up).toBeLessThan(150);
+    expect(detentsToSweep(cutoff, 18000, 40)).toBeLessThan(150);
+  });
+
+  it("moves a cutoff proportionally: a click is small down low and larger up high, and one click is never a no-op", () => {
+    const low = turn(cutoff, 40, 1) as number;
+    const high = turn(cutoff, 10000, 1) as number;
+    expect(low).toBeGreaterThan(40);
+    expect(high - 10000).toBeGreaterThan(low - 40);
+    expect(high - 10000).toBeLessThan(10000 * 0.1);
+  });
+
+  it("scales a fast turn (a larger delta) as several detents, keeping the value in range", () => {
+    expect(turn(cutoff, 1000, 4) as number).toBeGreaterThan(turn(cutoff, 1000, 1) as number);
+    expect(turn(cutoff, 17000, 40)).toBe(18000);
+    expect(turn(cutoff, 50, 100)).toBe(40);
+  });
+
+  it("keeps a resonance and an attack time (wide positive ranges) reachable end to end", () => {
+    expect(detentsToSweep(resonance, 0.1, 20)).toBeLessThan(150);
+    expect(detentsToSweep(attack, 0.0001, 1)).toBeLessThan(150);
+    expect(turn(attack, 0.0001, 1)).toBeCloseTo(0.0002, 6); // one click still moves, even though the ratio is tiny at 1 step
+  });
+
+  it("walks a 0-1 mix in its own 0.01 steps: every value stays individually reachable", () => {
+    expect(turn(mix, 0.5, 1)).toBeCloseTo(0.51, 6);
+    expect(turn(mix, 0.5, 127)).toBeCloseTo(0.49, 6);
+    expect(detentsToSweep(mix, 0, 1)).toBe(100);
+  });
+
+  it("coarsens a long dB range to a whole number of steps per click (0.6 dB on -60..0 in 0.1 steps)", () => {
+    expect(turn(threshold, -18, 1)).toBeCloseTo(-17.4, 6);
+    expect(detentsToSweep(threshold, -60, 0)).toBe(100);
+  });
+
+  it("treats a 0/1 stepped number as a discrete control: one click flips it, and it clamps at the ends", () => {
+    expect(turn(filterMode, 0, 1)).toBe(1);
+    expect(turn(filterMode, 1, 127)).toBe(0);
+    expect(turn(filterMode, 1, 1)).toBe(1);
+  });
+
+  it("sets a boolean from the turn's direction instead of flipping it on every click", () => {
+    expect(turn(bypass, false, 1)).toBe(true);
+    expect(turn(bypass, true, 3)).toBe(true);
+    expect(turn(bypass, true, 127)).toBe(false);
+    expect(turn(bypass, false, 126)).toBe(false);
+  });
+
+  it("steps an enum one option per turn in its direction, clamped at the ends", () => {
+    expect(turn(shape, "sine", 1)).toBe("square");
+    expect(turn(shape, "square", 5)).toBe("saw"); // a fast turn still visits one option at a time
+    expect(turn(shape, "saw", 1)).toBe("saw");
+    expect(turn(shape, "square", 127)).toBe("sine");
+    expect(turn(shape, "sine", 127)).toBe("sine");
+  });
+
+  it("leaves a value untouched for a zero delta", () => {
+    expect(turn(cutoff, 1234, 0)).toBe(1234);
   });
 });
 

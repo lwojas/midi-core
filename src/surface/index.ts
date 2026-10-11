@@ -28,6 +28,7 @@ export type {
   NavigationBinding,
   WindowedControlBinding,
   DisplayBinding,
+  DisplayMeterBinding,
   ModeBinding,
   SurfaceModeHooks,
   SurfaceModeDefinition,

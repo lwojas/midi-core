@@ -703,6 +703,8 @@ function checkDisplays(value: unknown, ports: unknown): ProfileDiagnostic[] {
       return;
     }
 
+    diagnostics.push(...checkDisplayMeter(display, path));
+
     const seenLineIds = new Set<number>();
     display.lines.forEach((line, lineIndex) => {
       const linePath = `${path}.lines[${lineIndex}]`;
@@ -717,6 +719,32 @@ function checkDisplays(value: unknown, ports: unknown): ProfileDiagnostic[] {
     });
   });
 
+  return diagnostics;
+}
+
+/** `segments`/`meter` (see `DeviceDisplayDefinition`) are optional, but only meaningful together and in bounds. */
+function checkDisplayMeter(display: Record<string, unknown>, path: string): ProfileDiagnostic[] {
+  const { segments, meter, charCount } = display;
+  if (segments === undefined && meter === undefined) return [];
+  const invalid = (sub: string, message: string): ProfileDiagnostic => ({ severity: "error", code: "invalid-display", path: `${path}.${sub}`, message });
+  if (segments === undefined || meter === undefined) {
+    return [invalid(segments === undefined ? "segments" : "meter", "segments and meter must be declared together.")];
+  }
+  const diagnostics: ProfileDiagnostic[] = [];
+  if (!isRecord(segments) || !Number.isInteger(segments.width) || (segments.width as number) < 3 || !Array.isArray(segments.offsets) || segments.offsets.length === 0) {
+    diagnostics.push(invalid("segments", "segments needs an integer width of at least 3 and a non-empty offsets array."));
+  } else {
+    const width = segments.width as number;
+    segments.offsets.forEach((offset, index) => {
+      if (!Number.isInteger(offset) || offset < 0 || offset + width > (charCount as number)) {
+        diagnostics.push(invalid(`segments.offsets[${index}]`, `Segment offset must be an integer where a ${width}-character segment fits within charCount ${String(charCount)}.`));
+      }
+    });
+  }
+  const isGlyph = (glyph: unknown) => typeof glyph === "string" && glyph.length === 1 && glyph.charCodeAt(0) >= 0x20 && glyph.charCodeAt(0) <= 0x7e;
+  if (!isRecord(meter) || !["open", "close", "empty", "half", "full"].every((key) => isGlyph(meter[key]))) {
+    diagnostics.push(invalid("meter", "meter needs open/close/empty/half/full, each one printable ASCII character."));
+  }
   return diagnostics;
 }
 

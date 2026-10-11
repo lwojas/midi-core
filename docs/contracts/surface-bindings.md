@@ -231,6 +231,49 @@ generation step around "the binding table assigns a role to" each
 `PhysicalControl"; dropping the field here would silently undo that
 vocabulary one ticket later.
 
+### Display writes are coalesced
+
+Both display binding kinds write through `createLineWriter()`
+(`src/surface/display-binding.ts`), one per line. The first write after
+a quiet period goes out immediately; writes inside
+`DISPLAY_LINE_MIN_INTERVAL_MS` (40 ms) replace each other and the latest
+goes out when the interval elapses, and a burst that ends on the text
+already shown sends nothing. At most one write is ever pending per line,
+and nothing is queued. This bounds what a turning encoder can make one
+line send (the text changes on every detent) without delaying an
+isolated change. A mode's initial repaint (`paint()`) is not delayed.
+
+## Display meter bindings
+
+```ts
+interface DisplayMeterBinding {
+  kind: "display-meter";
+  displayId: string;
+  lineId: string;
+  gridId: string;   // the cells whose positions map to display segments
+  template: string; // as EncoderWindowBinding.template
+  orientation?: "vertical" | "horizontal";
+  enabledWhen?: { controlId: string; equals: number };
+  fallback?: ControlIdResolution; // text shown while the gate doesn't hold
+}
+```
+
+One display line showing a window of numeric controls as per-segment level
+bars, e.g. the Push mk1's per-track volumes above its 8 encoders. It reads
+the same controls an `EncoderWindowBinding` turns (same grid, template,
+orientation and page offset), normalized against each control's live
+`min`/`max`; there is no display-only state. `DeviceDisplayDefinition`
+supplies the segment offsets/width (`segments`) and the glyphs (`meter`);
+`buildMeterText()` only composes them, so the generic layer never names a
+character. A line has one writer: outside `enabledWhen` the binding shows
+`fallback`'s text itself, which is why `createSequencerBindings()` drops
+the plain `DisplayBinding` for a line a meter owns.
+
+On the Push mk1 only printable ASCII (32-126) is verified to render, so the
+bar is `[=== ]` (`=` full, `-` half). The segment offsets assume the known
+4 x 17-character cell structure; where the spare column of each cell sits
+has not been confirmed on hardware.
+
 ## Mode indicator bindings (ECS-138)
 
 ```ts

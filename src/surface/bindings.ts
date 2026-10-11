@@ -14,13 +14,14 @@ import type { ControlGrid, GridCell } from "../profile/types/grid.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActionTrigger } from "./action-binding.js";
 import { createContextBoundControl } from "./context-bound-control.js";
-import { buildDisplayMessage, describeControlText } from "./display-binding.js";
+import { buildDisplayMessage, buildMeterText, createLineWriter, describeControlText } from "./display-binding.js";
 import { toMidiSource, toMidiTarget, toRelativeEncoding } from "./generate.js";
 import { resolveControlId } from "./types/bindings.js";
 import type {
   ControlBinding,
   ControlPress,
   DisplayBinding,
+  DisplayMeterBinding,
   EncoderWindowBinding,
   IndicatorBinding,
   ModeBinding,
@@ -95,6 +96,10 @@ function isModeIndicatorBinding(binding: ModeBinding): binding is ModeIndicatorB
 
 function isDisplayBinding(binding: ModeBinding): binding is DisplayBinding {
   return binding.kind === "display";
+}
+
+function isDisplayMeterBinding(binding: ModeBinding): binding is DisplayMeterBinding {
+  return binding.kind === "display-meter";
 }
 
 /**
@@ -900,13 +905,15 @@ export async function bindSurfaceMode(
       return gateControl?.def.kind === "number" && (gateControl as Control<NumericControlDef>).getValue() === binding.enabledWhen.equals;
     };
 
-    const def: NumericControlDef = { id: `encoder-window.${binding.gridId}.${cell.row}.${cell.column}`, label: physical.label, kind: "number", min: 0, max: 1, default: 0 };
-    const windowed = createWindowedControl(
+    const def: ControlDef = { id: `encoder-window.${binding.gridId}.${cell.row}.${cell.column}`, label: physical.label, kind: "number", min: 0, max: 1, default: 0 };
+    const windowed = createWindowedControl<ControlDef>(
       def,
       () => {
         const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
         const control = deps.registry.getControl(fillTemplate(binding.template, ...windowPosition(binding, cell, offset)));
-        return control?.def.kind === "number" ? (control as Control<NumericControlDef>) : undefined;
+        // A number steps by its own metadata, a boolean takes the turn's direction and an enum steps its options
+        // (`resolveIncomingValue()` decides, from the live target's def); only free text has no relative meaning.
+        return control !== undefined && control.def.kind !== "string" ? control : undefined;
       },
       // Retarget on a page turn *and* on a selection-context change: a template that resolves through the
       // application's live selection (e.g. "the selected effect's parameter N") names a different control after
@@ -972,7 +979,9 @@ export async function bindSurfaceMode(
     const output = display ? deps.ports.outputs[display.portId] : undefined;
     if (!display || !line || !output) continue;
 
-    const send = (text: string) => output.send(buildDisplayMessage(display, line, text));
+    // Writes to a line are coalesced (see `createLineWriter()`): a turning encoder changes a parameter's text on
+    // every detent, and only the latest text within a short interval is worth a SysEx.
+    const writer = createLineWriter((text) => output.send(buildDisplayMessage(display, line, text)));
 
     // The line follows its resolved control live: a "static" one is looked up once, a "from-selection" one
     // re-resolves whenever the application's `Selection` changes (ECS-140) — the same `SurfaceContext.onChange()`
@@ -993,7 +1002,7 @@ export async function bindSurfaceMode(
       const next = textNow();
       if (next === lastText) return;
       lastText = next;
-      send(next);
+      writer.write(next);
     };
     const retarget = () => {
       unsubscribeTarget?.();
@@ -1009,7 +1018,76 @@ export async function bindSurfaceMode(
       }));
     }
     unsubscribes.push(() => unsubscribeTarget?.());
-    painters.push({ paint: () => send(textNow()), clear: () => {} });
+    unsubscribes.push(writer.dispose);
+    painters.push({ paint: () => writer.paint(textNow()), clear: () => {} });
+  }
+
+  // A line of per-segment level bars over a window of numeric controls (`DisplayMeterBinding`), e.g. the Push
+  // mk1's per-track volumes above its 8 encoders. It reads the very controls an `EncoderWindowBinding` turns, so
+  // there is no display-only copy of the state, and it is the line's only writer: outside its `enabledWhen` gate it
+  // shows `fallback`'s text itself, rather than sharing the line with a plain `DisplayBinding`.
+  for (const binding of bindings.filter(isDisplayMeterBinding)) {
+    const display = deps.profile.displays?.find((candidate) => candidate.id === binding.displayId);
+    const line = display?.lines.find((candidate) => candidate.id === binding.lineId);
+    const output = display ? deps.ports.outputs[display.portId] : undefined;
+    const grid = deps.profile.grids?.find((candidate) => candidate.id === binding.gridId);
+    if (!navigation || !display || !line || !output || !grid || !display.segments || !display.meter) continue;
+    const { segments, meter } = display;
+
+    const writer = createLineWriter((text) => output.send(buildDisplayMessage(display, line, text)));
+    const gateControl = binding.enabledWhen ? deps.registry.getControl(binding.enabledWhen.controlId) : undefined;
+    const gated = (): boolean => {
+      if (!binding.enabledWhen) return true;
+      return gateControl?.def.kind === "number" && (gateControl as Control<NumericControlDef>).getValue() === binding.enabledWhen.equals;
+    };
+
+    // One slot per segment, in physical order; a cell with no numeric control behind it leaves its segment blank.
+    const slotOf = (cell: { row: number; column: number }) => (binding.orientation === "horizontal" ? cell.column : cell.row);
+    let targets: Array<Control<NumericControlDef> | undefined> = [];
+    let fallback: Control<ControlDef> | undefined;
+    let subscriptions: Unsubscribe[] = [];
+    let lastText = "";
+
+    const textNow = (): string => {
+      if (!gated()) return fallback ? describeControlText(fallback) : "";
+      const levels = targets.map((target) => {
+        if (!target) return undefined;
+        const { min, max } = target.def;
+        return max > min ? (target.getValue() - min) / (max - min) : 0;
+      });
+      return buildMeterText(display.charCount, segments, meter, levels);
+    };
+    const emitIfChanged = () => {
+      const next = textNow();
+      if (next === lastText) return;
+      lastText = next;
+      writer.write(next);
+    };
+    const refresh = () => {
+      for (const unsubscribe of subscriptions) unsubscribe();
+      const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
+      targets = [];
+      for (const cell of grid.cells) {
+        const control = deps.registry.getControl(fillTemplate(binding.template, ...windowPosition(binding, cell, offset)));
+        targets[slotOf(cell)] = control?.def.kind === "number" ? (control as Control<NumericControlDef>) : undefined;
+      }
+      const fallbackId = binding.fallback ? resolveControlId(binding.fallback, deps.context) : undefined;
+      fallback = fallbackId !== undefined ? deps.registry.getControl(fallbackId) : undefined;
+      subscriptions = [...targets, fallback, gateControl].flatMap((control) => (control ? [(control as Control<ControlDef>).onChange(emitIfChanged)] : []));
+    };
+    refresh();
+    lastText = textNow();
+    const retarget = () => {
+      refresh();
+      emitIfChanged();
+    };
+    unsubscribes.push(navigation.onChange(retarget));
+    unsubscribes.push(deps.context.onChange(retarget));
+    unsubscribes.push(() => {
+      for (const unsubscribe of subscriptions) unsubscribe();
+    });
+    unsubscribes.push(writer.dispose);
+    painters.push({ paint: () => writer.paint(textNow()), clear: () => {} });
   }
 
   for (const painter of painters) painter.paint();

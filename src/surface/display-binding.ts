@@ -1,6 +1,6 @@
 import type { Control, ControlDef } from "../control-api/types/control.js";
 import type { MidiMessage } from "../core/types/message.js";
-import type { DeviceDisplayDefinition, DisplayLineTemplate } from "../profile/types/display.js";
+import type { DeviceDisplayDefinition, DisplayLineTemplate, DisplayMeterGlyphs, DisplaySegmentLayout } from "../profile/types/display.js";
 
 /**
  * Builds the raw SysEx message that writes `text` to one line of a declarative device display (ECS-137),
@@ -40,4 +40,92 @@ export function describeControlText(control: Control<ControlDef>): string {
   }
   if (def.kind === "boolean") return `${def.label} ${value ? "on" : "off"}`;
   return `${def.label} ${String(value)}`;
+}
+
+/**
+ * The line text for a row of per-segment level bars: `levels[i]` is a 0-1 fraction drawn into segment `i` of
+ * `segments` (`undefined` leaves that segment blank, for a position with no control behind it). Pure formatting from
+ * declared data (`DisplaySegmentLayout`, `DisplayMeterGlyphs`) -- no device knowledge, so which characters and
+ * offsets a given LCD uses stays in its profile. A bar is `open`, `width - 2` interior cells, `close`; the
+ * interior resolves to half-cell steps (`full`/`half`/`empty`), so a level reads at a glance and only changes the
+ * text (and so only costs a display write) when it crosses one of those steps.
+ */
+export function buildMeterText(
+  charCount: number,
+  segments: DisplaySegmentLayout,
+  glyphs: DisplayMeterGlyphs,
+  levels: ReadonlyArray<number | undefined>,
+): string {
+  const characters = new Array<string>(charCount).fill(" ");
+  const interior = segments.width - 2;
+  segments.offsets.forEach((offset, index) => {
+    const level = levels[index];
+    if (level === undefined || !Number.isFinite(level)) return;
+    const halves = Math.round(Math.min(1, Math.max(0, level)) * interior * 2);
+    const bar = [glyphs.open];
+    for (let cell = 0; cell < interior; cell += 1) {
+      const filled = halves - cell * 2;
+      bar.push(filled >= 2 ? glyphs.full : filled === 1 ? glyphs.half : glyphs.empty);
+    }
+    bar.push(glyphs.close);
+    bar.forEach((character, position) => {
+      characters[offset + position] = character;
+    });
+  });
+  return characters.join("");
+}
+
+/**
+ * Minimum gap between two writes to one display line. A turning encoder changes a line's text on every detent;
+ * past this rate the intermediate texts are unreadable anyway, and only the latest matters. About 25 writes a second
+ * keeps a line visibly live while bounding the SysEx traffic one line can generate.
+ */
+export const DISPLAY_LINE_MIN_INTERVAL_MS = 40;
+
+/**
+ * Serializes and coalesces writes to one display line. The first write after a quiet period goes out immediately,
+ * so an isolated change has no added latency; writes arriving within `minIntervalMs` of the last one replace each
+ * other and the latest goes out when the interval elapses (an update that lands back on the text already shown
+ * sends nothing). `paint()` always writes straight away, for a mode's initial/full repaint. Nothing is queued: at
+ * most one write is ever pending per line.
+ */
+export function createLineWriter(send: (text: string) => void, minIntervalMs: number = DISPLAY_LINE_MIN_INTERVAL_MS) {
+  let lastSentAt = Number.NEGATIVE_INFINITY;
+  let lastSent: string | undefined;
+  let pending: string | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const emit = (text: string) => {
+    lastSent = text;
+    lastSentAt = Date.now();
+    send(text);
+  };
+  const cancel = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+    pending = undefined;
+  };
+
+  return {
+    paint(text: string): void {
+      cancel();
+      emit(text);
+    },
+    write(text: string): void {
+      const wait = lastSentAt + minIntervalMs - Date.now();
+      if (timer === undefined && wait <= 0) {
+        if (text !== lastSent) emit(text);
+        return;
+      }
+      pending = text;
+      if (timer !== undefined) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        const next = pending;
+        pending = undefined;
+        if (next !== undefined && next !== lastSent) emit(next);
+      }, Math.max(0, wait));
+    },
+    dispose: cancel,
+  };
 }

@@ -529,6 +529,18 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
   prefix: [0xf0, 0x47, 0x7f, 0x15],
   textPrefix: [0x00, 0x45, 0x00],
   charCount: 68,
+  /**
+   * The 8 encoder-aligned segments: 8 characters each, laid out as 4 cells of 17 characters (segment, segment, one
+   * spare column), so segment `i` starts at `8*i + floor(i/2)`. Only the 17-character cell structure is the
+   * well-known Push 1 layout; the exact placement of the spare column has not been confirmed on this unit.
+   */
+  segments: { width: 8, offsets: [0, 8, 17, 25, 34, 42, 51, 59] },
+  /**
+   * Level-bar glyphs. Only printable ASCII (32-126) is verified to render on this display
+   * (`midi-profiler/research/push-mk1/sysex-mapping.md`), so the bar is built from ASCII rather than from any
+   * unverified block-character code: `[=== ]` is a bar, `-` a half cell.
+   */
+  meter: { open: "[", close: "]", empty: " ", half: "-", full: "=" },
   lines: [
     { id: "line-1", label: "Line 1", lineId: 0x18 },
     { id: "line-2", label: "Line 2", lineId: 0x19 },
@@ -616,7 +628,12 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
    * bindings exist for it yet, the same "entry point, not an implementation" treatment `transport.clear` gets on a
    * device with no button for it.
    */
-  encoderBank: { gridId: "encoder-bank", modeButtons: { volume: "button-volume", devices: "button-devices" } },
+  encoderBank: {
+    gridId: "encoder-bank",
+    modeButtons: { volume: "button-volume", devices: "button-devices" },
+    // The top line shows each track's volume as a level bar above its encoder while Volume is live.
+    meterLines: { volume: { displayId: "lcd", lineId: "line-1" } },
+  },
 };
 
 export const PUSH_MK1_PROFILE: DeviceProfile = {

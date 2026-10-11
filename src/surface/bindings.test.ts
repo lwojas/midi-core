@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockMidiInput } from "../adapters/mock/mock-input.js";
 import { MockMidiOutput } from "../adapters/mock/mock-output.js";
 import { createControl } from "../control-api/control.js";
@@ -10,6 +10,7 @@ import type { ControlRegistry } from "../control-api/types/registry.js";
 import { createMidiInput } from "../core/input/create-midi-input.js";
 import { createMidiOutput } from "../core/output/create-midi-output.js";
 import type { PhysicalControl } from "../profile/types/control.js";
+import { DISPLAY_LINE_MIN_INTERVAL_MS } from "./display-binding.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActiveMode, bindSurfaceMode, type BindSurfaceModeDeps } from "./bindings.js";
 import { createSurfaceNavigation } from "./navigation.js";
@@ -428,6 +429,10 @@ describe("bindSurfaceMode — modifier-conditional bindings (ECS-137)", () => {
 });
 
 describe("bindSurfaceMode — display binding (ECS-137)", () => {
+  // Display writes are coalesced per line (see createLineWriter): fake timers let a test step past the interval.
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
   const patternName: StringControlDef = { id: "sequencer.pattern-name", label: "Pattern name", kind: "string", default: "" };
 
   function profileWithDisplay(): DeviceProfile {
@@ -469,6 +474,7 @@ describe("bindSurfaceMode — display binding (ECS-137)", () => {
     await bindSurfaceMode({ mode: "mixer", bindings: [displayBinding] }, deps);
     expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 72, 105, 0x20, 0x20, 0xf7]); // "Hi  "
 
+    vi.advanceTimersByTime(DISPLAY_LINE_MIN_INTERVAL_MS);
     control.setValue("Yo!!");
     expect(Array.from(rawOutput.sentMessages[1]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 89, 111, 33, 33, 0xf7]);
   });
@@ -1159,6 +1165,10 @@ describe("bindSurfaceMode — from-selection control binding (ECS-140)", () => {
 });
 
 describe("bindSurfaceMode — from-selection display binding (ECS-140)", () => {
+  // Display writes are coalesced per line (see createLineWriter): fake timers let a test step past the interval.
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
   function profileWithDisplay(): DeviceProfile {
     return {
       ...profile,
@@ -1201,6 +1211,7 @@ describe("bindSurfaceMode — from-selection display binding (ECS-140)", () => {
     await bindSurfaceMode({ mode: "steps", bindings: [binding] }, deps);
     expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 75, 105, 99, 107, 0xf7]); // "Kick"
 
+    vi.advanceTimersByTime(DISPLAY_LINE_MIN_INTERVAL_MS);
     context.setSelection({ scope: "track", id: "2" });
     expect(Array.from(rawOutput.sentMessages[1]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 83, 110, 97, 114, 0xf7]); // "Snare"
   });
@@ -1222,6 +1233,7 @@ describe("bindSurfaceMode — from-selection display binding (ECS-140)", () => {
     await bindSurfaceMode({ mode: "steps", bindings: [binding] }, deps);
     expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 0x20, 0x20, 0x20, 0x20, 0xf7]); // fallback "" padded
 
+    vi.advanceTimersByTime(DISPLAY_LINE_MIN_INTERVAL_MS);
     context.setSelection({ scope: "track", id: "1" });
     expect(Array.from(rawOutput.sentMessages[1]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 75, 105, 99, 107, 0xf7]); // "Kick"
   });

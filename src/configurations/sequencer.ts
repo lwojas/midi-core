@@ -434,10 +434,28 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
 
   // Display lines (ECS-139): the device's `layout.displayLines` roles, each painted only when the application also
   // names a resolution for that same role. Available everywhere, like `encoderBindings`: a display is not a mode.
+  //
+  // A line a category's meter owns (`layout.encoderBank.meterLines`, below) gets no plain binding of its own: one
+  // writer per line, so the meter binding shows that role's text itself (as its `fallback`) while its category isn't
+  // live, instead of two bindings racing to paint the same line.
+  const meterLines = layout.encoderBank?.meterLines ?? {};
+  const meteredLine = (target: { displayId: string; lineId: string }) =>
+    layout.encoderBank !== undefined &&
+    Object.entries(meterLines).some(([category, meter]) => {
+      const display = profile.displays?.find((candidate) => candidate.id === meter.displayId);
+      return (
+        meter.displayId === target.displayId &&
+        meter.lineId === target.lineId &&
+        contract.encoderBankTemplates?.[category] !== undefined &&
+        display?.segments !== undefined &&
+        display.meter !== undefined
+      );
+    });
   const displayBindings: ModeBinding[] = [];
   for (const [role, target] of Object.entries(layout.displayLines ?? {})) {
     const resolve = contract.displayLines?.[role];
     if (resolve === undefined) continue;
+    if (meteredLine(target)) continue;
     const display = profile.displays?.find((candidate) => candidate.id === target.displayId);
     if (!display?.lines.some((candidate) => candidate.id === target.lineId)) {
       unresolved.push(`display: ${role} (line ${target.displayId}/${target.lineId})`);
@@ -524,6 +542,36 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         }),
       )
     : [];
+
+  // Each category with a meter line and a template shows its values as per-segment level bars on that line while it
+  // is the live category: the same template, grid, orientation and gate its encoder window uses, so the bars are the
+  // controls the encoders turn. Outside the gate the line shows whichever `displayLines` role lands on it.
+  if (encoderBankGrid) {
+    for (const [category, target] of Object.entries(meterLines)) {
+      const template = contract.encoderBankTemplates?.[category];
+      if (template === undefined) continue;
+      const display = profile.displays?.find((candidate) => candidate.id === target.displayId);
+      if (!display?.lines.some((candidate) => candidate.id === target.lineId) || !display.segments || !display.meter) {
+        unresolved.push(`encoder bank meter: ${category} (line ${target.displayId}/${target.lineId})`);
+        continue;
+      }
+      const modeValue = contract.encoderBankModes?.[category];
+      const gated = modeValue !== undefined && contract.encoderBankModeControl !== undefined;
+      const fallbackRole = Object.entries(layout.displayLines ?? {}).find(
+        ([, line]) => line.displayId === target.displayId && line.lineId === target.lineId,
+      )?.[0];
+      displayBindings.push({
+        kind: "display-meter",
+        displayId: target.displayId,
+        lineId: target.lineId,
+        gridId: encoderBankGrid.id,
+        template,
+        orientation: "horizontal",
+        ...(gated ? { enabledWhen: { controlId: contract.encoderBankModeControl!, equals: modeValue! } } : {}),
+        ...(fallbackRole !== undefined && contract.displayLines?.[fallbackRole] !== undefined ? { fallback: contract.displayLines[fallbackRole] } : {}),
+      });
+    }
+  }
 
   const transportSources: Array<{ name: (typeof TRANSPORT_NAMES)[number]; controlId: string; control: PhysicalControl; source: MidiSource; action: Action }> =
     [];
