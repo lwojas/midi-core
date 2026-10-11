@@ -16,6 +16,10 @@ import { createSequencerBindings, type SequencerContract } from "./sequencer.js"
  * ECS-155, end to end: the Push mk1's contextual selection buttons (CC 36-43) and Master (CC 28), through the
  * surface runtime. MIDI Core only ever moves a virtual index in and out of one shared application control; what the
  * index means (a track, here) is entirely this test's own stand-in for the integration layer, never midi-core's.
+ *
+ * These are side buttons, a vertical column: button-select-1 (item 0, topmost) is CC 43, descending to
+ * button-select-8 (item 7, bottommost) at CC 36 (ECS-155 hardware correction) -- so the CC pressed for item `n`
+ * is `43 - n`, not `36 + n`.
  */
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -87,10 +91,10 @@ describe("ECS-155: the Push mk1's contextual selection buttons (CC 36-43) and Ma
     const { surface, pressCc, selectedIndex } = build();
     await surface.attach();
 
-    await pressCc(38); // button-select-3
+    await pressCc(41); // button-select-3 (item 2)
     expect(selectedIndex.getValue()).toBe(2);
 
-    await pressCc(43); // button-select-8
+    await pressCc(36); // button-select-8 (item 7, bottommost)
     expect(selectedIndex.getValue()).toBe(7);
     await surface.detach();
   });
@@ -99,9 +103,9 @@ describe("ECS-155: the Push mk1's contextual selection buttons (CC 36-43) and Ma
     const { surface, pressCc, lastValue } = build();
     await surface.attach();
 
-    await pressCc(36); // button-select-1
-    expect(lastValue(36)).toBe(22);
-    for (const cc of [37, 38, 39, 40, 41, 42, 43]) expect(lastValue(cc), `cc ${cc}`).toBe(10);
+    await pressCc(43); // button-select-1 (topmost)
+    expect(lastValue(43)).toBe(22);
+    for (const cc of [36, 37, 38, 39, 40, 41, 42]) expect(lastValue(cc), `cc ${cc}`).toBe(10);
     await surface.detach();
   });
 
@@ -110,8 +114,8 @@ describe("ECS-155: the Push mk1's contextual selection buttons (CC 36-43) and Ma
     await surface.attach();
 
     selectedIndex.setValue(4); // the application's own UI selected item 4 directly
-    expect(lastValue(40)).toBe(22); // button-select-5, column 4
-    expect(lastValue(36)).toBe(10);
+    expect(lastValue(39)).toBe(22); // button-select-5 (item 4) is CC 39
+    expect(lastValue(43)).toBe(10); // button-select-1 (item 0): still resting
     await surface.detach();
   });
 
@@ -119,13 +123,13 @@ describe("ECS-155: the Push mk1's contextual selection buttons (CC 36-43) and Ma
     const { surface, pressCc, selectedIndex, lastValue } = build({ trackCount: 24 });
     await surface.attach();
 
-    selectedIndex.setValue(3); // selected on page 0 (button-select-4, CC 39)
-    expect(lastValue(39)).toBe(22);
+    selectedIndex.setValue(3); // selected on page 0 (button-select-4, CC 40)
+    expect(lastValue(40)).toBe(22);
 
     await pressCc(47); // Arrow Down: pages tracks by the pad grid's own 8-row page size
-    expect(lastValue(39)).toBe(10); // column 3 is now item 11 on this page: no longer the selected one
+    expect(lastValue(40)).toBe(10); // item 3's button is now item 11 on this page: no longer the selected one
 
-    await pressCc(39); // pressing it now selects item 11, not item 3
+    await pressCc(40); // pressing it now selects item 11, not item 3
     expect(selectedIndex.getValue()).toBe(11);
     await surface.detach();
   });
@@ -134,8 +138,10 @@ describe("ECS-155: the Push mk1's contextual selection buttons (CC 36-43) and Ma
     const { surface, lastValue } = build({ trackCount: 5 });
     await surface.attach();
 
-    for (const cc of [36, 37, 38, 39, 40]) expect(lastValue(cc), `cc ${cc}`).toBe(10); // items 0-4 exist: resting tier
-    for (const cc of [41, 42, 43]) expect(lastValue(cc), `cc ${cc}`).toBe(0); // items 5-7 don't: off
+    // Items 0-4 exist: button-select-1..5, CC 43 down to 39, rest at their resting tier.
+    for (const cc of [43, 42, 41, 40, 39]) expect(lastValue(cc), `cc ${cc}`).toBe(10);
+    // Items 5-7 don't: button-select-6..8, CC 38 down to 36, fully off.
+    for (const cc of [38, 37, 36]) expect(lastValue(cc), `cc ${cc}`).toBe(0);
     await surface.detach();
   });
 
@@ -143,14 +149,14 @@ describe("ECS-155: the Push mk1's contextual selection buttons (CC 36-43) and Ma
     const { surface, pressCc, selectedIndex, lastValue } = build();
     await surface.attach();
 
-    await pressCc(37); // select item 1
+    await pressCc(42); // select item 1 (button-select-2)
     expect(selectedIndex.getValue()).toBe(1);
-    expect(lastValue(37)).toBe(22);
+    expect(lastValue(42)).toBe(22);
 
     await pressCc(28); // Master
     expect(selectedIndex.getValue()).toBe(-1);
-    expect(lastValue(37)).toBe(10); // no longer selected
-    // Master itself is a plain monochrome button (UTILITY_BUTTONS), not the selection row's velocity-color-led
+    expect(lastValue(42)).toBe(10); // no longer selected
+    // Master itself is a plain monochrome button (UTILITY_BUTTONS), not the selection column's velocity-color-led
     // family, so its own IndicatorBinding still renders the ordinary dim/full tier: lit while the index is the
     // "no selection" sentinel.
     expect(lastValue(28)).toBe(127);
@@ -166,9 +172,9 @@ describe("ECS-155: the Push mk1's contextual selection buttons (CC 36-43) and Ma
     surface.navigation.setMode("mixer");
     await flush();
 
-    await pressCc(40); // button-select-5
+    await pressCc(39); // button-select-5 (item 4)
     expect(selectedIndex.getValue()).toBe(4);
-    expect(lastValue(40)).toBe(22);
+    expect(lastValue(39)).toBe(22);
 
     await pressCc(28); // Master, still live in mixer mode too
     expect(selectedIndex.getValue()).toBe(-1);

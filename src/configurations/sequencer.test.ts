@@ -340,7 +340,7 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
     expect(unresolved).toEqual([]);
   });
 
-  it("windows CC 36-43 as a selection row sharing the pad grid's own paging, available in every mode (ECS-155)", () => {
+  it("windows CC 36-43 as a selection column sharing the pad grid's own paging (vertical, the default orientation), available in every mode (ECS-155)", () => {
     const { bindings: pushTable } = createSequencerBindings(input, push.profile, { ...contract(), selectionIndexControl: "selection.index" });
     for (const mode of ["steps", "mixer", "transport"] as const) {
       const selections = bindingsOf(pushTable, mode).filter((binding) => binding.kind === "selection");
@@ -359,8 +359,8 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
           kind: "selection",
           gridId: "selection-buttons",
           indexControl: "selection.index",
-          orientation: "horizontal",
         });
+        expect(binding).not.toHaveProperty("orientation");
       }
     }
   });

@@ -318,11 +318,14 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
       }))
     : [];
 
-  // Contextual selection buttons (ECS-155): the same "always-available, dedicated horizontal strip sharing the step
-  // grid's own page offset" shape `dedicatedMuteBindings` already uses, just comparing a shared selected-index
-  // control instead of driving one boolean per cell. No binding at all when the application names no
-  // `selectionIndexControl` — a profile's selection buttons (if it has any) then simply do nothing, the same
-  // "omitted field, no binding" treatment `bankControl`/`isPlayingControl` already get.
+  // Contextual selection buttons (ECS-155): the same "always-available, dedicated grid sharing the step grid's own
+  // page offset" shape `dedicatedMuteBindings` already uses, just comparing a shared selected-index control instead
+  // of driving one boolean per cell. Vertical orientation (the default, so left unset here): unlike the mute strip
+  // (a horizontal row above the pads), a device's contextual selection buttons are typically a side column running
+  // the same vertical axis the step grid's own rows (tracks) already do -- see the Push mk1's own `PUSH_MK1_SELECTION_GRID`
+  // for a concrete case (ECS-155 hardware correction: these turned out to be side buttons, not a row). No binding
+  // at all when the application names no `selectionIndexControl` — a profile's selection buttons (if it has any)
+  // then simply do nothing, the same "omitted field, no binding" treatment `bankControl`/`isPlayingControl` already get.
   const selectionGrid = layout.selectionGridId ? profile.grids?.find((candidate) => candidate.id === layout.selectionGridId) : undefined;
   if (layout.selectionGridId && !selectionGrid) unresolved.push(`selection buttons (grid ${layout.selectionGridId})`);
   const selectionBindings: ModeBinding[] =
@@ -330,10 +333,9 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
       ? selectionGrid.cells.map((cell) => ({
           kind: "selection",
           physicalControlId: cell.controlId,
-          role: `selection slot ${cell.column + 1}`,
+          role: `selection slot ${cell.row + 1}`,
           gridId: selectionGrid.id,
           indexControl: contract.selectionIndexControl!,
-          orientation: "horizontal",
           countControl: contract.trackCountControl,
           colour: colours.selection,
         }))

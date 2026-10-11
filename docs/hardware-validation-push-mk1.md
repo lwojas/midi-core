@@ -414,6 +414,18 @@ for a note-addressed target before this ticket (ECS-150's own scope); it now res
 control-change-addressed boolean the same way, which the selection buttons are the first control in
 this profile to actually need.
 
+### Follow-up correction: these are side buttons, a vertical column (2026-10-11)
+
+A second round of hands-on testing found the physical layout wrong too, not just the feedback family
+above: these are side buttons running down the device, not a row — confirmed to descend CC 43
+(topmost) to CC 36 (bottommost), the opposite of this profile's first guess (CC 36 as the topmost/
+first slot, ascending). `SELECTION_BUTTONS` now orders `select-1` (the first slot — the topmost
+button, and so the first track on a page) at CC 43 down to `select-8` at CC 36, and
+`PUSH_MK1_SELECTION_GRID` is now an 8-row, 1-column grid (`select-1` at row 0, matching the pad
+grid's own "row 0 is the top" convention) instead of a 1-row, 8-column one — paged along the same
+vertical axis the pad grid and dedicated mute strip already share (`orientation` left at its default,
+"vertical", rather than the "horizontal" the first version declared).
+
 ## What's still unverified
 
 - Encoders 2-8 and the Master Encoder's exact relative-encoding bytes

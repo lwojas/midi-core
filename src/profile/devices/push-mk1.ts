@@ -124,11 +124,13 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * bright/standard/dim RGB tiers (still ECS-135's gap, not reopened here).
  *
  * **ECS-155**: CC 36-43, this ticket's own "contextual selection buttons," per the ticket's own explicit mapping,
- * now hands-on confirmed real and distinct (the mapping itself was right first try; neither research doc documents
- * a control here, so this profile's CCs were the only source). The *feedback* family first declared, though, was
- * wrong: not the monochrome on/off/dim `UTILITY_BUTTONS` family, but a `velocity-color-led` one with its own raw
- * range (1-26, confirmed: white-ish starting at 1, green in the low 20s) -- see `PUSH_MK1_SELECTION_COLOUR_PALETTE`'s
- * own doc comment for the corrected declaration and the values actually confirmed to render.
+ * now hands-on confirmed real and distinct (the CCs themselves were right first try; neither research doc
+ * documents a control here, so this profile's CCs were the only source). Two things declared alongside them were
+ * wrong, both corrected post-verification: the *feedback* family (not the monochrome on/off/dim `UTILITY_BUTTONS`
+ * family, but a `velocity-color-led` one with its own raw range, 1-26, confirmed white-ish starting at 1 and green
+ * in the low 20s -- see `PUSH_MK1_SELECTION_COLOUR_PALETTE`'s own doc comment), and the *layout* (these are side
+ * buttons, a vertical column running CC 43, the topmost, down to CC 36, the bottommost -- see `SELECTION_BUTTONS`'
+ * and `PUSH_MK1_SELECTION_GRID`'s own doc comments).
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {
@@ -379,15 +381,22 @@ const PUSH_MK1_SELECTION_DIM_VALUE = 10;
  */
 const PUSH_MK1_SELECTION_COLOUR_PALETTE = [{ colour: { red: 127, green: 0, blue: 127 }, velocity: 22 }] as const;
 
+/**
+ * ECS-155 hardware correction: these are side buttons, a vertical column, not a horizontal row -- confirmed
+ * hands-on to run CC 43 (topmost) down to CC 36 (bottommost), descending top to bottom. `select-1` (the
+ * physically topmost button, so the first slot/track on a page) is therefore CC 43, not CC 36; `select-8`
+ * (bottommost, the last slot/track) is CC 36. `PUSH_MK1_SELECTION_GRID` lays these out as a single column with
+ * `select-1` at row 0 (top), matching the pad grid's own "row 0 is the top" convention.
+ */
 const SELECTION_BUTTONS = [
-  ["select-1", "Selection button 1", 36],
-  ["select-2", "Selection button 2", 37],
-  ["select-3", "Selection button 3", 38],
-  ["select-4", "Selection button 4", 39],
-  ["select-5", "Selection button 5", 40],
-  ["select-6", "Selection button 6", 41],
-  ["select-7", "Selection button 7", 42],
-  ["select-8", "Selection button 8", 43],
+  ["select-1", "Selection button 1 (topmost)", 43],
+  ["select-2", "Selection button 2", 42],
+  ["select-3", "Selection button 3", 41],
+  ["select-4", "Selection button 4", 40],
+  ["select-5", "Selection button 5", 39],
+  ["select-6", "Selection button 6", 38],
+  ["select-7", "Selection button 7", 37],
+  ["select-8", "Selection button 8 (bottommost)", 36],
 ] as const;
 
 export const PUSH_MK1_SELECTION_BUTTONS: readonly PhysicalControl[] = SELECTION_BUTTONS.map(([id, label, cc]) => ({
@@ -445,16 +454,18 @@ export const PUSH_MK1_MUTE_STRIP_GRID: ControlGrid = {
 };
 
 /**
- * ECS-155: CC 36-43, as a dedicated grid of contextual selection buttons -- the same "one row, shares the step
- * grid's own page offset, no paging of its own" shape `PUSH_MK1_MUTE_STRIP_GRID` already uses, so up/down (which
- * already pages tracks in `steps` mode) moves the selection window too, with no separate paging control.
+ * ECS-155 hardware correction: a vertical column (one per row, not one per column), confirmed hands-on -- these
+ * are side buttons, not a row like `PUSH_MK1_MUTE_STRIP_GRID`. `select-1` (CC 43, the physically topmost button)
+ * is row 0, matching the pad grid's own "row 0 is the top" convention; `select-8` (CC 36, bottommost) is row 7.
+ * Still shares the step grid's own page offset and needs no paging of its own, same as the mute strip -- just
+ * along the vertical axis this device's grids already page by default, not a horizontal one.
  */
 export const PUSH_MK1_SELECTION_GRID: ControlGrid = {
   id: "selection-buttons",
-  label: "CC 36-43, as a dedicated row of contextual selection buttons",
-  rows: 1,
-  columns: 8,
-  cells: Array.from({ length: 8 }, (_, column) => ({ row: 0, column, controlId: `button-select-${column + 1}` })),
+  label: "CC 36-43, as a dedicated column of contextual selection buttons",
+  rows: 8,
+  columns: 1,
+  cells: Array.from({ length: 8 }, (_, row) => ({ row, column: 0, controlId: `button-select-${row + 1}` })),
 };
 
 /**
@@ -532,10 +543,11 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
  * unused as before) and gives Shift a real, lit state it never had -- the one `button-shift` was always missing
  * despite having `feedback` declared on its `PhysicalControl` since this profile's very first version.
  *
- * **ECS-155**: `selectionGridId` names the new CC 36-43 row (`PUSH_MK1_SELECTION_GRID`), and `selectionClear` names
- * the existing Master button (CC 28, already declared in `UTILITY_BUTTONS`) as the control that clears item
- * selection and enters the master/context state. Both are device facts only -- what a selected index means, and
- * what "master" switches to, is entirely the integration layer's (`docs/contracts/control-api.md`'s own boundary).
+ * **ECS-155**: `selectionGridId` names the new CC 36-43 side-button column (`PUSH_MK1_SELECTION_GRID`), and
+ * `selectionClear` names the existing Master button (CC 28, already declared in `UTILITY_BUTTONS`) as the control
+ * that clears item selection and enters the master/context state. Both are device facts only -- what a selected
+ * index means, and what "master" switches to, is entirely the integration layer's
+ * (`docs/contracts/control-api.md`'s own boundary).
  */
 export const PUSH_MK1_LAYOUT: DeviceLayout = {
   modeButtons: [{ controlId: "button-note", mode: "steps", indicator: true }],

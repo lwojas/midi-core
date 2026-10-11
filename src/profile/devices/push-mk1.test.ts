@@ -39,8 +39,9 @@ describe("PUSH_MK1_PROFILE", () => {
   });
 
   it("ECS-155 hardware correction: the selection buttons (CC 36-43) are a velocity-color-led family, confirmed hands-on -- not the monochrome family UTILITY_BUTTONS uses", () => {
+    // Side buttons: select-1 (topmost) is the highest CC, descending to select-8 (bottommost) at the lowest.
     expect(PUSH_MK1_SELECTION_BUTTONS.map((control) => control.input?.address)).toEqual(
-      [36, 37, 38, 39, 40, 41, 42, 43].map((controller) => ({ type: "control-change", controller })),
+      [43, 42, 41, 40, 39, 38, 37, 36].map((controller) => ({ type: "control-change", controller })),
     );
     for (const button of PUSH_MK1_SELECTION_BUTTONS) {
       expect(button.feedback?.kind, button.id).toBe("velocity-color-led");
@@ -50,23 +51,23 @@ describe("PUSH_MK1_PROFILE", () => {
     }
   });
 
-  it("ECS-155: CC 36-43 form a dedicated 1x8 selection-buttons grid, and the layout names it plus the Master button as the clear control", () => {
+  it("ECS-155 hardware correction: CC 36-43 form a dedicated 8x1 selection-buttons column (side buttons, not a row), and the layout names it plus the Master button as the clear control", () => {
     expect(PUSH_MK1_PROFILE.layout?.selectionGridId).toBe("selection-buttons");
     expect(PUSH_MK1_PROFILE.layout?.selectionClear).toBe("button-master");
     expect(PUSH_MK1_SELECTION_GRID).toEqual({
       id: "selection-buttons",
-      label: "CC 36-43, as a dedicated row of contextual selection buttons",
-      rows: 1,
-      columns: 8,
+      label: "CC 36-43, as a dedicated column of contextual selection buttons",
+      rows: 8,
+      columns: 1,
       cells: [
         { row: 0, column: 0, controlId: "button-select-1" },
-        { row: 0, column: 1, controlId: "button-select-2" },
-        { row: 0, column: 2, controlId: "button-select-3" },
-        { row: 0, column: 3, controlId: "button-select-4" },
-        { row: 0, column: 4, controlId: "button-select-5" },
-        { row: 0, column: 5, controlId: "button-select-6" },
-        { row: 0, column: 6, controlId: "button-select-7" },
-        { row: 0, column: 7, controlId: "button-select-8" },
+        { row: 1, column: 0, controlId: "button-select-2" },
+        { row: 2, column: 0, controlId: "button-select-3" },
+        { row: 3, column: 0, controlId: "button-select-4" },
+        { row: 4, column: 0, controlId: "button-select-5" },
+        { row: 5, column: 0, controlId: "button-select-6" },
+        { row: 6, column: 0, controlId: "button-select-7" },
+        { row: 7, column: 0, controlId: "button-select-8" },
       ],
     });
     expect(PUSH_MK1_PROFILE.grids).toContain(PUSH_MK1_SELECTION_GRID);
