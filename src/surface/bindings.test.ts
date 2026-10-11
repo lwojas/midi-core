@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { MockMidiInput } from "../adapters/mock/mock-input.js";
 import { MockMidiOutput } from "../adapters/mock/mock-output.js";
+import { createControl } from "../control-api/control.js";
+import { createSurfaceContext } from "../control-api/context.js";
+import { createControlRegistry } from "../control-api/registry.js";
 import type { SurfaceContext } from "../control-api/types/context.js";
 import type { BooleanControlDef, Control, ControlDef, ControlValue, NumericControlDef, StringControlDef } from "../control-api/types/control.js";
 import type { ControlRegistry } from "../control-api/types/registry.js";
@@ -10,7 +13,7 @@ import type { PhysicalControl } from "../profile/types/control.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActiveMode, bindSurfaceMode, type BindSurfaceModeDeps } from "./bindings.js";
 import { createSurfaceNavigation } from "./navigation.js";
-import type { DisplayBinding, IndicatorBinding, ModeBinding, ModeIndicatorBinding, SelectionClearBinding, SelectionWindowBinding, SurfaceModeDefinition } from "./types/bindings.js";
+import type { ControlBinding, DisplayBinding, IndicatorBinding, ModeBinding, ModeIndicatorBinding, SelectionClearBinding, SelectionWindowBinding, SurfaceModeDefinition } from "./types/bindings.js";
 import type { GenerateControlMappings } from "./types/generation.js";
 
 function createTestControl<D extends ControlDef>(def: D): Control<D> {
@@ -1058,5 +1061,168 @@ describe("bindSurfaceMode — navigation binding LED feedback (ECS-145 follow-up
 
     rawInput.emitRawMessage(Uint8Array.of(0xb0, 45, 127));
     expect(navigation.state.gridOffset).toEqual({ row: 0, column: 1 });
+  });
+});
+
+describe("bindSurfaceMode — from-selection control binding (ECS-140)", () => {
+  // A relative encoder, the same wire shape as the Push mk1's own parameter encoders (ECS-136/137): CC 71,
+  // twos-complement-7bit, no feedback (the real device's generic parameter encoders have none either).
+  const encoder: PhysicalControl = {
+    id: "encoder-1",
+    label: "Encoder 1",
+    kind: "encoder",
+    portId: "in-1",
+    input: { address: { type: "control-change", controller: 71 }, channel: 0 },
+    valueMode: "relative",
+    relativeEncoding: "twos-complement-7bit",
+  };
+
+  const binding: ControlBinding = {
+    kind: "control",
+    physicalControlId: "encoder-1",
+    role: "encoder: volume",
+    resolve: { kind: "from-selection", scope: "track", template: "track.{id}.volume" },
+  };
+
+  const volumeDef = (id: string): NumericControlDef => ({ id, label: "Volume", kind: "number", min: 0, max: 100, default: 50 });
+  const turn = (rawInput: MockMidiInput, delta: 1 | -1) => rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, delta === 1 ? 1 : 127));
+
+  it("drives whichever track is currently selected, in both directions, and retargets live on a selection change without rebinding", async () => {
+    const { rawInput, input, output } = wiredPorts();
+    const track1 = createControl(volumeDef("track.1.volume"), 50);
+    const track2 = createControl(volumeDef("track.2.volume"), 20);
+    const registry = createControlRegistry([track1, track2]);
+    const context = createSurfaceContext([{ scope: "track", id: "1" }]);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [encoder] },
+      context,
+      registry,
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+    };
+
+    await bindSurfaceMode({ mode: "steps", bindings: [binding] }, deps);
+
+    turn(rawInput, 1);
+    expect(track1.getValue()).toBe(51);
+    turn(rawInput, -1);
+    turn(rawInput, -1);
+    expect(track1.getValue()).toBe(49);
+
+    // Selecting track 2 retargets the same live binding -- no mode switch, nothing rebound.
+    context.setSelection({ scope: "track", id: "2" });
+    turn(rawInput, 1);
+    expect(track2.getValue()).toBe(21);
+    expect(track1.getValue()).toBe(49); // untouched by the turn after retargeting
+  });
+
+  it("clamps at the resolved control's own range boundaries in both directions, never throwing", async () => {
+    const { rawInput, input, output } = wiredPorts();
+    const track1 = createControl(volumeDef("track.1.volume"), 99);
+    const registry = createControlRegistry([track1]);
+    const context = createSurfaceContext([{ scope: "track", id: "1" }]);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [encoder] },
+      context,
+      registry,
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+    };
+
+    await bindSurfaceMode({ mode: "steps", bindings: [binding] }, deps);
+
+    turn(rawInput, 1);
+    turn(rawInput, 1); // past max
+    expect(track1.getValue()).toBe(100);
+
+    for (let i = 0; i < 150; i++) turn(rawInput, -1); // deep past min
+    expect(track1.getValue()).toBe(0);
+  });
+
+  it("does nothing, and never throws, while the named scope has no current selection", async () => {
+    const { rawInput, input, output } = wiredPorts();
+    const track1 = createControl(volumeDef("track.1.volume"), 50);
+    const registry = createControlRegistry([track1]);
+    const context = createSurfaceContext([]);
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [encoder] },
+      context,
+      registry,
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+    };
+
+    await bindSurfaceMode({ mode: "steps", bindings: [binding] }, deps);
+    expect(() => turn(rawInput, 1)).not.toThrow();
+    expect(track1.getValue()).toBe(50);
+  });
+});
+
+describe("bindSurfaceMode — from-selection display binding (ECS-140)", () => {
+  function profileWithDisplay(): DeviceProfile {
+    return {
+      ...profile,
+      displays: [
+        {
+          id: "lcd",
+          label: "LCD",
+          portId: "out-1",
+          prefix: [0xf0, 0x47, 0x7f, 0x15],
+          textPrefix: [0x00, 0x45, 0x00],
+          charCount: 4,
+          lines: [{ id: "line-1", label: "Line 1", lineId: 0x18 }],
+        },
+      ],
+    };
+  }
+
+  const binding: DisplayBinding = {
+    kind: "display",
+    displayId: "lcd",
+    lineId: "line-1",
+    resolve: { kind: "from-selection", scope: "track", template: "track.{id}.label" },
+  };
+
+  it("paints the currently selected track's label, and repaints on a later selection change, with no rebind", async () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const labelDef = (id: string): StringControlDef => ({ id, label: "Label", kind: "string", default: "" });
+    const track1 = createControl(labelDef("track.1.label"), "Kick");
+    const track2 = createControl(labelDef("track.2.label"), "Snare");
+    const registry = createControlRegistry([track1, track2]);
+    const context = createSurfaceContext([{ scope: "track", id: "1" }]);
+    const deps: BindSurfaceModeDeps = {
+      profile: profileWithDisplay(),
+      context,
+      registry,
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+    };
+
+    await bindSurfaceMode({ mode: "steps", bindings: [binding] }, deps);
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 75, 105, 99, 107, 0xf7]); // "Kick"
+
+    context.setSelection({ scope: "track", id: "2" });
+    expect(Array.from(rawOutput.sentMessages[1]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 83, 110, 97, 114, 0xf7]); // "Snare"
+  });
+
+  it("sends nothing while nothing is selected, and starts painting once a selection appears", async () => {
+    const { input, output, rawOutput } = wiredPorts();
+    const labelDef = (id: string): StringControlDef => ({ id, label: "Label", kind: "string", default: "" });
+    const track1 = createControl(labelDef("track.1.label"), "Kick");
+    const registry = createControlRegistry([track1]);
+    const context = createSurfaceContext([]);
+    const deps: BindSurfaceModeDeps = {
+      profile: profileWithDisplay(),
+      context,
+      registry,
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+    };
+
+    await bindSurfaceMode({ mode: "steps", bindings: [binding] }, deps);
+    expect(Array.from(rawOutput.sentMessages[0]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 0x20, 0x20, 0x20, 0x20, 0xf7]); // fallback "" padded
+
+    context.setSelection({ scope: "track", id: "1" });
+    expect(Array.from(rawOutput.sentMessages[1]!)).toEqual([0xf0, 0x47, 0x7f, 0x15, 0x18, 0x00, 0x45, 0x00, 75, 105, 99, 107, 0xf7]); // "Kick"
   });
 });

@@ -13,6 +13,13 @@ const CONTRACT = {
   lengthControl: "steps.length",
   muteTemplate: "mute.{track}",
   trackCountControl: "tracks.count",
+  // ECS-140: representative volume/send/effects roles, each following whichever track is currently selected
+  // (SurfaceContext scope "track") rather than naming a fixed track -- see createPushMk1Surface's own context.
+  encoderParameters: {
+    volume: { kind: "from-selection", scope: "track", template: "track.{id}.volume" },
+    send: { kind: "from-selection", scope: "track", template: "track.{id}.send" },
+    effects: { kind: "from-selection", scope: "track", template: "track.{id}.fx.cutoff" },
+  },
 };
 
 export function createPushMk1App({ onChange = () => {} } = {}) {
@@ -24,9 +31,17 @@ export function createPushMk1App({ onChange = () => {} } = {}) {
     }
   }
   const mutes = new Map();
+  const volumes = new Map();
+  const sends = new Map();
+  const fxCutoffs = new Map();
   for (let track = 1; track <= STEP_ROWS; track++) {
-    const id = `mute.${track}`;
-    mutes.set(id, createControl({ id, label: `Mute ${track}`, kind: "boolean", default: false }));
+    mutes.set(track, createControl({ id: `mute.${track}`, label: `Mute ${track}`, kind: "boolean", default: false }));
+    volumes.set(track, createControl({ id: `track.${track}.volume`, label: `Track ${track} volume`, kind: "number", min: 0, max: 100, default: 80 }));
+    sends.set(track, createControl({ id: `track.${track}.send`, label: `Track ${track} send`, kind: "number", min: 0, max: 100, default: 0 }));
+    fxCutoffs.set(
+      track,
+      createControl({ id: `track.${track}.fx.cutoff`, label: `Track ${track} FX cutoff`, kind: "number", min: 40, max: 18000, default: 18000 }),
+    );
   }
   const length = createControl({ id: CONTRACT.lengthControl, label: "Sequence length", kind: "number", min: 0, max: 64, default: STEP_COLUMNS });
   const trackCount = createControl({ id: CONTRACT.trackCountControl, label: "Track count", kind: "number", min: 0, max: 64, default: STEP_ROWS });
@@ -43,9 +58,15 @@ export function createPushMk1App({ onChange = () => {} } = {}) {
   };
   const litSteps = () => [...steps.values()].filter((control) => control.getValue()).length;
   for (const control of steps.values()) control.onChange(() => onChange("steps", litSteps()));
+  for (const [track, control] of volumes) control.onChange((value) => onChange("volume", { track, value }));
+  for (const [track, control] of sends) control.onChange((value) => onChange("send", { track, value }));
+  for (const [track, control] of fxCutoffs) control.onChange((value) => onChange("fx.cutoff", { track, value }));
   return {
     steps,
     mutes,
+    volumes,
+    sends,
+    fxCutoffs,
     length,
     trackCount,
     transport,
@@ -59,15 +80,25 @@ export function createPushMk1App({ onChange = () => {} } = {}) {
 
 /** Builds the surface for one connected input/output pair. `log` receives human-readable lines. */
 export function createPushMk1Surface({ input, output, app, log = () => {} }) {
-  const registry = createControlRegistry([...app.steps.values(), ...app.mutes.values(), app.length, app.trackCount]);
+  const registry = createControlRegistry([
+    ...app.steps.values(),
+    ...app.mutes.values(),
+    ...app.volumes.values(),
+    ...app.sends.values(),
+    ...app.fxCutoffs.values(),
+    app.length,
+    app.trackCount,
+  ]);
   const device = DEVICE_REGISTRY.find((entry) => entry.id === "ableton.push-mk1");
   const sequencer = createSequencerBindings(input, device.profile, { ...CONTRACT, actions: app.actions });
   for (const role of sequencer.unresolved) log(`unresolved: ${role}`);
+  // ECS-140: starts with track 1 selected, so the encoders drive something from the moment the surface attaches.
+  const context = createSurfaceContext([{ scope: "track", id: "1" }]);
   const surface = createControlSurface({
     profile: device.profile,
     ports: { inputs: { "user-port-in": input }, outputs: { "user-port-out": output } },
     bindingTable: sequencer.bindings,
-    context: createSurfaceContext(),
+    context,
     registry,
     generate: generateControlMappings,
     initialNavigation: { mode: "steps", gridOffset: { row: 0, column: 0 } },
@@ -84,5 +115,7 @@ export function createPushMk1Surface({ input, output, app, log = () => {} }) {
     surface,
     attach: () => surface.attach(),
     detach: () => surface.detach(),
+    /** ECS-140 verification helper: moves which track the parameter encoders currently drive. */
+    selectTrack: (track) => context.setSelection({ scope: "track", id: String(track) }),
   };
 }

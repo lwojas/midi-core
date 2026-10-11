@@ -35,8 +35,12 @@ function toMidiAddress(address: ControlSurfaceAddress): MidiAddress | undefined 
  * same "translate at the one boundary allowed to depend on both" move `toMidiAddress` already makes for
  * `ControlSurfaceAddress`/`MidiAddress`, kept separate rather than merged into one type for the reasons
  * `profile/types/control.ts`'s own doc comment on `RelativeEncoding` gives.
+ *
+ * Exported (ECS-140) for `src/surface/bindings.ts`'s reactive `"from-selection"` control-binding path, which builds
+ * its `ControlMapping` by hand rather than through `generateControlMappings()` (the same reason `toMidiSource`/
+ * `toMidiTarget` are already exported) and so needs this same translation a second time.
  */
-function toRelativeEncoding(encoding: ProfileRelativeEncoding): MappingRelativeEncoding | undefined {
+export function toRelativeEncoding(encoding: ProfileRelativeEncoding): MappingRelativeEncoding | undefined {
   switch (encoding) {
     case "twos-complement-7bit":
       return "twos-complement-7bit";

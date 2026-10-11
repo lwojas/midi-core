@@ -106,6 +106,23 @@ currently selected, mirroring `docs/contracts/mapping.md`'s own
 resolution functions returning `undefined` for an unsupported pairing
 rather than taking down a live caller.
 
+**ECS-140 addendum: `"from-selection"` is now live, not just resolved once.**
+This type was designed, but nothing before ECS-140 actually *reacted* to a
+later `SurfaceContext` change for a bound `ControlBinding`/`DisplayBinding` —
+`resolveControlId()` ran once, at bind time, via `generateControlMappings()`,
+the same way a `"static"` resolution does. That's correct for `"static"`
+(nothing about its target ever changes), but silently wrong for
+`"from-selection"`: a role like "track fader" is specifically supposed to
+follow a *later* selection change without its mode being re-entered.
+`bindSurfaceMode()` (`src/surface/bindings.ts`) now special-cases
+`resolve.kind === "from-selection"` for both binding kinds, building a
+`createContextBoundControl()` (`src/surface/context-bound-control.ts`)
+wrapper instead of going through the one-shot generate-then-bind path — it
+re-resolves on every `SurfaceContext.onChange()`, the same "retarget, then
+re-emit only if the value actually moved" idiom `createWindowedControl()`
+already uses for a grid's page turn. A `"static"` resolution is unaffected:
+it still goes through `generateControlMappings()` exactly as before.
+
 ## `NavigationAction`: the hook "navigation" turns out not to need
 
 ```ts

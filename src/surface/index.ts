@@ -46,6 +46,8 @@ export { bindSelectionModePolicy } from "./selection-policy.js";
 
 export type { WindowedControl } from "./windowed-control.js";
 export { createWindowedControl } from "./windowed-control.js";
+export type { ContextBoundControl } from "./context-bound-control.js";
+export { createContextBoundControl } from "./context-bound-control.js";
 
 export { generateControlMappings, toMidiTarget, toMidiSource } from "./generate.js";
 

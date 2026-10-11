@@ -355,6 +355,16 @@ function checkLayout(value: unknown, controlIds: Set<string>, gridIds: Set<strin
 
   checkReference(value.selectionClear, "layout.selectionClear");
 
+  // ECS-140: `encoders` is an open, application-defined set of roles (unlike `transport`'s fixed four names), so
+  // each entry gets the same dangling-control-reference check by its own role name instead of a fixed field list.
+  if (value.encoders !== undefined) {
+    if (!isRecord(value.encoders)) {
+      diagnostics.push({ severity: "error", code: "invalid-layout", path: "layout.encoders", message: "layout.encoders must be an object." });
+    } else {
+      for (const [role, controlId] of Object.entries(value.encoders)) checkReference(controlId, `layout.encoders.${role}`);
+    }
+  }
+
   return diagnostics;
 }
 

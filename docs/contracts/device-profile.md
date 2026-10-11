@@ -178,7 +178,12 @@ interface DeviceProfile {
   control rather than its own. `selectionClear` names a single control id — the button that
   clears the current item selection and switches to a "no item" context (a `SelectionClearBinding`
   plus an `IndicatorBinding` on the same control). Neither field says what a selectable item
-  *is*; that's entirely the integration layer's.
+  *is*; that's entirely the integration layer's. `encoders` (ECS-140) names a device's generic,
+  always-available continuous controls (volume/send/effects-style parameter encoders), keyed by an
+  application-defined role rather than a fixed field — `{ volume: "encoder-1", send: "encoder-2" }`,
+  for instance — each bound only once the application's own `SequencerContract.encoderParameters`
+  supplies a resolution for that same role. Unlike `dedicatedMuteGridId`/`selectionGridId`, there's
+  no grid: a device's parameter encoders are a fixed, small set with no paging of their own.
 - **`displays`** — `DeviceDisplayDefinition[]` (ECS-137), optional. A text
   display's declarative SysEx template, the same "describe the byte
   layout, don't invent a second codec" move `modes`' `bankPrefix`/

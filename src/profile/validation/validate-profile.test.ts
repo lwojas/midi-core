@@ -316,6 +316,16 @@ describe("validateDeviceProfile", () => {
         expect.objectContaining({ code: "dangling-control-reference", path: "layout.selectionClear" }),
       );
     });
+
+    it("accepts an encoders map whose roles all name a real control, and reports a dangling or non-object one (ECS-140)", () => {
+      expect(validateDeviceProfile(withLayout({ encoders: { volume: "pad-1" } }))).toEqual([]);
+      expect(validateDeviceProfile(withLayout({ encoders: { volume: "ghost-encoder" } }))).toContainEqual(
+        expect.objectContaining({ code: "dangling-control-reference", path: "layout.encoders.volume" }),
+      );
+      expect(validateDeviceProfile(withLayout({ encoders: "pad-1" }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-layout", path: "layout.encoders" }),
+      );
+    });
   });
 
   describe("relativeEncoding (ECS-137)", () => {

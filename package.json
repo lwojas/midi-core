@@ -63,7 +63,8 @@
     "test:watch": "vitest",
     "demo": "npm run build && node demo/serve.mjs",
     "launchpad:live": "node scripts/launchpad-live.mjs",
-    "push-mk1:live": "node scripts/push-mk1-live.mjs"
+    "push-mk1:live": "node scripts/push-mk1-live.mjs",
+    "push-mk1:encoder-probe": "node scripts/push-mk1-encoder-probe.mjs"
   },
   "author": "Lech Wojas",
   "license": "ISC",

@@ -10,7 +10,7 @@ import type { ControlGrid } from "../profile/types/grid.js";
 import { bindActionTrigger } from "../surface/action-binding.js";
 import { bindMomentaryFeedback } from "../surface/bindings.js";
 import { toMidiSource } from "../surface/generate.js";
-import type { ControlBinding, ModeBinding, NavigationBinding, SurfaceBindingTable, SurfaceModeDefinition, SurfaceModeHooks } from "../surface/types/bindings.js";
+import type { ControlBinding, ControlIdResolution, ModeBinding, NavigationBinding, SurfaceBindingTable, SurfaceModeDefinition, SurfaceModeHooks } from "../surface/types/bindings.js";
 import type { MidiSource, RgbColour } from "../mapping/types/address.js";
 import type { GridOffset } from "../surface/types/navigation.js";
 
@@ -118,6 +118,19 @@ export interface SequencerContract {
    * the device has one) simply has no binding.
    */
   readonly selectionClearValue?: number;
+  /**
+   * Which application control each of the device's `layout.encoders` roles (ECS-140) currently drives, by that same
+   * role name (`"volume"`, `"send"`, `"effects"`, ...) — the application decides both what the role is called and
+   * how its target resolves, never a fixed field this contract names. A `{kind: "static", controlId}` role always
+   * means the same control (e.g. the master encoder's `"tempo"` role naming `"transport.tempo"` directly); a
+   * `{kind: "from-selection", scope, template}` role follows whichever item is currently selected in `scope` — a
+   * track's volume/send, or a selected effect's own parameter — re-resolving live as the application's `Selection`
+   * changes, with no mode switch or rebind needed (see `createContextBoundControl()`). A role the device declares
+   * with no entry here simply has no binding, the same "declared, not used" treatment every other optional layout
+   * role already gets. MIDI Core never sees a parameter name or a track id: both come from whatever `template`
+   * resolves to, kept entirely in the application's own `ControlId` namespace.
+   */
+  readonly encoderParameters?: Readonly<Record<string, ControlIdResolution>>;
 }
 
 export interface SequencerColours {
@@ -369,6 +382,19 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
     }
   }
 
+  // Parameter encoders (ECS-140): the device's `layout.encoders` roles, each bound only when the application also
+  // names a resolution for that same role — the same "declared on the device, used only if the application opts
+  // in" treatment `faderTemplates`/`bankActions` already get. Available everywhere, like `dedicatedMuteBindings`/
+  // `selectionBindings`: a Push mk1's encoders have no dedicated mode of their own to switch into, so they're live
+  // in steps, mixer and transport alike.
+  const encoderRoles = layout.encoders ?? {};
+  const encoderBindings: ModeBinding[] = Object.entries(encoderRoles)
+    .filter(([role, controlId]) => hasControl(controlId) && contract.encoderParameters?.[role] !== undefined)
+    .map(([role, controlId]): ModeBinding => ({ kind: "control", physicalControlId: controlId, role: `encoder: ${role}`, resolve: contract.encoderParameters![role]! }));
+  for (const [role, controlId] of Object.entries(encoderRoles)) {
+    if (!hasControl(controlId)) unresolved.push(`encoder: ${role} (control ${controlId})`);
+  }
+
   const transportSources: Array<{ name: (typeof TRANSPORT_NAMES)[number]; controlId: string; control: PhysicalControl; source: MidiSource; action: Action }> =
     [];
   for (const name of TRANSPORT_NAMES) {
@@ -445,6 +471,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         dedicatedMuteBindings,
         selectionBindings,
         selectionClearBindings,
+        encoderBindings,
         transportHooksFor,
       })
     : [];
@@ -552,6 +579,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         ...dedicatedMuteBindings,
         ...selectionBindings,
         ...selectionClearBindings,
+        ...encoderBindings,
       ],
       hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds)),
       activateOn: { scope: "step" },
@@ -568,6 +596,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         ...dedicatedMuteBindings,
         ...selectionBindings,
         ...selectionClearBindings,
+        ...encoderBindings,
       ],
       hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds)),
       activateOn: { scope: "track" },
@@ -582,6 +611,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         ...dedicatedMuteBindings,
         ...selectionBindings,
         ...selectionClearBindings,
+        ...encoderBindings,
       ],
       hooks: joinHooks(bankHooks(), transportHooksFor(transportModeButtonControlIds)),
     },
@@ -604,6 +634,7 @@ function faderModeDefinitions(
     dedicatedMuteBindings: readonly ModeBinding[];
     selectionBindings: readonly ModeBinding[];
     selectionClearBindings: readonly ModeBinding[];
+    encoderBindings: readonly ModeBinding[];
     transportHooksFor: (claimedControlIds: ReadonlySet<string>) => SurfaceModeHooks | undefined;
   },
 ): SurfaceModeDefinition[] {
@@ -663,6 +694,7 @@ function faderModeDefinitions(
         ...shared.dedicatedMuteBindings,
         ...shared.selectionBindings,
         ...shared.selectionClearBindings,
+        ...shared.encoderBindings,
       ],
       // The surface refuses to enter this mode while one of its ports isn't connected (ECS-104).
       requiredPortIds: mode.requiredPortIds,

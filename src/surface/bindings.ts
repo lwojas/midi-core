@@ -13,8 +13,9 @@ import type { PhysicalControl } from "../profile/types/control.js";
 import type { ControlGrid, GridCell } from "../profile/types/grid.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActionTrigger } from "./action-binding.js";
+import { createContextBoundControl } from "./context-bound-control.js";
 import { buildDisplayMessage } from "./display-binding.js";
-import { toMidiSource, toMidiTarget } from "./generate.js";
+import { toMidiSource, toMidiTarget, toRelativeEncoding } from "./generate.js";
 import { resolveControlId } from "./types/bindings.js";
 import type {
   ControlBinding,
@@ -665,7 +666,9 @@ export async function bindSurfaceMode(
   };
 
   const controlBindings = bindings.filter((binding): binding is ControlBinding => isControlBinding(binding) && binding.press !== "toggle");
-  const generated = deps.generate(deps.profile, controlBindings, deps.context);
+  // "static" resolutions never change once bound, so they still go through the plain generate-once-then-bind path.
+  const staticControlBindings = controlBindings.filter((binding) => binding.resolve.kind === "static");
+  const generated = deps.generate(deps.profile, staticControlBindings, deps.context);
   for (const { mapping, inputPortId, outputPortId, when } of generated) {
     const control = deps.registry.getControl(mapping.control);
     const input = deps.ports.inputs[inputPortId];
@@ -677,6 +680,41 @@ export async function bindSurfaceMode(
     unsubscribes.push(bindControlMapping(mapping, input, output ?? NULL_OUTPUT, control, { shouldApply: () => matchesWhen(when) }));
     if (mapping.feedback && output) {
       painters.push(painterFor(mapping.feedback, control, output, feedbackKindOf(deps.profile, mapping.id)));
+    }
+  }
+
+  // ECS-140: a "from-selection" resolution, by contrast, names a target that's expected to change while this mode
+  // stays bound (e.g. an encoder always wired to "whichever track is currently selected") — `deps.generate`'s
+  // one-shot resolution can't express that, so these bypass it entirely and bind directly against a
+  // `createContextBoundControl()` wrapper, which re-resolves on every `SurfaceContext` change. Scoped to numeric
+  // controls only: every concrete case this ticket has (track volume, send, an effects parameter) is one, and no
+  // boolean/enum "from-selection" control-binding exists anywhere yet to generalize from.
+  for (const binding of controlBindings) {
+    if (binding.resolve.kind !== "from-selection") continue;
+    const physical = deps.profile.controls.find((candidate) => candidate.id === binding.physicalControlId);
+    const source = physical && toMidiSource(physical);
+    const input = physical && deps.ports.inputs[physical.portId];
+    if (!physical || !source || !input) continue;
+
+    const target = toMidiTarget(physical);
+    const output = target ? deps.ports.outputs[physical.feedbackPortId ?? physical.portId] : undefined;
+    if (target && !output) continue;
+
+    const fallbackDef: NumericControlDef = { id: `selection.${binding.physicalControlId}`, label: physical.label, kind: "number", min: 0, max: 1, default: 0 };
+    const bound = createContextBoundControl(binding.resolve, deps.registry, deps.context, fallbackDef);
+
+    const relativeEncoding = physical.relativeEncoding !== undefined ? toRelativeEncoding(physical.relativeEncoding) : undefined;
+    const mapping: ControlMapping = {
+      id: binding.physicalControlId,
+      control: fallbackDef.id,
+      source,
+      ...(target ? { feedback: target } : {}),
+      ...(relativeEncoding ? { relativeEncoding } : {}),
+    };
+    unsubscribes.push(() => bound.dispose());
+    unsubscribes.push(bindControlMapping(mapping, input, output ?? NULL_OUTPUT, bound, { shouldApply: () => matchesWhen(binding.when) }));
+    if (target && output) {
+      painters.push(painterFor(target, bound as Control<ControlDef>, output, physical.feedback?.kind));
     }
   }
 
@@ -873,12 +911,33 @@ export async function bindSurfaceMode(
     const display = deps.profile.displays?.find((candidate) => candidate.id === binding.displayId);
     const line = display?.lines.find((candidate) => candidate.id === binding.lineId);
     const output = display ? deps.ports.outputs[display.portId] : undefined;
+    if (!display || !line || !output) continue;
+
+    const send = (text: string) => output.send(buildDisplayMessage(display, line, text));
+
+    // ECS-140: a "from-selection" display line follows the same live selection change a reactive control binding
+    // does (e.g. the LCD line naming whichever track an encoder currently controls) — the same
+    // `createContextBoundControl()` wrapper, just for a string control instead of a numeric one. A "static" line
+    // keeps the exact previous one-shot lookup, unchanged.
+    if (binding.resolve.kind === "from-selection") {
+      const fallbackDef: StringControlDef = {
+        id: `selection.${binding.displayId}.${binding.lineId}`,
+        label: `${binding.displayId} ${binding.lineId}`,
+        kind: "string",
+        default: "",
+      };
+      const bound = createContextBoundControl(binding.resolve, deps.registry, deps.context, fallbackDef);
+      unsubscribes.push(() => bound.dispose());
+      unsubscribes.push(bound.onChange((value) => send(value)));
+      painters.push({ paint: () => send(bound.getValue()), clear: () => {} });
+      continue;
+    }
+
     const controlId = resolveControlId(binding.resolve, deps.context);
     const control = controlId !== undefined ? deps.registry.getControl(controlId) : undefined;
-    if (!display || !line || !output || !control || control.def.kind !== "string") continue;
+    if (!control || control.def.kind !== "string") continue;
 
     const stringControl = control as Control<StringControlDef>;
-    const send = (text: string) => output.send(buildDisplayMessage(display, line, text));
     unsubscribes.push(stringControl.onChange((value) => send(value)));
     // No "off" state for text, unlike an LED or a motorized fader's position: a display has nothing natural to
     // revert to on exit, so leaving the mode simply stops updating it, rather than inventing a blank state to send.

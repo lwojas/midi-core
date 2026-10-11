@@ -131,6 +131,19 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * in the low 20s -- see `PUSH_MK1_SELECTION_COLOUR_PALETTE`'s own doc comment), and the *layout* (these are side
  * buttons, a vertical column running CC 43, the topmost, down to CC 36, the bottommost -- see `SELECTION_BUTTONS`'
  * and `PUSH_MK1_SELECTION_GRID`'s own doc comments).
+ *
+ * **ECS-140**: `PUSH_MK1_LAYOUT.encoders` names three of the 8 generic parameter encoders (`encoder-1`/`encoder-2`/
+ * `encoder-3`, hands-on confirmed real and relative on this unit already by the ECS-136 gate) for the application's
+ * `"volume"`/`"send"`/`"effects"` roles -- representative-first, per this ticket's own instructions: one continuous
+ * mapping proven end to end (`encoder-1`/`"volume"`), then the same contract reused unchanged for two more
+ * representative roles, not all 8. `encoder-4` through `encoder-8` are left out of `encoders` entirely rather than
+ * assigned a guessed role -- real, relative, addressed controls (same component family, same ECS-136 gate), just
+ * without an application role yet; a future ticket adding more parameter roles only needs to extend this map, not
+ * reopen the hardware question. `encoder-master`/`encoder-swing`/`encoder-tempo` are left out for a different
+ * reason: they're dedicated, not generic-parameter, controls (master volume, swing amount, tempo), each a candidate
+ * for its own `"static"` role rather than a `"from-selection"` one -- no concrete use for them yet, so none is
+ * invented here. See `docs/hardware-validation-push-mk1.md`'s ECS-140 section for the live encoder-direction/
+ * range/selection-retargeting verification this mapping was checked against.
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {
@@ -560,6 +573,7 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
   modifier: "button-shift",
   selectionGridId: "selection-buttons",
   selectionClear: "button-master",
+  encoders: { volume: "encoder-1", send: "encoder-2", effects: "encoder-3" },
 };
 
 export const PUSH_MK1_PROFILE: DeviceProfile = {

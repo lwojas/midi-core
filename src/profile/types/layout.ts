@@ -97,4 +97,16 @@ export interface DeviceLayout {
    * never cleared from the device.
    */
   readonly selectionClear?: string;
+  /**
+   * A device's generic, always-available continuous controls (ECS-140), keyed by an application-defined role (e.g.
+   * `"volume"`, `"send"`, `"effects"`) rather than a fixed field per role — the same "owner-defined, no invented
+   * fixed set" reasoning `ControlRole`/`Selection.scope` already apply. Each value is a `PhysicalControl.id`, not
+   * necessarily an `"encoder"`-kind control (a fader or knob can fill the same role). Unlike `dedicatedMuteGridId`/
+   * `selectionGridId`, there's no grid here: a device's parameter encoders are typically a fixed, small set with no
+   * paging of their own, one control per role, not a window onto a larger collection. A role named here with no
+   * matching entry in the application's own contract (`SequencerContract.encoderParameters`) simply has no binding —
+   * the same "declared on the device, but the application doesn't use it" treatment every other optional layout role
+   * already gets. Omitted, the device has no such controls.
+   */
+  readonly encoders?: Readonly<Record<string, string>>;
 }

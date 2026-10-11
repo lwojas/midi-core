@@ -426,6 +426,38 @@ grid's own "row 0 is the top" convention) instead of a 1-row, 8-column one — p
 vertical axis the pad grid and dedicated mute strip already share (`orientation` left at its default,
 "vertical", rather than the "horizontal" the first version declared).
 
+## ECS-140: parameter encoders routed to representative volume/send/effects roles (2026-10-11)
+
+Encoders 1-3 (CC 71-73) now drive the application's `"volume"`/`"send"`/`"effects"` roles
+(`PUSH_MK1_LAYOUT.encoders`), each resolved against whichever track is currently selected
+(`SequencerContract.encoderParameters`, a `"from-selection"` `ControlIdResolution`) rather than a
+fixed control — representative-first, per this ticket's own instructions: one role proven end to
+end (`encoder-1`/`"volume"`), the same contract then reused unchanged for two more.
+
+The device-facing wire behaviour this routing sits on top of — CC 71/72/73 as relative,
+twos-complement-7bit encoders — is not new: it was already hands-on confirmed for Encoder 1 and the
+Tempo encoder at the ECS-136 gate, and `PUSH_MK1_ENCODERS` already declares it for all 11 encoders
+(assumed, not individually turned, for the other 9 — see "What's still unverified" below, unchanged
+by this ticket). What *is* new in this ticket is pure software: a `ControlBinding`'s `"from-selection"`
+resolution, declared in the contract since ECS-68 but never actually wired to anything live before
+now, had no runtime that re-resolved it when the selection changed — `createContextBoundControl()`
+(`src/surface/context-bound-control.ts`) is that runtime, reused by `bindSurfaceMode()` for both a
+`ControlBinding` (an encoder) and a `DisplayBinding` (for ECS-139's own future use).
+
+**Verified by automated test, not by a fresh hands-on pass this session**: direction (CW/CCW both
+move the resolved control the right way), range/boundary clamping (a turn past either end of the
+resolved control's own range clamps, never throws), and live retargeting (changing the application's
+selected track mid-session moves the *new* target, leaves the *previous* one untouched, with no mode
+switch or rebind) — `src/surface/bindings.test.ts`'s "from-selection control binding (ECS-140)" suite
+and `src/configurations/sequencer-encoders.test.ts`, both exercising the real
+`decodeRelativeDelta()`/`resolveIncomingValue()`/`buildFeedbackMessage()` functions the ECS-136 gate's
+hands-on pass already validated the byte-level behaviour of — only the new routing on top is what
+these tests add coverage for. A real Push mk1 was connected and available during this ticket (its
+User Port enumerates over CoreMIDI), and `scripts/push-mk1-encoder-probe.mjs` was written for a live
+re-check, but a fresh hands-on pass turning the physical encoders was deliberately deferred rather
+than run without someone at the device to turn them and confirm what's observed — tracked below, not
+silently claimed.
+
 ## What's still unverified
 
 - Encoders 2-8 and the Master Encoder's exact relative-encoding bytes
@@ -450,3 +482,11 @@ vertical axis the pad grid and dedicated mute strip already share (`orientation`
   to render correctly; the rest of the range, and which exact sub-ranges are "dim-steady" versus
   "dim-flashing" versus "bright-flashing" per colour, is not individually mapped out (same "declare
   only the confirmed fact" stance ECS-145/ECS-150 already take for their own partially-probed ranges)
+- (ECS-140) a fresh hands-on pass actually turning Encoder 1/2/3 against the new volume/send/effects
+  routing and watching the resolved application control move, and actually triggering a selection
+  change on live hardware to confirm the retargeting visually rather than only through
+  `createSurfaceContext.setSelection()` in a test — `scripts/push-mk1-encoder-probe.mjs` is ready for
+  this; deferred, not run, for lack of someone at the device during this ticket
+- (ECS-140) `encoder-4` through `encoder-8` have no application role assigned yet (representative-first
+  scope: this ticket proves and reuses the contract for one role each of volume/send/effects, not all
+  8 generic parameter encoders) — real, relative, addressed controls already, just unassigned
