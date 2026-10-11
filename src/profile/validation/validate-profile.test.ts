@@ -299,6 +299,23 @@ describe("validateDeviceProfile", () => {
         expect.objectContaining({ code: "invalid-layout", path: "layout.dedicatedMuteGridId" }),
       );
     });
+
+    it("accepts a selectionGridId naming a real grid, and reports a dangling or non-string one (ECS-155)", () => {
+      expect(validateDeviceProfile(withLayout({ selectionGridId: "grid-1" }))).toEqual([]);
+      expect(validateDeviceProfile(withLayout({ selectionGridId: "ghost-grid" }))).toContainEqual(
+        expect.objectContaining({ code: "dangling-grid-reference", path: "layout.selectionGridId" }),
+      );
+      expect(validateDeviceProfile(withLayout({ selectionGridId: 42 }))).toContainEqual(
+        expect.objectContaining({ code: "invalid-layout", path: "layout.selectionGridId" }),
+      );
+    });
+
+    it("accepts a selectionClear naming a real control, and reports a dangling one (ECS-155)", () => {
+      expect(validateDeviceProfile(withLayout({ selectionClear: "pad-1" }))).toEqual([]);
+      expect(validateDeviceProfile(withLayout({ selectionClear: "ghost-master" }))).toContainEqual(
+        expect.objectContaining({ code: "dangling-control-reference", path: "layout.selectionClear" }),
+      );
+    });
   });
 
   describe("relativeEncoding (ECS-137)", () => {

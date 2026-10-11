@@ -81,4 +81,20 @@ export interface DeviceLayout {
    * `mixer` mode's grid takeover, exactly as before this field existed.
    */
   readonly dedicatedMuteGridId?: string;
+  /**
+   * A profile grid (ECS-155) whose cells are a page of a generic, ordered collection of selectable items — the
+   * Push's contextual selection buttons, for instance. Built and bound the same "horizontal window, sharing the
+   * step grid's own page offset" way `dedicatedMuteGridId` already is, so it pages with exactly the same up/down
+   * controls, no separate paging control needed. What "selectable" means (a track, a bus, ...) is never named
+   * here or anywhere in MIDI Core — only the integration layer resolving the selected index decides that. Omitted,
+   * the device has no contextual selection buttons.
+   */
+  readonly selectionGridId?: string;
+  /**
+   * The button that clears the current item selection and switches the surface's generic selection state to its
+   * "no item" context (ECS-155) — the Push's Master button, for instance. Omitted, the device has no such button:
+   * item selection can still be set from `selectionGridId`'s own buttons, or by the application directly, but
+   * never cleared from the device.
+   */
+  readonly selectionClear?: string;
 }

@@ -194,6 +194,51 @@ export interface WindowedControlBinding extends ModeBindingBase {
 }
 
 /**
+ * A physical row of buttons representing one page of a generic, ordered collection of selectable items (ECS-155) —
+ * the Push's contextual selection buttons, for instance. Unlike `WindowedControlBinding`, where each cell drives its
+ * own distinct application control, every cell here reads and writes the *same* `indexControl`: pressing a cell sets
+ * it to that cell's own virtual index (the page offset plus its position along the grid's windowed axis — the same
+ * arithmetic `WindowedControlBinding`'s window already uses, by way of the same `orientation` convention), and every
+ * cell's LED compares its own virtual index against the control's current live value to decide lit/dim. The virtual
+ * index is the one thing MIDI Core ever communicates — "slot 3 was activated" — never what it means; resolving an
+ * index to an application entity (a track, a bus) is the integration layer's job, exactly as
+ * `docs/contracts/control-api.md` already draws that boundary around `Selection`. A page turn repaints every cell
+ * (its own index moved) without rebinding anything, the same as every other windowed binding.
+ */
+export interface SelectionWindowBinding extends ModeBindingBase {
+  readonly kind: "selection";
+  readonly gridId: string;
+  /** Application control (a number) holding the selected virtual index. The same control every cell on this grid reads and writes. */
+  readonly indexControl: string;
+  /** Same meaning as `WindowedControlBinding.orientation`: which way the window's items run. */
+  readonly orientation?: "vertical" | "horizontal";
+  /** The colour the LED shows for the selected cell, on an RGB LED. Omitted means white. */
+  readonly colour?: RgbColour;
+  /**
+   * An application control (a number) holding how many selectable items currently exist. A cell whose own virtual
+   * index falls outside it renders fully off rather than dim — there is no item there to select — the same
+   * "available vs. out of range" distinction `WindowedControlBinding.rowCountControl`/`columnCountControl` already
+   * make for paging. Omitted means every cell is always available.
+   */
+  readonly countControl?: string;
+}
+
+/**
+ * The button that clears the current item selection (ECS-155) — the Push's Master button, for instance. Writes a
+ * single fixed `clearValue` to the same `indexControl` a `SelectionWindowBinding` reads and writes, representing
+ * "no item selected" — the application-defined sentinel that also means whatever context it switches to instead
+ * (e.g. a master FX section). MIDI Core only ever communicates the index; what the sentinel means is entirely the
+ * integration layer's. This binding sends no feedback of its own — an `IndicatorBinding` on the same
+ * `physicalControlId`, comparing `indexControl` against `clearValue`, already covers "is this context active" with
+ * no new rendering code.
+ */
+export interface SelectionClearBinding extends ModeBindingBase {
+  readonly kind: "selection-clear";
+  readonly indexControl: string;
+  readonly clearValue: number;
+}
+
+/**
  * A button that shows whether the application is at one value (ECS-114): lit while the number control `resolve` names holds
  * `lit`, dark otherwise. It only sends feedback. The button's own presses are bound elsewhere (a bank action), so a press
  * never writes this control. Painted on enter and cleared on exit, like any LED.
@@ -240,8 +285,16 @@ export interface DisplayBinding {
   readonly resolve: ControlIdResolution;
 }
 
-/** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, a window onto a grid of controls, an indicator of one value or of the active mode, or (for `DisplayBinding`) a display line to paint from a string control. */
-export type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding | IndicatorBinding | ModeIndicatorBinding | DisplayBinding;
+/** One `PhysicalControl`'s assigned meaning within a mode — an application control to drive, a surface-local navigation action, a window onto a grid of controls, a page of selectable items (or the button that clears the selection), an indicator of one value or of the active mode, or (for `DisplayBinding`) a display line to paint from a string control. */
+export type ModeBinding =
+  | ControlBinding
+  | NavigationBinding
+  | WindowedControlBinding
+  | SelectionWindowBinding
+  | SelectionClearBinding
+  | IndicatorBinding
+  | ModeIndicatorBinding
+  | DisplayBinding;
 
 /**
  * The two genuine escape valves a declarative `bindings` list can't

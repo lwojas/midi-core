@@ -334,6 +334,98 @@ describe("createSequencerBindings on the Push mk1 (ECS-91: device-independence, 
     expect(indicators).toHaveLength(0);
   });
 
+  it("builds no selection bindings when the contract names no selectionIndexControl, and reports nothing (ECS-155)", () => {
+    expect(bindingsOf(table, "steps").filter((binding) => binding.kind === "selection")).toHaveLength(0);
+    expect(bindingsOf(table, "steps").filter((binding) => binding.kind === "selection-clear")).toHaveLength(0);
+    expect(unresolved).toEqual([]);
+  });
+
+  it("windows CC 36-43 as a selection row sharing the pad grid's own paging, available in every mode (ECS-155)", () => {
+    const { bindings: pushTable } = createSequencerBindings(input, push.profile, { ...contract(), selectionIndexControl: "selection.index" });
+    for (const mode of ["steps", "mixer", "transport"] as const) {
+      const selections = bindingsOf(pushTable, mode).filter((binding) => binding.kind === "selection");
+      expect(selections.map((binding) => binding.physicalControlId)).toEqual([
+        "button-select-1",
+        "button-select-2",
+        "button-select-3",
+        "button-select-4",
+        "button-select-5",
+        "button-select-6",
+        "button-select-7",
+        "button-select-8",
+      ]);
+      for (const binding of selections) {
+        expect(binding).toMatchObject({
+          kind: "selection",
+          gridId: "selection-buttons",
+          indexControl: "selection.index",
+          orientation: "horizontal",
+        });
+      }
+    }
+  });
+
+  it("carries the track count as the selection row's countControl, and the selection colour (ECS-155)", () => {
+    const { bindings: pushTable } = createSequencerBindings(input, push.profile, {
+      ...contract(),
+      selectionIndexControl: "selection.index",
+      colours: { selection: { red: 1, green: 2, blue: 3 } },
+    });
+    const selections = bindingsOf(pushTable, "steps").filter((binding) => binding.kind === "selection");
+    for (const binding of selections) {
+      expect(binding).toMatchObject({ countControl: "tracks.count", colour: { red: 1, green: 2, blue: 3 } });
+    }
+  });
+
+  it("builds a selection-clear binding and its lit indicator from the Master button, only when both the index control and clear value are named (ECS-155)", () => {
+    expect(push.profile.layout?.selectionClear).toBe("button-master");
+
+    const withoutClearValue = createSequencerBindings(input, push.profile, { ...contract(), selectionIndexControl: "selection.index" });
+    expect(bindingsOf(withoutClearValue.bindings, "steps").filter((binding) => binding.kind === "selection-clear")).toHaveLength(0);
+
+    const { bindings: pushTable } = createSequencerBindings(input, push.profile, {
+      ...contract(),
+      selectionIndexControl: "selection.index",
+      selectionClearValue: -1,
+    });
+    const clearBinding = bindingsOf(pushTable, "steps").find((binding) => binding.kind === "selection-clear");
+    expect(clearBinding).toEqual({
+      kind: "selection-clear",
+      physicalControlId: "button-master",
+      role: "selection: clear (master)",
+      indexControl: "selection.index",
+      clearValue: -1,
+    });
+    const masterIndicator = bindingsOf(pushTable, "steps").find(
+      (binding) => binding.kind === "indicator" && binding.physicalControlId === "button-master",
+    );
+    expect(masterIndicator).toMatchObject({ kind: "indicator", resolve: { kind: "static", controlId: "selection.index" }, lit: -1 });
+    // Available in mixer and transport too, the same "available everywhere" treatment every other indicator gets.
+    for (const mode of ["mixer", "transport"] as const) {
+      expect(bindingsOf(pushTable, mode).filter((binding) => binding.kind === "selection-clear")).toHaveLength(1);
+    }
+  });
+
+  it("reports a selectionGridId naming a grid the profile lacks, and still builds the rest (ECS-155)", () => {
+    const { bindings: pushTable, unresolved: pushUnresolved } = createSequencerBindings(
+      input,
+      { ...push.profile, layout: { ...push.profile.layout, selectionGridId: "no-such-grid" } },
+      { ...contract(), selectionIndexControl: "selection.index" },
+    );
+    expect(pushUnresolved).toContain("selection buttons (grid no-such-grid)");
+    expect(bindingsOf(pushTable, "steps").filter((binding) => binding.kind === "selection")).toHaveLength(0);
+  });
+
+  it("reports a selectionClear naming a control the profile lacks, and still builds the rest (ECS-155)", () => {
+    const { bindings: pushTable, unresolved: pushUnresolved } = createSequencerBindings(
+      input,
+      { ...push.profile, layout: { ...push.profile.layout, selectionClear: "no-such-control" } },
+      { ...contract(), selectionIndexControl: "selection.index", selectionClearValue: -1 },
+    );
+    expect(pushUnresolved).toContain("selection: clear (control no-such-control)");
+    expect(bindingsOf(pushTable, "steps").filter((binding) => binding.kind === "selection-clear")).toHaveLength(0);
+  });
+
   it("lights Play/Stop/Record dim on enter, full while held, and off on exit, when an output is connected (ECS-145 follow-up)", async () => {
     const rawInput = new MockMidiInput({ id: "push-in", type: "input", name: "push-in", manufacturer: null });
     const pushInput = createMidiInput(rawInput);

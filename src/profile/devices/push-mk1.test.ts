@@ -8,6 +8,8 @@ import {
   PUSH_MK1_PAD_GRID,
   PUSH_MK1_PADS,
   PUSH_MK1_PROFILE,
+  PUSH_MK1_SELECTION_BUTTONS,
+  PUSH_MK1_SELECTION_GRID,
   PUSH_MK1_UTILITY_BUTTONS,
 } from "./push-mk1.js";
 
@@ -16,12 +18,13 @@ describe("PUSH_MK1_PROFILE", () => {
     expect(validateDeviceProfile(PUSH_MK1_PROFILE)).toEqual([]);
   });
 
-  it("has 11 encoders (22 controls: a CC and a touch-note each), 64 pads, 8 mute-strip buttons, 31 other utility/nav/mode buttons: 127 controls", () => {
+  it("has 11 encoders (22 controls: a CC and a touch-note each), 64 pads, 8 mute-strip buttons, 8 selection buttons, 31 other utility/nav/mode buttons: 135 controls", () => {
     expect(PUSH_MK1_ENCODERS).toHaveLength(22);
     expect(PUSH_MK1_PADS).toHaveLength(64);
     expect(PUSH_MK1_MUTE_STRIP_BUTTONS).toHaveLength(8);
+    expect(PUSH_MK1_SELECTION_BUTTONS).toHaveLength(8);
     expect(PUSH_MK1_UTILITY_BUTTONS).toHaveLength(31);
-    expect(PUSH_MK1_CONTROLS).toHaveLength(127);
+    expect(PUSH_MK1_CONTROLS).toHaveLength(135);
   });
 
   it("ECS-145: every monochrome utility button declares the hands-on confirmed dim value; the mute strip (velocity-color-led, a different control family) does not", () => {
@@ -33,6 +36,39 @@ describe("PUSH_MK1_PROFILE", () => {
       expect(button.feedback?.kind, button.id).toBe("velocity-color-led");
       expect(button.feedback?.dimValue, button.id).toBeUndefined();
     }
+  });
+
+  it("ECS-155: the selection buttons (CC 36-43) share the utility buttons' monochrome dim/full feedback", () => {
+    expect(PUSH_MK1_SELECTION_BUTTONS.map((control) => control.input?.address)).toEqual(
+      [36, 37, 38, 39, 40, 41, 42, 43].map((controller) => ({ type: "control-change", controller })),
+    );
+    for (const button of PUSH_MK1_SELECTION_BUTTONS) {
+      expect(button.feedback?.kind, button.id).toBe("monochrome-led");
+      expect(button.feedback?.dimValue, button.id).toBe(1);
+      expect(button.feedbackPortId, button.id).toBe("user-port-out");
+    }
+  });
+
+  it("ECS-155: CC 36-43 form a dedicated 1x8 selection-buttons grid, and the layout names it plus the Master button as the clear control", () => {
+    expect(PUSH_MK1_PROFILE.layout?.selectionGridId).toBe("selection-buttons");
+    expect(PUSH_MK1_PROFILE.layout?.selectionClear).toBe("button-master");
+    expect(PUSH_MK1_SELECTION_GRID).toEqual({
+      id: "selection-buttons",
+      label: "CC 36-43, as a dedicated row of contextual selection buttons",
+      rows: 1,
+      columns: 8,
+      cells: [
+        { row: 0, column: 0, controlId: "button-select-1" },
+        { row: 0, column: 1, controlId: "button-select-2" },
+        { row: 0, column: 2, controlId: "button-select-3" },
+        { row: 0, column: 3, controlId: "button-select-4" },
+        { row: 0, column: 4, controlId: "button-select-5" },
+        { row: 0, column: 5, controlId: "button-select-6" },
+        { row: 0, column: 6, controlId: "button-select-7" },
+        { row: 0, column: 7, controlId: "button-select-8" },
+      ],
+    });
+    expect(PUSH_MK1_PROFILE.grids).toContain(PUSH_MK1_SELECTION_GRID);
   });
 
   it("every control id is unique", () => {

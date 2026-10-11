@@ -122,6 +122,16 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
  * (`ControlFeedback.colourPalette`, new this ticket). No other colour is covered: steps/mutes/banks still render
  * as plain on/off here exactly as before, since this ticket's own scope is the playhead only, not the pads' full
  * bright/standard/dim RGB tiers (still ECS-135's gap, not reopened here).
+ *
+ * **ECS-155**: CC 36-43, this ticket's own "contextual selection buttons," per the ticket's own explicit mapping --
+ * **not yet hands-on verified on hardware**, unlike every other control above, which was independently checked against
+ * `AbletonPushUserModeHack.png` or physically probed. Neither research doc (`midi-usermode-mapping-verified.md`,
+ * the diagram) documents a control at CC 36-43; the ticket specifies the mapping outright rather than asking this
+ * profile to discover it. Declared with the same monochrome dim/full feedback `UTILITY_BUTTONS` already uses (ECS-145's
+ * confirmed `PUSH_MK1_DIM_VALUE`), since both tiers this feature needs (available/dim, selected/full) are exactly that
+ * family -- but that reuse is itself unverified for these eight CCs specifically. A follow-up hardware pass (the same
+ * `scripts/push-mk1-contract-probe.mjs`-style check `docs/hardware-validation-push-mk1.md` already records for every
+ * other control here) should confirm these CCs actually address real buttons before this ships to real hardware.
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {
@@ -349,13 +359,46 @@ export const PUSH_MK1_MUTE_STRIP_BUTTONS: readonly PhysicalControl[] = MUTE_STRI
   feedbackPortId: "user-port-out",
 }));
 
-/** 127 controls total: 11 encoders + 11 touch notes, the touch strip + its tap, 64 pads, 8 mute-strip buttons, 31 other utility/nav/mode buttons. */
+/**
+ * ECS-155: CC 36-43, one row of 8 buttons representing one page of a generic, ordered collection of selectable
+ * items -- named "select", never "track", so neither this profile nor anything reading it hard-codes what's
+ * selectable; see this file's own ECS-155 doc comment above for this mapping's verification status. Monochrome
+ * dim/full feedback, the same family and confirmed dim value `UTILITY_BUTTONS` already uses: "available" renders
+ * dim, "selected" renders full, exactly the two tiers ECS-155 needs, with no new rendering mechanism.
+ */
+const SELECTION_BUTTONS = [
+  ["select-1", "Selection button 1", 36],
+  ["select-2", "Selection button 2", 37],
+  ["select-3", "Selection button 3", 38],
+  ["select-4", "Selection button 4", 39],
+  ["select-5", "Selection button 5", 40],
+  ["select-6", "Selection button 6", 41],
+  ["select-7", "Selection button 7", 42],
+  ["select-8", "Selection button 8", 43],
+] as const;
+
+export const PUSH_MK1_SELECTION_BUTTONS: readonly PhysicalControl[] = SELECTION_BUTTONS.map(([id, label, cc]) => ({
+  id: `button-${id}`,
+  label: `${label} (CC ${cc})`,
+  kind: "button",
+  portId: "user-port-in",
+  input: { address: { type: "control-change", controller: cc }, channel: 0 },
+  feedback: {
+    kind: "monochrome-led",
+    address: { address: { type: "control-change", controller: cc }, channel: 0 },
+    dimValue: PUSH_MK1_DIM_VALUE,
+  },
+  feedbackPortId: "user-port-out",
+}));
+
+/** 135 controls total: 11 encoders + 11 touch notes, the touch strip + its tap, 64 pads, 8 mute-strip buttons, 8 selection buttons, 31 other utility/nav/mode buttons. */
 export const PUSH_MK1_CONTROLS: readonly PhysicalControl[] = [
   ...PUSH_MK1_ENCODERS,
   ...PUSH_MK1_TOUCH_STRIP,
   ...PUSH_MK1_PADS,
   ...PUSH_MK1_UTILITY_BUTTONS,
   ...PUSH_MK1_MUTE_STRIP_BUTTONS,
+  ...PUSH_MK1_SELECTION_BUTTONS,
 ];
 
 export const PUSH_MK1_PAD_GRID: ControlGrid = {
@@ -385,6 +428,19 @@ export const PUSH_MK1_MUTE_STRIP_GRID: ControlGrid = {
   rows: 1,
   columns: 8,
   cells: Array.from({ length: 8 }, (_, column) => ({ row: 0, column, controlId: `button-upper-${column + 1}` })),
+};
+
+/**
+ * ECS-155: CC 36-43, as a dedicated grid of contextual selection buttons -- the same "one row, shares the step
+ * grid's own page offset, no paging of its own" shape `PUSH_MK1_MUTE_STRIP_GRID` already uses, so up/down (which
+ * already pages tracks in `steps` mode) moves the selection window too, with no separate paging control.
+ */
+export const PUSH_MK1_SELECTION_GRID: ControlGrid = {
+  id: "selection-buttons",
+  label: "CC 36-43, as a dedicated row of contextual selection buttons",
+  rows: 1,
+  columns: 8,
+  cells: Array.from({ length: 8 }, (_, column) => ({ row: 0, column, controlId: `button-select-${column + 1}` })),
 };
 
 /**
@@ -461,6 +517,11 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
  * costs nothing on its own (no binding here sets `when`, so the modifier-dispatch behavior stays exactly as
  * unused as before) and gives Shift a real, lit state it never had -- the one `button-shift` was always missing
  * despite having `feedback` declared on its `PhysicalControl` since this profile's very first version.
+ *
+ * **ECS-155**: `selectionGridId` names the new CC 36-43 row (`PUSH_MK1_SELECTION_GRID`), and `selectionClear` names
+ * the existing Master button (CC 28, already declared in `UTILITY_BUTTONS`) as the control that clears item
+ * selection and enters the master/context state. Both are device facts only -- what a selected index means, and
+ * what "master" switches to, is entirely the integration layer's (`docs/contracts/control-api.md`'s own boundary).
  */
 export const PUSH_MK1_LAYOUT: DeviceLayout = {
   modeButtons: [{ controlId: "button-note", mode: "steps", indicator: true }],
@@ -471,6 +532,8 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
   transport: { play: "button-play", stop: "button-stop-clip", record: "button-record" },
   dedicatedMuteGridId: "mute-strip",
   modifier: "button-shift",
+  selectionGridId: "selection-buttons",
+  selectionClear: "button-master",
 };
 
 export const PUSH_MK1_PROFILE: DeviceProfile = {
@@ -478,7 +541,7 @@ export const PUSH_MK1_PROFILE: DeviceProfile = {
   identity: PUSH_MK1_IDENTITY,
   ports: PUSH_MK1_PORTS,
   controls: PUSH_MK1_CONTROLS,
-  grids: [PUSH_MK1_PAD_GRID, PUSH_MK1_MUTE_STRIP_GRID],
+  grids: [PUSH_MK1_PAD_GRID, PUSH_MK1_MUTE_STRIP_GRID, PUSH_MK1_SELECTION_GRID],
   sysex: PUSH_MK1_SYSEX,
   layout: PUSH_MK1_LAYOUT,
   displays: [PUSH_MK1_DISPLAY],

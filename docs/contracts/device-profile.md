@@ -170,7 +170,15 @@ interface DeviceProfile {
   state, in every mode, without taking over the step grid the way the dedicated `mixer`
   mode's grid takeover does — sharing the step grid's own page offset, so it needs no page
   buttons of its own. Omitted, track mute still needs the `mixer` mode's grid takeover,
-  exactly as before this field existed.
+  exactly as before this field existed. `selectionGridId` (ECS-155) names a profile grid
+  the same "dedicated, always-available, shares the step grid's own page offset" way
+  `dedicatedMuteGridId` already does, but for a generic, ordered collection of selectable
+  items instead of mute: its cells become `SelectionWindowBinding`s
+  (`docs/contracts/surface-bindings.md`), each writing and reading one shared application
+  control rather than its own. `selectionClear` names a single control id — the button that
+  clears the current item selection and switches to a "no item" context (a `SelectionClearBinding`
+  plus an `IndicatorBinding` on the same control). Neither field says what a selectable item
+  *is*; that's entirely the integration layer's.
 - **`displays`** — `DeviceDisplayDefinition[]` (ECS-137), optional. A text
   display's declarative SysEx template, the same "describe the byte
   layout, don't invent a second codec" move `modes`' `bankPrefix`/

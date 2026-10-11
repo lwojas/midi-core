@@ -25,6 +25,8 @@ import type {
   ModeIndicatorBinding,
   ModifierCondition,
   NavigationBinding,
+  SelectionClearBinding,
+  SelectionWindowBinding,
   SurfaceBindingTable,
   SurfaceModeDefinition,
   WindowedControlBinding,
@@ -67,6 +69,14 @@ function isNavigationBinding(binding: ModeBinding): binding is NavigationBinding
 
 function isWindowedBinding(binding: ModeBinding): binding is WindowedControlBinding {
   return binding.kind === "window";
+}
+
+function isSelectionBinding(binding: ModeBinding): binding is SelectionWindowBinding {
+  return binding.kind === "selection";
+}
+
+function isSelectionClearBinding(binding: ModeBinding): binding is SelectionClearBinding {
+  return binding.kind === "selection-clear";
 }
 
 function isIndicatorBinding(binding: ModeBinding): binding is IndicatorBinding {
@@ -273,9 +283,10 @@ function coloursMatch(a: RgbColour | undefined, b: RgbColour | undefined): boole
 
 /**
  * The virtual row and column of a window's cell: its grid position plus the page offset. A horizontal window swaps the
- * grid's axes, so its tracks run across the columns (ECS-95).
+ * grid's axes, so its tracks run across the columns (ECS-95). Shared with `SelectionWindowBinding` (ECS-155), which
+ * only ever needs the same "cell position plus page offset" arithmetic — the virtual row is its cell's selection index.
  */
-function windowPosition(binding: WindowedControlBinding, cell: { row: number; column: number }, offset: GridOffset): [number, number] {
+function windowPosition(binding: { orientation?: "vertical" | "horizontal" }, cell: { row: number; column: number }, offset: GridOffset): [number, number] {
   return binding.orientation === "horizontal"
     ? [offset.row + cell.column, offset.column + cell.row]
     : [offset.row + cell.row, offset.column + cell.column];
@@ -485,6 +496,80 @@ function bindStepFeedback(
       paint,
       clear: () => {
         const message = buildFeedbackMessage(offTarget(target), ownDef, false, undefined);
+        if (message !== undefined) output.send(message);
+      },
+    },
+  };
+}
+
+/**
+ * One cell of a `SelectionWindowBinding` (ECS-155): a press sets the shared `indexControl` to this cell's own
+ * virtual index (page offset plus position); the LED compares that same control's live value against the index to
+ * decide lit/dim, and against `countControl` (if named) to decide dim/off. Unlike `createWindowedControl`, there's
+ * no per-page retargeting to do: `indexControl`/`countControl` are fixed ids, never templated — only the index
+ * itself moves with the page, so a navigation change just repaints, it never resubscribes.
+ */
+function bindSelectionCell(
+  binding: SelectionWindowBinding,
+  physical: PhysicalControl,
+  cell: GridCell,
+  deps: BindSurfaceModeDeps,
+  navigation: SurfaceNavigation,
+  input: MidiInput,
+  source: MidiSource,
+  shouldApply?: () => boolean,
+): { unsubscribe: Unsubscribe; painter?: FeedbackPainter } {
+  const numeric = (controlId: string): Control<NumericControlDef> | undefined => {
+    const control = deps.registry.getControl(controlId);
+    return control?.def.kind === "number" ? (control as Control<NumericControlDef>) : undefined;
+  };
+  const indexControl = numeric(binding.indexControl);
+  const countControl = binding.countControl !== undefined ? numeric(binding.countControl) : undefined;
+  const ownIndex = (): number => {
+    const offset = navigation.state.gridOffset ?? { row: 0, column: 0 };
+    return windowPosition(binding, cell, offset)[0];
+  };
+
+  const pressAction = createAction({ id: `selection.${physical.id}`, label: physical.label }, () => {
+    if (shouldApply && !shouldApply()) return;
+    indexControl?.setValue(ownIndex());
+  });
+  const unbindPress = bindActionTrigger(input, source, pressAction);
+
+  const target = toMidiTarget(physical);
+  const output = target ? deps.ports.outputs[physical.feedbackPortId ?? physical.portId] : undefined;
+  if (!target || !output) {
+    return { unsubscribe: unbindPress };
+  }
+
+  const def: BooleanControlDef = { id: `selection.${physical.id}`, label: physical.label, kind: "boolean", default: false };
+  const send = () => {
+    const index = ownIndex();
+    const available = countControl === undefined || index < countControl.getValue();
+    if (!available) {
+      const message = buildFeedbackMessage(offTarget(target), def, false);
+      if (message !== undefined) output.send(message);
+      return;
+    }
+    const message = buildFeedbackMessage(target, def, indexControl?.getValue() === index, binding.colour);
+    if (message !== undefined) output.send(message);
+  };
+
+  const unbindIndex = indexControl?.onChange(send);
+  const unbindCount = countControl?.onChange(send);
+  const unbindNavigation = navigation.onChange(send);
+
+  return {
+    unsubscribe: () => {
+      unbindPress();
+      unbindIndex?.();
+      unbindCount?.();
+      unbindNavigation();
+    },
+    painter: {
+      paint: send,
+      clear: () => {
+        const message = buildFeedbackMessage(offTarget(target), def, false);
         if (message !== undefined) output.send(message);
       },
     },
@@ -751,6 +836,37 @@ export async function bindSurfaceMode(
     if (target && output) {
       painters.push(painterFor(target, windowed as Control<ControlDef>, output, physical.feedback?.kind));
     }
+  }
+
+  for (const binding of bindings.filter(isSelectionBinding)) {
+    const physical = deps.profile.controls.find((candidate) => candidate.id === binding.physicalControlId);
+    const grid = deps.profile.grids?.find((candidate) => candidate.id === binding.gridId);
+    const cell = grid?.cells.find((candidate) => candidate.controlId === binding.physicalControlId);
+    const source = physical && toMidiSource(physical);
+    const input = physical && deps.ports.inputs[physical.portId];
+    if (!navigation || !physical || !grid || !cell || !source || !input) continue;
+
+    const handle = bindSelectionCell(binding, physical, cell, deps, navigation, input, source, () => matchesWhen(binding.when));
+    unsubscribes.push(handle.unsubscribe);
+    if (handle.painter) painters.push(handle.painter);
+  }
+
+  // A clear/"master" button (ECS-155) writes one fixed sentinel to the same `indexControl` a `SelectionWindowBinding`
+  // reads and writes. No feedback of its own: whichever `IndicatorBinding` a configuration pairs with the same
+  // `physicalControlId` (comparing `indexControl` against `clearValue`) already owns its LED.
+  for (const binding of bindings.filter(isSelectionClearBinding)) {
+    const physical = deps.profile.controls.find((candidate) => candidate.id === binding.physicalControlId);
+    const source = physical && toMidiSource(physical);
+    const input = physical && deps.ports.inputs[physical.portId];
+    const control = deps.registry.getControl(binding.indexControl);
+    if (!physical || !source || !input || !control || control.def.kind !== "number") continue;
+
+    const numeric = control as Control<NumericControlDef>;
+    const action = createAction({ id: `selection-clear.${binding.physicalControlId}`, label: binding.role }, () => {
+      if (!matchesWhen(binding.when)) return;
+      numeric.setValue(binding.clearValue);
+    });
+    unsubscribes.push(bindActionTrigger(input, source, action));
   }
 
   for (const binding of bindings.filter(isDisplayBinding)) {

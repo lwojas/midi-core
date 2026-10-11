@@ -339,6 +339,22 @@ function checkLayout(value: unknown, controlIds: Set<string>, gridIds: Set<strin
     }
   }
 
+  // ECS-155: `selectionGridId` must name a grid on this profile, the same "dangling reference" check `dedicatedMuteGridId` gets.
+  if (value.selectionGridId !== undefined) {
+    if (typeof value.selectionGridId !== "string") {
+      diagnostics.push({ severity: "error", code: "invalid-layout", path: "layout.selectionGridId", message: "layout.selectionGridId must be a string." });
+    } else if (!gridIds.has(value.selectionGridId)) {
+      diagnostics.push({
+        severity: "error",
+        code: "dangling-grid-reference",
+        path: "layout.selectionGridId",
+        message: `layout.selectionGridId references grid "${value.selectionGridId}", which isn't declared in grids.`,
+      });
+    }
+  }
+
+  checkReference(value.selectionClear, "layout.selectionClear");
+
   return diagnostics;
 }
 

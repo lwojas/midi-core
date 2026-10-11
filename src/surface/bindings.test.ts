@@ -10,7 +10,7 @@ import type { PhysicalControl } from "../profile/types/control.js";
 import type { DeviceProfile } from "../profile/types/profile.js";
 import { bindActiveMode, bindSurfaceMode, type BindSurfaceModeDeps } from "./bindings.js";
 import { createSurfaceNavigation } from "./navigation.js";
-import type { DisplayBinding, ModeBinding, ModeIndicatorBinding, SurfaceModeDefinition } from "./types/bindings.js";
+import type { DisplayBinding, IndicatorBinding, ModeBinding, ModeIndicatorBinding, SelectionClearBinding, SelectionWindowBinding, SurfaceModeDefinition } from "./types/bindings.js";
 import type { GenerateControlMappings } from "./types/generation.js";
 
 function createTestControl<D extends ControlDef>(def: D): Control<D> {
@@ -719,6 +719,215 @@ describe("bindSurfaceMode — modifier LED feedback (ECS-145)", () => {
     rawInput.emitRawMessage(Uint8Array.of(0xb0, 49, 127));
     rawInput.emitRawMessage(Uint8Array.of(0xb0, 71, 50));
     expect(held.getValue()).toBe(50); // held/released tracking for `when` still works with no feedback wired
+  });
+});
+
+describe("bindSurfaceMode — selection window and clear bindings (ECS-155)", () => {
+  const index: NumericControlDef = { id: "selection.index", label: "Selected index", kind: "number", min: -1, max: 1024, default: -1 };
+  const count: NumericControlDef = { id: "tracks.count", label: "Track count", kind: "number", min: 0, max: 1024, default: 5 };
+
+  function selectionButton(n: number, cc: number): PhysicalControl {
+    return {
+      id: `button-select-${n}`,
+      label: `Selection button ${n}`,
+      kind: "button",
+      portId: "in-1",
+      input: { address: { type: "control-change", controller: cc }, channel: 0 },
+      feedback: { kind: "monochrome-led", address: { address: { type: "control-change", controller: cc }, channel: 0 }, dimValue: 1 },
+      feedbackPortId: "out-1",
+    };
+  }
+
+  const buttons = Array.from({ length: 8 }, (_, i) => selectionButton(i + 1, 36 + i));
+  const masterButton: PhysicalControl = {
+    id: "button-master",
+    label: "Master",
+    kind: "button",
+    portId: "in-1",
+    input: { address: { type: "control-change", controller: 28 }, channel: 0 },
+    feedback: { kind: "monochrome-led", address: { address: { type: "control-change", controller: 28 }, channel: 0 }, dimValue: 1 },
+    feedbackPortId: "out-1",
+  };
+
+  const grid = {
+    id: "selection-buttons",
+    label: "selection",
+    rows: 1,
+    columns: 8,
+    cells: buttons.map((button, column) => ({ row: 0, column, controlId: button.id })),
+  };
+
+  const selectionBindings: SelectionWindowBinding[] = buttons.map((button, column) => ({
+    kind: "selection",
+    physicalControlId: button.id,
+    role: `selection slot ${column + 1}`,
+    gridId: grid.id,
+    indexControl: index.id,
+    orientation: "horizontal",
+    countControl: count.id,
+  }));
+
+  const clearBinding: SelectionClearBinding = {
+    kind: "selection-clear",
+    physicalControlId: masterButton.id,
+    role: "selection: clear (master)",
+    indexControl: index.id,
+    clearValue: -1,
+  };
+
+  const masterIndicator: IndicatorBinding = {
+    kind: "indicator",
+    physicalControlId: masterButton.id,
+    role: "selection: master lit",
+    resolve: { kind: "static", controlId: index.id },
+    lit: -1,
+  };
+
+  /** The last monochrome CC value sent for `controller`, or undefined if none was. */
+  function lastValue(sent: readonly Uint8Array[], controller: number): number | undefined {
+    const matches = sent.filter((bytes) => bytes[0] === 0xb0 && bytes[1] === controller);
+    return matches[matches.length - 1]?.[2];
+  }
+
+  function build(options: { trackCount?: number } = {}) {
+    const { rawInput, rawOutput, input, output } = wiredPorts();
+    const indexControl = createTestControl({ ...index });
+    const countControl = createTestControl({ ...count, default: options.trackCount ?? count.default });
+    const deps: BindSurfaceModeDeps = {
+      profile: { ...profile, controls: [...buttons, masterButton], grids: [grid] },
+      context: createFakeContext(),
+      registry: createFakeRegistry({ [index.id]: indexControl, [count.id]: countControl }),
+      ports: { inputs: { "in-1": input }, outputs: { "out-1": output } },
+      generate: () => [],
+      navigation: createSurfaceNavigation({ mode: "steps", gridOffset: { row: 0, column: 0 } }),
+    };
+    return { rawInput, rawOutput, indexControl, countControl, deps };
+  }
+
+  const pressCc = (rawInput: MockMidiInput, controller: number) => {
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, controller, 127));
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, controller, 0));
+  };
+
+  it("CC36-43 map to the correct selection slots: pressing one writes its own virtual index (page 0) to the shared control", async () => {
+    const { rawInput, indexControl, deps } = build({ trackCount: 8 });
+    await bindSurfaceMode({ mode: "steps", bindings: selectionBindings }, deps);
+
+    pressCc(rawInput, 39); // button-select-4, column 3
+    expect(indexControl.getValue()).toBe(3);
+
+    pressCc(rawInput, 36); // button-select-1, column 0
+    expect(indexControl.getValue()).toBe(0);
+  });
+
+  it("lights the selected slot full, every other available slot dim, on bind and after a press (selection initiated by the device)", async () => {
+    const { rawInput, rawOutput, deps } = build({ trackCount: 8 });
+    await bindSurfaceMode({ mode: "steps", bindings: selectionBindings }, deps);
+    // Nothing selected yet (index -1): every slot is available but unselected -- dim.
+    for (let cc = 36; cc <= 43; cc++) expect(lastValue(rawOutput.sentMessages, cc), `cc ${cc}`).toBe(1);
+
+    pressCc(rawInput, 38); // button-select-3
+    expect(lastValue(rawOutput.sentMessages, 38)).toBe(127); // selected: full
+    for (const cc of [36, 37, 39, 40, 41, 42, 43]) expect(lastValue(rawOutput.sentMessages, cc), `cc ${cc}`).toBe(1); // unselected: dim
+  });
+
+  it("selection initiated by the application updates the Push: setValue() on the shared control repaints every slot", async () => {
+    const { rawOutput, indexControl, deps } = build({ trackCount: 8 });
+    await bindSurfaceMode({ mode: "steps", bindings: selectionBindings }, deps);
+    rawOutput.clearSentMessages();
+
+    indexControl.setValue(5); // the application selects an item directly, with no device press at all
+    expect(lastValue(rawOutput.sentMessages, 41)).toBe(127); // button-select-6, column 5: now selected
+    expect(lastValue(rawOutput.sentMessages, 36)).toBe(1); // button-select-1: still just dim
+  });
+
+  it("a slot past the application's track count renders fully off, not dim -- selection outside the current page", async () => {
+    const { rawOutput, deps } = build({ trackCount: 5 }); // only columns 0-4 (CC 36-40) are real tracks on this page
+    await bindSurfaceMode({ mode: "steps", bindings: selectionBindings }, deps);
+
+    for (const cc of [36, 37, 38, 39, 40]) expect(lastValue(rawOutput.sentMessages, cc), `cc ${cc}`).toBe(1); // available, dim
+    for (const cc of [41, 42, 43]) expect(lastValue(rawOutput.sentMessages, cc), `cc ${cc}`).toBe(0); // unavailable, fully off
+  });
+
+  it("a press on an unavailable slot still writes the index -- availability is a feedback-only concern here", async () => {
+    const { rawInput, indexControl, deps } = build({ trackCount: 5 });
+    await bindSurfaceMode({ mode: "steps", bindings: selectionBindings }, deps);
+
+    pressCc(rawInput, 42); // button-select-7, column 6 -- past the 5-track count
+    expect(indexControl.getValue()).toBe(6);
+  });
+
+  it("changing page updates which item each slot represents, and repaints without rebinding", async () => {
+    const { rawOutput, indexControl, deps } = build({ trackCount: 16 });
+    await bindSurfaceMode({ mode: "steps", bindings: selectionBindings }, deps);
+    indexControl.setValue(3); // selects column 3 (button-select-4) on page 0
+    rawOutput.clearSentMessages();
+
+    deps.navigation!.pageBy({ row: 8, column: 0 }); // page down by one page of 8
+    // Column 3 on the new page is virtual index 11, which no longer equals the selected index (3): dim, not full.
+    expect(lastValue(rawOutput.sentMessages, 39)).toBe(1);
+
+    indexControl.setValue(11); // now select what column 3 represents on this new page
+    expect(lastValue(rawOutput.sentMessages, 39)).toBe(127);
+  });
+
+  it("stops repainting once unbound, and clears to fully off", async () => {
+    const { rawOutput, indexControl, deps } = build({ trackCount: 8 });
+    const teardown = await bindSurfaceMode({ mode: "steps", bindings: selectionBindings }, deps);
+    indexControl.setValue(2);
+    rawOutput.clearSentMessages();
+
+    await teardown();
+    expect(lastValue(rawOutput.sentMessages, 38)).toBe(0); // was full (selected); now fully off
+    rawOutput.clearSentMessages();
+    indexControl.setValue(4);
+    expect(rawOutput.sentMessages).toHaveLength(0); // no longer observing the control at all
+  });
+
+  it("CC28 (master/clear) writes the sentinel, clearing every slot's selected state, and its own IndicatorBinding lights full", async () => {
+    const { rawInput, rawOutput, indexControl, deps } = build({ trackCount: 8 });
+    await bindSurfaceMode({ mode: "steps", bindings: [...selectionBindings, clearBinding, masterIndicator] }, deps);
+    indexControl.setValue(2);
+    expect(lastValue(rawOutput.sentMessages, 38)).toBe(127);
+
+    pressCc(rawInput, 28); // Master
+    expect(indexControl.getValue()).toBe(-1);
+    expect(lastValue(rawOutput.sentMessages, 38)).toBe(1); // no longer selected: back to dim
+    expect(lastValue(rawOutput.sentMessages, 28)).toBe(127); // master's own indicator: lit while index === clearValue
+  });
+
+  it("other profile controls can observe the resulting selection state: a plain onChange subscriber sees every change, device- or application-initiated", async () => {
+    const { rawInput, indexControl, deps } = build({ trackCount: 8 });
+    const seen: number[] = [];
+    indexControl.onChange((value) => seen.push(value));
+    await bindSurfaceMode({ mode: "steps", bindings: selectionBindings }, deps);
+
+    pressCc(rawInput, 37); // device-initiated
+    indexControl.setValue(6); // application-initiated
+    expect(seen).toEqual([1, 6]);
+  });
+
+  it("a conditional (`when`) selection binding only applies while the modifier is in the matching state", async () => {
+    const shiftButton: PhysicalControl = {
+      id: "shift",
+      label: "Shift",
+      kind: "button",
+      portId: "in-1",
+      input: { address: { type: "control-change", controller: 49 }, channel: 0 },
+    };
+    const { rawInput, indexControl, deps } = build({ trackCount: 8 });
+    const gatedBindings: SelectionWindowBinding[] = selectionBindings.map((binding) => ({ ...binding, when: "modifier-held" }));
+    await bindSurfaceMode(
+      { mode: "steps", bindings: gatedBindings },
+      { ...deps, profile: { ...deps.profile, controls: [...deps.profile.controls, shiftButton], layout: { modifier: "shift" } } },
+    );
+
+    pressCc(rawInput, 36); // modifier released: the binding never applies
+    expect(indexControl.getValue()).toBe(-1);
+
+    rawInput.emitRawMessage(Uint8Array.of(0xb0, 49, 127)); // hold Shift
+    pressCc(rawInput, 36);
+    expect(indexControl.getValue()).toBe(0);
   });
 });
 

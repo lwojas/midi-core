@@ -68,10 +68,11 @@ export interface SequencerContract {
    */
   readonly bankControl?: string;
   /**
-   * The lit colours of steps, track mutes, bank buttons and the playhead on an RGB device (ECS-95, ECS-114, ECS-131).
-   * Left out, each takes its default (`DEFAULT_SEQUENCER_COLOURS`): steps blue, mutes red, banks green, playhead
-   * white. A device without RGB ignores them. A step's duration continuation pads (ECS-127) are not configured here:
-   * they're always a dimmed `steps`, so they read as part of the same note however `steps` itself is set.
+   * The lit colours of steps, track mutes, bank buttons, the playhead and the selection buttons on an RGB device
+   * (ECS-95, ECS-114, ECS-131, ECS-155). Left out, each takes its default (`DEFAULT_SEQUENCER_COLOURS`): steps blue,
+   * mutes red, banks green, playhead teal, selection purple. A device without RGB ignores them. A step's duration
+   * continuation pads (ECS-127) are not configured here: they're always a dimmed `steps`, so they read as part of
+   * the same note however `steps` itself is set.
    */
   readonly colours?: Partial<SequencerColours>;
   /**
@@ -97,6 +98,26 @@ export interface SequencerContract {
    * own responsibility, not a flag this contract tracks. Omitted, steps show no playhead feedback.
    */
   readonly playheadControl?: string;
+  /**
+   * Application control (a number) holding the selected virtual index of a generic, ordered collection of
+   * selectable items (ECS-155) — for a sequencer, which track is selected. The same control every contextual
+   * selection button (the device's `layout.selectionGridId` row) reads and writes: a press sets it to that
+   * button's own virtual index (page offset plus position), and the button's own LED lights full when this
+   * control's value equals it, dim otherwise, off past `trackCountControl`. MIDI Core never learns what the index
+   * means; resolving it to a track (or back) is entirely the application's job. Omitted, a device with contextual
+   * selection buttons simply has no binding for them.
+   */
+  readonly selectionIndexControl?: string;
+  /**
+   * The value `selectionIndexControl` holds while no item is selected (ECS-155) — written by the device's
+   * `layout.selectionClear` button (the Push's Master, for instance), which also clears every selection button's
+   * own lit state, since none of them can equal this value and a real virtual index at the same time. What the
+   * sentinel means beyond "nothing selected" (e.g. a master FX section becoming active) is entirely the
+   * application's own interpretation; MIDI Core only ever writes the fixed number named here. Required alongside
+   * `selectionIndexControl` for the clear button to have a binding — omitted, a `layout.selectionClear` button (if
+   * the device has one) simply has no binding.
+   */
+  readonly selectionClearValue?: number;
 }
 
 export interface SequencerColours {
@@ -106,6 +127,8 @@ export interface SequencerColours {
   readonly banks: RgbColour;
   /** The colour of the playhead's pad (ECS-131), overriding every other colour a step would otherwise show there. */
   readonly playhead: RgbColour;
+  /** The colour of the selected contextual selection button, and of the lit clear/master button (ECS-155). */
+  readonly selection: RgbColour;
 }
 
 /**
@@ -122,6 +145,7 @@ export const DEFAULT_SEQUENCER_COLOURS: SequencerColours = {
   mutes: { red: 127, green: 0, blue: 0 },
   banks: { red: 0, green: 127, blue: 0 },
   playhead: { red: 0, green: 70, blue: 100 },
+  selection: { red: 127, green: 0, blue: 127 },
 };
 
 /** How much a step's own colour dims for a duration continuation pad (ECS-127): a quarter intensity reads as clearly part of the same note, never mistaken for an active step. */
@@ -294,6 +318,55 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
       }))
     : [];
 
+  // Contextual selection buttons (ECS-155): the same "always-available, dedicated horizontal strip sharing the step
+  // grid's own page offset" shape `dedicatedMuteBindings` already uses, just comparing a shared selected-index
+  // control instead of driving one boolean per cell. No binding at all when the application names no
+  // `selectionIndexControl` — a profile's selection buttons (if it has any) then simply do nothing, the same
+  // "omitted field, no binding" treatment `bankControl`/`isPlayingControl` already get.
+  const selectionGrid = layout.selectionGridId ? profile.grids?.find((candidate) => candidate.id === layout.selectionGridId) : undefined;
+  if (layout.selectionGridId && !selectionGrid) unresolved.push(`selection buttons (grid ${layout.selectionGridId})`);
+  const selectionBindings: ModeBinding[] =
+    selectionGrid && contract.selectionIndexControl !== undefined
+      ? selectionGrid.cells.map((cell) => ({
+          kind: "selection",
+          physicalControlId: cell.controlId,
+          role: `selection slot ${cell.column + 1}`,
+          gridId: selectionGrid.id,
+          indexControl: contract.selectionIndexControl!,
+          orientation: "horizontal",
+          countControl: contract.trackCountControl,
+          colour: colours.selection,
+        }))
+      : [];
+
+  // The clear/"master" button (ECS-155): one action binding that writes the sentinel, plus an indicator (reusing
+  // ECS-114's own mechanism, no new rendering code) showing "master" lit while the shared index control holds it.
+  // Needs the button, the index control and the sentinel all present; any one missing leaves this button unbound.
+  let selectionClearBindings: ModeBinding[] = [];
+  if (layout.selectionClear !== undefined && contract.selectionIndexControl !== undefined && contract.selectionClearValue !== undefined) {
+    if (hasControl(layout.selectionClear)) {
+      selectionClearBindings = [
+        {
+          kind: "selection-clear",
+          physicalControlId: layout.selectionClear,
+          role: "selection: clear (master)",
+          indexControl: contract.selectionIndexControl,
+          clearValue: contract.selectionClearValue,
+        },
+        {
+          kind: "indicator",
+          physicalControlId: layout.selectionClear,
+          role: "selection: master lit",
+          resolve: { kind: "static", controlId: contract.selectionIndexControl },
+          lit: contract.selectionClearValue,
+          colour: colours.selection,
+        },
+      ];
+    } else {
+      unresolved.push(`selection: clear (control ${layout.selectionClear})`);
+    }
+  }
+
   const transportSources: Array<{ name: (typeof TRANSPORT_NAMES)[number]; controlId: string; control: PhysicalControl; source: MidiSource; action: Action }> =
     [];
   for (const name of TRANSPORT_NAMES) {
@@ -362,7 +435,16 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   const transportControlIds = new Set(Object.values(layout.transport ?? {}).filter((id): id is string => id !== undefined));
 
   const faderModes = devices
-    ? faderModeDefinitions(profile, contract, devices, { bankIndicators, bankHooks, modeIndicators, playIndicator, dedicatedMuteBindings, transportHooksFor })
+    ? faderModeDefinitions(profile, contract, devices, {
+        bankIndicators,
+        bankHooks,
+        modeIndicators,
+        playIndicator,
+        dedicatedMuteBindings,
+        selectionBindings,
+        selectionClearBindings,
+        transportHooksFor,
+      })
     : [];
   const faderModeIds = new Set(faderModes.map((definition) => definition.mode));
   const declaredFaderModeIds = new Set((profile.modes ?? []).flatMap((mode) => mode.faders.banks.map((bank) => bank.modeId)));
@@ -458,19 +540,47 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   const bindings: SurfaceBindingTable = [
     {
       mode: "steps",
-      bindings: [...modeBindings, ...stepPages, ...stepBindings, ...bankIndicators, ...modeIndicators, ...playIndicator, ...dedicatedMuteBindings],
+      bindings: [
+        ...modeBindings,
+        ...stepPages,
+        ...stepBindings,
+        ...bankIndicators,
+        ...modeIndicators,
+        ...playIndicator,
+        ...dedicatedMuteBindings,
+        ...selectionBindings,
+        ...selectionClearBindings,
+      ],
       hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds)),
       activateOn: { scope: "step" },
     },
     {
       mode: "mixer",
-      bindings: [...modeBindings, ...mixerPages, ...muteBindings, ...bankIndicators, ...modeIndicators, ...playIndicator, ...dedicatedMuteBindings],
+      bindings: [
+        ...modeBindings,
+        ...mixerPages,
+        ...muteBindings,
+        ...bankIndicators,
+        ...modeIndicators,
+        ...playIndicator,
+        ...dedicatedMuteBindings,
+        ...selectionBindings,
+        ...selectionClearBindings,
+      ],
       hooks: joinHooks(bankHooks(), transportHooksFor(modeButtonControlIds)),
       activateOn: { scope: "track" },
     },
     {
       mode: "transport",
-      bindings: [...transportModeBindings, ...bankIndicators, ...modeIndicators, ...playIndicator, ...dedicatedMuteBindings],
+      bindings: [
+        ...transportModeBindings,
+        ...bankIndicators,
+        ...modeIndicators,
+        ...playIndicator,
+        ...dedicatedMuteBindings,
+        ...selectionBindings,
+        ...selectionClearBindings,
+      ],
       hooks: joinHooks(bankHooks(), transportHooksFor(transportModeButtonControlIds)),
     },
     ...faderModes,
@@ -490,6 +600,8 @@ function faderModeDefinitions(
     modeIndicators: readonly ModeBinding[];
     playIndicator: readonly ModeBinding[];
     dedicatedMuteBindings: readonly ModeBinding[];
+    selectionBindings: readonly ModeBinding[];
+    selectionClearBindings: readonly ModeBinding[];
     transportHooksFor: (claimedControlIds: ReadonlySet<string>) => SurfaceModeHooks | undefined;
   },
 ): SurfaceModeDefinition[] {
@@ -540,7 +652,16 @@ function faderModeDefinitions(
     );
     return {
       mode: modeId,
-      bindings: [...navigation, ...faders, ...shared.bankIndicators, ...shared.modeIndicators, ...shared.playIndicator, ...shared.dedicatedMuteBindings],
+      bindings: [
+        ...navigation,
+        ...faders,
+        ...shared.bankIndicators,
+        ...shared.modeIndicators,
+        ...shared.playIndicator,
+        ...shared.dedicatedMuteBindings,
+        ...shared.selectionBindings,
+        ...shared.selectionClearBindings,
+      ],
       // The surface refuses to enter this mode while one of its ports isn't connected (ECS-104).
       requiredPortIds: mode.requiredPortIds,
       hooks: joinHooks(

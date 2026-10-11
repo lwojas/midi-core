@@ -404,3 +404,11 @@ general RGB-to-velocity encoding.
 - (ECS-145) whether the blink states (CC values 2/3/5/6) are worth a
   third/fourth feedback level for a future ticket — real and confirmed,
   just unused: nothing in this contract models "blinking" today
+- (ECS-155) CC 36-43, declared as this ticket's own "contextual selection
+  buttons" straight from the Linear ticket's explicit mapping — not probed
+  on hardware at all, unlike every other control in this file. Neither
+  research doc documents a control at these CCs. A follow-up hands-on pass
+  (one more `push-mk1-contract-probe.mjs`-style session) should confirm
+  these eight CCs actually address real, distinct buttons, and that the
+  monochrome dim/full feedback reused from `UTILITY_BUTTONS` actually
+  renders on them, before this profile addition ships to real hardware.

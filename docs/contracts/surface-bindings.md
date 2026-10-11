@@ -142,14 +142,23 @@ interface NavigationBinding extends ModeBindingBase {
   navigate: NavigationAction;
 }
 
-type ModeBinding = ControlBinding | NavigationBinding | WindowedControlBinding | IndicatorBinding | ModeIndicatorBinding | DisplayBinding;
+type ModeBinding =
+  | ControlBinding
+  | NavigationBinding
+  | WindowedControlBinding
+  | SelectionWindowBinding
+  | SelectionClearBinding
+  | IndicatorBinding
+  | ModeIndicatorBinding
+  | DisplayBinding;
 ```
 
 (`WindowedControlBinding` and `IndicatorBinding` — a grid window onto an
 application control, and a feedback-only lit-while-equal indicator — were
 added after this ticket by ECS-89/ECS-95/ECS-114; both still extend
 `ModeBindingBase` exactly as above. `DisplayBinding` is new in ECS-137,
-below. `ModeIndicatorBinding` is new in ECS-138, below.)
+below. `ModeIndicatorBinding` is new in ECS-138, below. `SelectionWindowBinding`/
+`SelectionClearBinding` are new in ECS-155, below.)
 
 ## Conditional (modifier) bindings (ECS-137)
 
@@ -244,6 +253,55 @@ before this field existed has had reproduced. `src/configurations/sequencer.ts`
 builds one `ModeIndicatorBinding` per opted-in mode button and includes it,
 unconditionally, in every mode's own binding list — the same "available
 everywhere" treatment bank indicators (ECS-114) already get.
+
+## Selection window and clear bindings (ECS-155)
+
+```ts
+interface SelectionWindowBinding {
+  kind: "selection";
+  physicalControlId: string; // PhysicalControl.id
+  role: ControlRole;
+  gridId: string;           // ControlGrid.id, the device's selection-button row
+  indexControl: string;     // ControlId of a shared number Control every cell reads AND writes
+  orientation?: "vertical" | "horizontal";
+  colour?: RgbColour;
+  countControl?: string;    // ControlId of a number Control: how many items exist; past it, a cell renders off
+}
+
+interface SelectionClearBinding {
+  kind: "selection-clear";
+  physicalControlId: string;
+  role: ControlRole;
+  indexControl: string; // the same control a SelectionWindowBinding on this table reads and writes
+  clearValue: number;   // the sentinel this button writes on press
+}
+```
+
+A generic page of selectable items — e.g. the Push's contextual selection buttons
+(ECS-155). `WindowedControlBinding` doesn't fit: there, every cell drives its *own*
+distinct application control, found by filling a template with the cell's virtual
+position. Here, every cell reads and writes the *same* `indexControl` — pressing a cell
+sets it to that cell's own virtual index (the page offset plus its position along the
+grid's windowed axis, exactly `WindowedControlBinding`'s own `orientation` arithmetic);
+the LED compares the control's live value against the cell's own index to light
+full (selected), dim (available, unselected — any `ControlFeedback.dimValue` tier
+already covers this, no new rendering code) or off (past `countControl`, if named).
+
+MIDI Core only ever moves a virtual index in and out of `indexControl` — "slot 3 was
+activated," never "track 4 was selected." Resolving that index to an application entity
+(a track, a bus, a parameter page) is entirely the integration layer's job, the same
+boundary `docs/contracts/control-api.md` already draws around `Selection`. Because
+`indexControl` is a plain, ordinary `Control<NumericControlDef>` — not a new control-api
+shape — any other binding, or the application itself, can read or write it the same way
+every other `Control` already is; this is also how "selection becomes profile state other
+controls can consume" (e.g. a future encoder binding reading the same control to decide
+what it's currently bound to) falls out with no new mechanism.
+
+`SelectionClearBinding` is the "no item selected" counterpart — a Master/clear button
+that writes one fixed `clearValue` to the same `indexControl` on press. It sends no
+feedback of its own: pairing an `IndicatorBinding` on the same `physicalControlId`
+(`resolve` naming `indexControl`, `lit: clearValue`) already shows "is this the active
+context," reusing ECS-114's own mechanism rather than inventing a second one.
 
 ## `SurfaceModeDefinition` and `SurfaceBindingTable`
 
