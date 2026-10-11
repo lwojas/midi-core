@@ -178,10 +178,22 @@ describe("PUSH_MK1_PROFILE", () => {
     for (const controlId of Object.values(PUSH_MK1_PROFILE.layout?.encoders ?? {})) expect(bankCells.has(controlId), controlId).toBe(false);
   });
 
-  it("ECS-150: every pad declares the hands-on confirmed greenish-blue/teal colour palette entry, matching the app-level playhead colour", () => {
+  it("ECS-150: every pad declares the hands-on confirmed greenish-blue/teal playhead entry, alongside the configured step and mute colours", () => {
     for (const pad of PUSH_MK1_PADS) {
       expect(pad.feedback?.kind, pad.id).toBe("velocity-color-led");
-      expect(pad.feedback?.colourPalette, pad.id).toEqual([{ colour: { red: 0, green: 70, blue: 100 }, velocity: 36 }]);
+      expect(pad.feedback?.colourPalette, pad.id).toContainEqual({ colour: { red: 0, green: 70, blue: 100 }, velocity: 36 });
+      expect(pad.feedback?.colourPalette, pad.id).toContainEqual({ colour: { red: 127, green: 0, blue: 0 }, velocity: 6 });
+    }
+    expect(PUSH_MK1_PROFILE.layout?.colours?.playhead).toEqual({ red: 0, green: 70, blue: 100 });
+  });
+
+  it("every palette entry the layout asks for resolves to a velocity on the pads, and the mute colours on the mute strip", () => {
+    const colours = PUSH_MK1_PROFILE.layout?.colours ?? {};
+    for (const colour of Object.values(colours)) {
+      for (const pad of PUSH_MK1_PADS) expect(pad.feedback?.colourPalette?.some((entry) => entry.colour === colour)).toBe(true);
+    }
+    for (const button of PUSH_MK1_MUTE_STRIP_BUTTONS) {
+      expect(button.feedback?.colourPalette?.map((entry) => entry.colour)).toEqual([colours.mutes, colours.unmuted]);
     }
   });
 

@@ -2,10 +2,56 @@ import type { PhysicalControl } from "../types/control.js";
 import type { DeviceDisplayDefinition } from "../types/display.js";
 import type { ControlGrid } from "../types/grid.js";
 import type { DeviceIdentity } from "../types/identity.js";
-import type { DeviceLayout } from "../types/layout.js";
+import type { DeviceLayout, DeviceLayoutColours } from "../types/layout.js";
+import type { RgbColour } from "../../mapping/types/address.js";
 import type { DevicePortProfile } from "../types/port.js";
 import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "../types/profile.js";
 import type { DeviceSysExProfile } from "../types/sysex.js";
+
+// ---------------------------------------------------------------------------------------------------------------
+// COLOUR CONFIGURATION -- edit here to restyle the Push's sequencer LEDs; nothing else needs to change.
+//
+// The Push's pads and mute strip are `velocity-color-led`s: the device shows whatever colour a raw velocity/CC value
+// selects, so each role below is a pair -- the `colour` the sequencer asks for (any RgbColour; only used to tell
+// roles apart, and just has to differ between roles) and the `velocity` byte that actually lights the LED.
+// To try a different colour, change the `velocity`.
+//
+// Hardware status of each byte (see docs/hardware-validation-push-mk1.md): 36 (teal) confirmed on a real pad
+// (ECS-150); 22 (green) confirmed on the selection buttons (CC 36-43, ECS-155); 6 (red) confirmed on the upper
+// control row (CC 102, ECS-145); 1 and 2 (dim/brighter white) from the same hands-on ramp. 127 is the plain
+// full-on byte steps already used. Everything but 36 is hardware-unverified *on the pads in this role*; the pads
+// follow the same ramp as the CC buttons, so expect it to be right but tune on a real Push.
+// ---------------------------------------------------------------------------------------------------------------
+interface PushColour {
+  readonly colour: RgbColour;
+  readonly velocity: number;
+}
+
+/** The step grid. "Even"/"odd" is the cell's 0-based column in the sequence (so it survives paging). */
+const GRID_COLOURS = {
+  stepEven: { colour: { red: 0, green: 0, blue: 127 }, velocity: 127 }, // unchanged from before: plain full-on
+  stepOdd: { colour: { red: 0, green: 100, blue: 0 }, velocity: 22 }, // green
+  stepLengthEven: { colour: { red: 0, green: 0, blue: 32 }, velocity: 2 }, // brighter white: the rest of a held note
+  stepLengthOdd: { colour: { red: 0, green: 32, blue: 0 }, velocity: 1 }, // dim white
+  playhead: { colour: { red: 0, green: 70, blue: 100 }, velocity: 36 }, // teal, confirmed
+} as const satisfies Record<string, PushColour>;
+
+/** The track mute buttons (the upper control row; also the mixer's pad row). Lit state follows each visible track. */
+const MUTE_COLOURS = {
+  muted: { colour: { red: 127, green: 0, blue: 0 }, velocity: 6 }, // red
+  unmuted: { colour: { red: 0, green: 127, blue: 0 }, velocity: 22 }, // green
+} as const satisfies Record<string, PushColour>;
+
+/** What the sequencer is asked to light, handed to the layout; the matching velocity bytes become the palettes below. */
+const PUSH_SEQUENCER_COLOURS: DeviceLayoutColours = {
+  stepEven: GRID_COLOURS.stepEven.colour,
+  stepOdd: GRID_COLOURS.stepOdd.colour,
+  stepLengthEven: GRID_COLOURS.stepLengthEven.colour,
+  stepLengthOdd: GRID_COLOURS.stepLengthOdd.colour,
+  playhead: GRID_COLOURS.playhead.colour,
+  mutes: MUTE_COLOURS.muted.colour,
+  unmuted: MUTE_COLOURS.unmuted.colour,
+};
 
 /**
  * ECS-91: this project's second real-device `DeviceProfile` — the Ableton
@@ -243,7 +289,10 @@ export const PUSH_MK1_TOUCH_STRIP: readonly PhysicalControl[] = [
  * velocity scheme is confirmed beyond this one entry -- see `ControlFeedback.colourPalette`'s own doc comment for
  * why an unmatched colour still renders as plain on/off, not a guessed byte.
  */
-const PUSH_MK1_PAD_COLOUR_PALETTE = [{ colour: { red: 0, green: 70, blue: 100 }, velocity: 36 }] as const;
+const PUSH_MK1_PAD_COLOUR_PALETTE: readonly PushColour[] = [...Object.values(GRID_COLOURS), ...Object.values(MUTE_COLOURS)];
+
+/** The mute strip only ever shows the two mute colours. */
+const PUSH_MK1_MUTE_STRIP_COLOUR_PALETTE: readonly PushColour[] = Object.values(MUTE_COLOURS);
 
 /** Bottom-left-origin, row-major note numbering (notes 36-99): row 0 (bottom) is 36-43, row 7 (top) is 92-99. */
 function padControl(rowFromBottom: number, column: number): PhysicalControl {
@@ -368,7 +417,12 @@ export const PUSH_MK1_MUTE_STRIP_BUTTONS: readonly PhysicalControl[] = MUTE_STRI
   kind: "button",
   portId: "user-port-in",
   input: { address: { type: "control-change", controller: cc }, channel: 0 },
-  feedback: { kind: "velocity-color-led", address: { address: { type: "control-change", controller: cc }, channel: 0 }, paletteSize: 128 },
+  feedback: {
+    kind: "velocity-color-led",
+    address: { address: { type: "control-change", controller: cc }, channel: 0 },
+    paletteSize: 128,
+    colourPalette: PUSH_MK1_MUTE_STRIP_COLOUR_PALETTE,
+  },
   feedbackPortId: "user-port-out",
 }));
 
@@ -600,6 +654,7 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
   pageRight: "button-arrow-right",
   transport: { play: "button-play", stop: "button-stop-clip", record: "button-record" },
   dedicatedMuteGridId: "mute-strip",
+  colours: PUSH_SEQUENCER_COLOURS,
   modifier: "button-shift",
   selectionGridId: "selection-buttons",
   selectionClear: "button-master",

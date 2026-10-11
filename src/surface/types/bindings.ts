@@ -160,6 +160,18 @@ export interface WindowedControlBinding extends ModeBindingBase {
   /** The colour a continuation cell shows (ECS-127), in place of `colour`. Meaningless without `durationTemplate`/`coverageTemplate`. */
   readonly continuationColour?: RgbColour;
   /**
+   * `colour`/`continuationColour` for cells at an odd virtual column (0-based, i.e. after paging: the cell's own
+   * position in the sequence, not its physical column), so alternating steps can be told apart. Omitted, an odd
+   * column uses `colour`/`continuationColour` exactly like an even one. Only read by a step-feedback window.
+   */
+  readonly colourOdd?: RgbColour;
+  readonly continuationColourOdd?: RgbColour;
+  /**
+   * The colour a toggle window cell's LED shows while its control is *off*, in place of dark -- e.g. an unmuted
+   * track lit green while a muted one is red. Omitted, off is dark, exactly as before.
+   */
+  readonly unlitColour?: RgbColour;
+  /**
    * An application control (boolean) already holding whether this virtual position is covered by an earlier note's
    * duration — `{row}`/`{column}` fill the same way as `template` (ECS-153). An opt-in fast path in place of
    * `durationTemplate`'s backward scan: the client (e.g. webseq, which already holds `pattern.notes` as a small,

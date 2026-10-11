@@ -244,7 +244,7 @@ function bindToggle(
   input: MidiInput,
   source: MidiSource,
   control: Control<BooleanControlDef>,
-  feedback: { target: MidiTarget; output: MidiOutput; kind: string | undefined; lit?: RgbColour } | undefined,
+  feedback: { target: MidiTarget; output: MidiOutput; kind: string | undefined; lit?: RgbColour; unlit?: RgbColour } | undefined,
   shouldApply?: () => boolean,
 ): { unsubscribe: Unsubscribe; painter?: FeedbackPainter } {
   const action = createAction({ id: `toggle.${control.def.id}`, label: control.def.label }, () => {
@@ -255,7 +255,11 @@ function bindToggle(
   if (!feedback) return { unsubscribe: unbindTrigger };
 
   const send = (value: boolean) => {
-    const message = buildFeedbackMessage(feedback.target, control.def, value, feedback.lit);
+    // `unlit`: an "off" that still shows a colour is a lit paint in that colour, not an off message.
+    const message =
+      !value && feedback.unlit !== undefined
+        ? buildFeedbackMessage(feedback.target, control.def, true, feedback.unlit)
+        : buildFeedbackMessage(feedback.target, control.def, value, feedback.lit);
     if (message !== undefined) feedback.output.send(message);
   };
   const unbindFeedback = control.onChange((value) => send(value));
@@ -434,8 +438,12 @@ function bindStepFeedback(
       }
     }
 
+    const odd = column % 2 !== 0;
+    const stepColour = odd ? (binding.colourOdd ?? binding.colour) : binding.colour;
+    const lengthColour = odd ? (binding.continuationColourOdd ?? binding.continuationColour) : binding.continuationColour;
+
     if (own.getValue()) {
-      send(true, binding.colour);
+      send(true, stepColour);
       return;
     }
 
@@ -443,7 +451,7 @@ function bindStepFeedback(
       // ECS-153 fast path: the client already resolved "is this position covered" itself, so this is the one
       // precomputed fact to read, not a scan to run.
       if (coverageAt()?.getValue() === true) {
-        send(true, binding.continuationColour);
+        send(true, lengthColour);
         return;
       }
     } else if (binding.durationTemplate !== undefined) {
@@ -454,7 +462,7 @@ function bindStepFeedback(
       for (let j = cell.column - 1; j >= -lookback(); j--) {
         const { active, duration } = predecessorAt(j);
         if (active?.getValue() === true && duration !== undefined && duration.getValue() > cell.column - j) {
-          send(true, binding.continuationColour);
+          send(true, lengthColour);
           return;
         }
       }
@@ -871,7 +879,7 @@ export async function bindSurfaceMode(
         input,
         source,
         windowed,
-        target && output ? { target, output, kind: physical.feedback?.kind, lit: binding.colour } : undefined,
+        target && output ? { target, output, kind: physical.feedback?.kind, lit: binding.colour, unlit: binding.unlitColour } : undefined,
         () => matchesWhen(binding.when),
       );
       unsubscribes.push(() => windowed.dispose(), handle.unsubscribe);

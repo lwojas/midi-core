@@ -171,8 +171,18 @@ export interface SequencerContract {
 }
 
 export interface SequencerColours {
+  /** A lit step at an even virtual column (0-based) -- the sequencer's original single step colour. */
   readonly steps: RgbColour;
+  /** Alias of `steps` for the even/odd naming below: when set, it wins over `steps`. */
+  readonly stepEven?: RgbColour;
+  /** A lit step at an odd virtual column. Omitted, the same as the even one. */
+  readonly stepOdd?: RgbColour;
+  /** A duration-continuation cell at an even/odd column. Omitted, a dimmed (ECS-127) step colour of the same parity. */
+  readonly stepLengthEven?: RgbColour;
+  readonly stepLengthOdd?: RgbColour;
   readonly mutes: RgbColour;
+  /** A track's mute button while the track is not muted. Omitted, an unmuted track's button is dark. */
+  readonly unmuted?: RgbColour;
   /** The colour of the lit bank select button (ECS-114). */
   readonly banks: RgbColour;
   /** The colour of the playhead's pad (ECS-131), overriding every other colour a step would otherwise show there. */
@@ -265,7 +275,12 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
   const hasControl = (controlId: string) => profile.controls.some((control) => control.id === controlId);
 
   const layout: DeviceLayout = profile.layout ?? {};
-  const colours: SequencerColours = { ...DEFAULT_SEQUENCER_COLOURS, ...contract.colours };
+  const colours: SequencerColours = { ...DEFAULT_SEQUENCER_COLOURS, ...layout.colours, ...contract.colours };
+  // The app's own `steps` is an explicit choice of the even step colour, so it outranks a device-default `stepEven`.
+  const stepEven = contract.colours?.stepEven ?? contract.colours?.steps ?? layout.colours?.stepEven ?? colours.steps;
+  const stepOdd = colours.stepOdd ?? stepEven;
+  const stepLengthEven = colours.stepLengthEven ?? dimColour(stepEven, CONTINUATION_DIM_FACTOR);
+  const stepLengthOdd = colours.stepLengthOdd ?? (colours.stepOdd !== undefined ? dimColour(stepOdd, CONTINUATION_DIM_FACTOR) : stepLengthEven);
   if (!profile.layout) unresolved.push("layout (the profile declares none)");
 
   const grid: ControlGrid | undefined = profile.grids?.find((candidate) => candidate.paging);
@@ -365,6 +380,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         orientation: "horizontal",
         rowCountControl: contract.trackCountControl,
         colour: colours.mutes,
+          ...(colours.unmuted !== undefined ? { unlitColour: colours.unmuted } : {}),
       }))
     : [];
 
@@ -723,10 +739,12 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
         press: "toggle",
         columnCountControl: contract.lengthControl,
         rowCountControl: contract.trackCountControl,
-        colour: colours.steps,
+        colour: stepEven,
+        colourOdd: stepOdd,
         ...(contract.stepDurationTemplate !== undefined || contract.stepCoverageTemplate !== undefined
           ? {
-              continuationColour: dimColour(colours.steps, CONTINUATION_DIM_FACTOR),
+              continuationColour: stepLengthEven,
+              continuationColourOdd: stepLengthOdd,
               ...(contract.stepDurationTemplate !== undefined ? { durationTemplate: contract.stepDurationTemplate } : {}),
               ...(contract.stepCoverageTemplate !== undefined ? { coverageTemplate: contract.stepCoverageTemplate } : {}),
             }
@@ -750,6 +768,7 @@ export function createSequencerBindings(input: MidiInput, profile: DeviceProfile
           orientation: "horizontal",
           rowCountControl: contract.trackCountControl,
           colour: colours.mutes,
+          ...(colours.unmuted !== undefined ? { unlitColour: colours.unmuted } : {}),
         }))
     : [];
 

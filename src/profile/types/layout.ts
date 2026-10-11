@@ -1,3 +1,5 @@
+import type { RgbColour } from "../../mapping/types/address.js";
+
 /**
  * Which of a device's controls play which sequencer role (ECS-90). A profile says what a device has (controls,
  * grids); its layout says which of those controls the application's surface uses for what. Every id here names a
@@ -50,7 +52,24 @@ export interface BankRoles {
   readonly select?: Readonly<Record<number, string>>;
 }
 
+/**
+ * The colours a device's layout asks the sequencer to light its LEDs with (a device-level default: an application's
+ * own `SequencerContract.colours` still wins). Structurally the same keys as `SequencerColours`
+ * (`src/configurations/sequencer.ts`), spelled out here so a profile never imports the app-level configuration module.
+ */
+export interface DeviceLayoutColours {
+  readonly stepEven?: RgbColour;
+  readonly stepOdd?: RgbColour;
+  readonly stepLengthEven?: RgbColour;
+  readonly stepLengthOdd?: RgbColour;
+  readonly playhead?: RgbColour;
+  readonly mutes?: RgbColour;
+  readonly unmuted?: RgbColour;
+}
+
 export interface DeviceLayout {
+  /** Device-default sequencer colours; see `DeviceLayoutColours`. Omitted, the sequencer's own defaults apply. */
+  readonly colours?: DeviceLayoutColours;
   /** Mode buttons, in order. Each switches the surface to its mode and is available in every mode. */
   readonly modeButtons?: readonly ModeButtonRole[];
   /**
