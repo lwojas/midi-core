@@ -1,32 +1,15 @@
 # Control Surface — Lifecycle and Runtime
 
 Status: Draft
-Linear: [ECS-66](https://linear.app/ecs3d/issue/ECS-66/define-surface-lifecycle-and-runtime-model)
-Project: [MIDI Core and Control Architecture](https://linear.app/ecs3d/project/midi-core-and-control-architecture-f934a737de3b)
-Depends on: [docs/control-surface-architecture.md](../control-surface-architecture.md) (ECS-64),
-[docs/contracts/discovery-lifecycle.md](./discovery-lifecycle.md) (ECS-27),
-[docs/contracts/device-profile.md](./device-profile.md) (ECS-39)
-Related: [docs/contracts/control-api.md](./control-api.md) (ECS-34/35/65)
 Source of truth: [`src/surface/`](../../src/surface)
 
 ## Scope
 
-`docs/control-surface-architecture.md` (ECS-64) named Control Surface as
-the layer between Device Profile and the Application Contract, and the
-audit it's built on (ECS-63, Gap 4) found no lifecycle model above Core's
-own per-port `ConnectionState` — webseq's `useMidiControls.ts` hand-rolls
-exactly this for one hardcoded device, torn down as a bundle, with nothing
-reusable. This ticket is that model: attach/detach, availability,
-initialisation, cleanup, connection changes, and error responsibility for
-a minimal surface runtime consuming a `DeviceProfile` and the Application
-Contract.
-
-Like `docs/contracts/mapping.md` before its own runtime ticket (ECS-37),
-this produces **only the contract** — types and pure functions
-(`src/surface/types/`), no code that resolves a profile against real
-discovered ports, runs device setup, or binds a real `ControlMapping`.
-That implementation is ECS-76 ("implement surface lifecycle/error
-handling"), built against the shape defined here.
+The Control Surface lifecycle defines attach/detach, availability,
+initialisation, cleanup, connection changes, and error responsibility
+for a runtime consuming a `DeviceProfile` and the Application Contract.
+This document specifies the contract; runtime behavior is described in
+`surface-lifecycle-runtime.md`.
 
 ## One aggregate state, not a per-port state repeated by hand
 
@@ -53,17 +36,15 @@ own transition table.
 
 ## Availability without a fourth state
 
-The ticket asks for "availability" explicitly. This does **not** add a
+Availability does **not** add a
 state: whether a surface's required ports are ready for `attach()` is
 answered by inspecting those ports' own Core `ConnectionState` directly —
 `isSurfaceAttachable(requiredPortStates)` is `true` when every one of them
 is already `"available"` or `"connected"`. Introducing a parallel
 surface-level "available" would duplicate a fact Core's own lifecycle
-contract already states, which the ticket explicitly warns against
-("avoid duplicating MIDI Core functionality"). A caller checks
-attachability by reading the same `ConnectionState`s it already has from
-composing `MidiConnection`s — this contract adds no new source of truth
-for it.
+contract already states. A caller checks attachability by reading the
+same `ConnectionState`s it already has from composing `MidiConnection`s;
+this contract adds no new source of truth for it.
 
 ## `attach()` / `detach()`: initialisation and cleanup
 
@@ -76,17 +57,17 @@ interface ControlSurface {
   readonly state: SurfaceLifecycleState;
   attach(): Promise<void>;
   detach(): Promise<void>;
-  onStateChange(listener: (change: SurfaceLifecycleChange) => void): Unsubscribe;
+  onStateChange(
+    listener: (change: SurfaceLifecycleChange) => void,
+  ): Unsubscribe;
   onError(listener: (error: SurfaceError) => void): Unsubscribe;
 }
 ```
 
 `attach()`/`detach()` take no arguments: which ports a profile resolves to
-is already decided by whoever constructs a `ControlSurface`, the same
-"not this schema's job" stance `docs/contracts/device-profile.md` already
-takes on profile-to-port matching (named explicitly as a deferred, no
-concrete-need-yet non-gap in the ECS-63 audit). This contract assumes that
-resolution already happened; it does not perform it.
+is already decided by whoever constructs a `ControlSurface`. This
+contract assumes that resolution already happened; it does not perform
+it.
 
 `attach()` is initialisation: connect every port `profile.ports` marks
 `required`, then run `profile.setup`'s steps on those ports — see "Device setup" below. `detach()` is cleanup: the reverse, after
@@ -95,7 +76,7 @@ giving a caller the chance to unbind whatever it bound (next section).
 ## No binding here — only the moment it hooks in
 
 `docs/control-surface-architecture.md` already describes mode switching as
-*unbinding* the outgoing mode's `ControlMapping`s and *binding* the
+_unbinding_ the outgoing mode's `ControlMapping`s and _binding_ the
 incoming mode's around a lifecycle event, not as logic living inside
 `bindControlMapping()` itself. This contract extends that reasoning one
 level up: `attach()`/`detach()` do not call `bindControlMapping()` or know
@@ -106,11 +87,9 @@ what a `ControlMapping` is. They only name the moment a caller should:
 - `onStateChange` reporting entry into `"detaching"` is when bindings
   should be torn down, before ports disconnect underneath them.
 
-What a binding set *is* — a declarative config, a resolved role table from
-ECS-68's still-open decision — is unchanged and untouched by this ticket.
-This is deliberately the same restraint `docs/control-surface-architecture.md`
-itself applied to the generation step's "binding table": naming where it
-hooks in, not what it contains.
+What a binding set _is_ — a declarative config or a resolved role table —
+is outside this lifecycle contract. It names when bindings hook in, not
+what they contain.
 
 ## Connection changes while attached
 
@@ -150,17 +129,14 @@ surface failure (a required port's `connect()` rejecting) is carried as
 
 ## What's deliberately not here
 
-- **No implementation** — no code resolving `profile.ports` against real
-  discovered ports, no device setup runner, no `ControlSurface`
-  backed by live `MidiConnection`s. That's ECS-76.
-- **No profile-to-port matching** — unchanged non-gap from the ECS-63
-  audit; still someone else's job, by name/manufacturer heuristic or
+- **No profile-to-port matching** — someone else's job, by
+  name/manufacturer heuristic or
   explicit configuration, before a `ControlSurface` is constructed.
 - **No binding/mapping logic** — no `ControlMapping` generation, no mode
-  switching. This ticket names the lifecycle moment bindings hook into
-  (`onStateChange` into `"attached"`/`"detaching"`); ECS-67 (modes) and
-  ECS-68 (binding language) decide the rest.
-- **No general SysEx template language** — setup steps carry their own declared bytes (`device-setup.md`); a general template language is still ECS-40's scope, if ever needed.
+  switching. This contract names when bindings hook in; mode and binding
+  contracts define the rest.
+- **No general SysEx template language** — setup steps carry their own
+  declared bytes (`device-setup.md`).
 - **No retry/reconnection policy** — `attach()`/`detach()` are one
   attempt each; a caller wanting retries composes that itself, the same
   stance `docs/contracts/discovery-lifecycle.md` already takes for Core's

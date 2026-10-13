@@ -1,17 +1,14 @@
 # Profile Validation and Diagnostics
 
 Status: Draft
-Linear: [ECS-42](https://linear.app/ecs3d/issue/ECS-42/define-profile-validation-and-diagnostics)
-Depends on: [docs/contracts/device-profile.md](./device-profile.md) (ECS-39), [docs/contracts/protocol-composition.md](./protocol-composition.md) (ECS-40)
 Source of truth: [`src/profile/validation/`](../../src/profile/validation)
 
 ## Scope
 
-Every prior profile-layer contract deferred the same thing here: dangling
-references, unknown enum values, unresolved protocol ids, and — the
 ticket's own framing — "unsupported, unknown or unresolved behavior
-rather than invented handshakes." This defines that validation: two pure
-functions, each returning a list of actionable `ProfileDiagnostic`s
+Profile validation checks dangling references, unknown enum values,
+unresolved protocol ids, and unsupported or unresolved behavior. The
+pure validation functions return actionable `ProfileDiagnostic` lists
 instead of throwing or silently accepting broken data.
 
 ## `ProfileDiagnostic`
@@ -48,7 +45,7 @@ specific thing an earlier contract named as deferred:
   present but not the version this build of midi-core understands
   (`unsupported-schema-version`). This is the mismatch
   `device-profile.md` said `schemaVersion` exists to let a producer and
-  consumer detect; this is where that detection actually happens.
+  consumer can detect.
 - **`identity`** — must be an object with string `id`/`manufacturer`/
   `model` (`invalid-identity`).
 - **`ports`** — each port's `type` must be a real `PortType`
@@ -60,15 +57,15 @@ specific thing an earlier contract named as deferred:
   `ControlValueMode`, `feedback.kind` (if present) a real `FeedbackKind`;
   `portId` must resolve to a declared port (`dangling-port-reference`,
   named directly in `device-profile.md`), and so must `feedbackPortId`
-  when present (same code, ECS-62 — the convention that `portId` names the
+  when present (the convention that `portId` names the
   input-direction port made it possible to name feedback's own port
   explicitly too); no two controls share an `id` (`duplicate-control-id` —
   this is also what catches a composition that produced colliding ids, per
   `protocol-composition.md`, since by the time controls reach this
   function their origin, protocol-composed or hand-authored, no longer
   matters). `relativeEncoding` (if present) must be a real
-  `RelativeEncoding` (`unknown-relative-encoding`, ECS-137), and is
-  *required* when `valueMode` is `"relative"` and `input` is set
+  `RelativeEncoding` (`unknown-relative-encoding`), and is
+  _required_ when `valueMode` is `"relative"` and `input` is set
   (`relative-control-missing-encoding`) — the one cross-field requirement
   `device-profile.md` itself names, the same pattern `sysex.required`
   already establishes below, not a new kind of check.
@@ -78,21 +75,21 @@ specific thing an earlier contract named as deferred:
   `controlId` must resolve to a declared control
   (`dangling-control-reference`, the other reference `device-profile.md`
   named), and no two grids share an `id` (`duplicate-grid-id`).
-- **`layout`** (ECS-90) — when present, must be an object (`invalid-layout`),
+- **`layout`** — when present, must be an object (`invalid-layout`),
   `modeButtons` must be an array of objects with a string `mode` and a `controlId`
   (`invalid-layout`), and every control id named by `modeButtons`, `pageLeft`,
-  `pageRight`, `transport` or `modifier` (ECS-137) must be a declared control
+  `pageRight`, `transport` or `modifier` must be a declared control
   (`dangling-control-reference`). The validator doesn't check whether a mode name
   means anything: the surface decides that, and the configuration reports any role
-  it cannot bind. `modeButtons[].indicator` (ECS-138), when present, must be a
-  boolean (`invalid-layout`). `dedicatedMuteGridId` (ECS-138), when present, must
-  be a string (`invalid-layout`) that resolves to a declared *grid* — not a
+  it cannot bind. `modeButtons[].indicator`, when present, must be a
+  boolean (`invalid-layout`). `dedicatedMuteGridId`, when present, must
+  be a string (`invalid-layout`) that resolves to a declared _grid_ — not a
   control, so this is `dangling-grid-reference`, checked against the grid ids
   `checkGrids` collects (grids are validated before layout, so this can reuse
   that same set rather than re-scanning `grids`).
-- **`displays`** (ECS-137) — when present, must be an array of objects with
+- **`displays`** — when present, must be an array of objects with
   string `id`/`label`/`portId` (`invalid-display`); `portId` must resolve to a
-  declared *output* port (`dangling-port-reference`, or `invalid-display` if it
+  declared _output_ port (`dangling-port-reference`, or `invalid-display` if it
   resolves to the wrong direction); `prefix` must start with 0xF0 and `textPrefix`
   must hold bytes 0-255 (`invalid-display`); `charCount` must be a positive integer
   (`invalid-display` — a line/char-count mismatch); `lines` must be a non-empty
@@ -101,8 +98,8 @@ specific thing an earlier contract named as deferred:
   display sharing a `lineId` (`duplicate-display-line-id`).
 - **`sysex`** — `required: true` with an empty/missing `manufacturerId`
   is flagged (`sysex-required-no-manufacturer-id`): a profile claiming
-  vendor SysEx is required but not saying which vendor is exactly the
-  "unresolved... rather than invented" case from the ticket — silently
+  vendor SysEx is required but not saying which vendor is an unresolved
+  requirement; silently
   treating it as "no SysEx needed" would be inventing an answer the data
   doesn't support.
 - **`setup`** — the same reasoning. `inputPortId`/`outputPortId` must name a declared
@@ -130,13 +127,12 @@ exactly the three cases `protocol-composition.md` named as deferred:
   `duplicate-control-id` once composed, caught here instead, before
   composing).
 
-## `validateDeviceOverrides(profile, overrides): readonly ProfileDiagnostic[]` (ECS-137)
+## `validateDeviceOverrides(profile, overrides): readonly ProfileDiagnostic[]`
 
 Validates a `DeviceOverrides` document (`docs/contracts/device-profile.md`'s
 "Overrides, standalone" section) against the `DeviceProfile` it claims to
 apply to — `overrides` is `unknown`, the same untrusted-data stance
-`validateDeviceProfile()` takes. Scoped, per the ECS-136 architecture
-gate's own split, to **version-check logic only**:
+`validateDeviceProfile()` takes. It is scoped to version-check logic:
 
 - `schemaVersion` must be a string (`invalid-overrides`) and match the
   version this build of midi-core understands
@@ -150,8 +146,8 @@ gate's own split, to **version-check logic only**:
   but not necessarily fatal on its own.
 
 It does not validate `layoutOverrides`/`bindingOverrides`' own contents
-against the profile's actual controls/bindings — that's ECS-142's job,
-once a schema for them exists.
+against the profile's actual controls/bindings; their schema is outside
+this validation contract.
 
 ## What's deliberately not here
 

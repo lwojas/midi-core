@@ -2,7 +2,7 @@ import type { Channel } from "../../core/types/message.js";
 import type { ModeButtonRole } from "./layout.js";
 
 /**
- * A device mode that needs its own messages and its own ports, on top of the device's main surface (ECS-96). The
+ * A device mode that needs its own messages and its own ports, on top of the device's main surface. The
  * Launchpad Mini MK3's DAW Fader layout is the first: it is only reachable after a DAW-mode message, and its faders
  * report and take their colours on the DAW ports.
  *
@@ -30,11 +30,11 @@ export interface DeviceModeProfile {
    */
   readonly bankPrefix: readonly number[];
   /**
-   * The values of one fader's entry in a bank message, in the order the device expects (ECS-99). Each field appears
+   * The values of one fader's entry in a bank message, in the order the device expects. Each field appears
    * once. The sequencer writes the entries for a bank's faders one after another, after `bankPrefix`.
    */
   readonly bankEntry: readonly BankEntryField[];
-  /** The byte a fader's entry carries for a unipolar bank, and for a bipolar one (ECS-99). */
+  /** The byte a fader's entry carries for a unipolar bank, and for a bipolar one. */
   readonly bankTypes: { readonly unipolar: number; readonly bipolar: number };
   /**
    * The buttons that switch modes while this mode is active. They are read on this mode's own ports, because the device
@@ -42,20 +42,20 @@ export interface DeviceModeProfile {
    */
   readonly modeButtons?: readonly ModeButtonRole[];
   /**
-   * The arrows that page through the application's tracks while this mode is active (ECS-96). They are actions for the
+   * The arrows that page through the application's tracks while this mode is active. They are actions for the
    * application to handle, not navigation: the application owns which tracks the faders show. Read on this mode's ports.
    */
   readonly pageButtons?: DeviceModePageButtons;
   /**
    * True when the device forgets its fader setup on a page turn, so the bank is resent before the application moves its
-   * tracks (ECS-101). Each page arrow then sends the bank again. False, the page turn sends nothing to the device.
+   * tracks. Each page arrow then sends the bank again. False, the page turn sends nothing to the device.
    */
   readonly resendBankOnPageTurn: boolean;
   readonly faders: DeviceFaderSet;
 }
 
 /**
- * A value in one fader's entry of a bank message (ECS-99): the fader's position in its bank (`index`), its type
+ * A value in one fader's entry of a bank message: the fader's position in its bank (`index`), its type
  * (`type`, from `bankTypes`), its CC (`controller`), or its colour (`colour`).
  */
 export type BankEntryField = "index" | "type" | "controller" | "colour";
@@ -89,12 +89,12 @@ export interface DeviceFaderSet {
 export interface DeviceFaderBank {
   /** Profile-document-scoped id, unique among the banks of its mode. Names the bank in the application contract's `faderTemplates`. */
   readonly id: string;
-  /** The id of the mode that shows this bank, unique across the profile's banks (ECS-100), e.g. `faders-volume`. */
+  /** The id of the mode that shows this bank, unique across the profile's banks, e.g. `faders-volume`. */
   readonly modeId: string;
   readonly bipolar: boolean;
   readonly colour: number;
   /** One CC per fader, 0-127, all different. */
   readonly controllers: readonly number[];
-  /** The control id of each fader, parallel to `controllers` and unique across the profile (ECS-100), e.g. `fader-volume-0`. */
+  /** The control id of each fader, parallel to `controllers` and unique across the profile, e.g. `fader-volume-0`. */
   readonly controlIds: readonly string[];
 }

@@ -1,9 +1,6 @@
 # Application Control API — Runtime
 
 Status: Draft
-Linear: [ECS-70](https://linear.app/ecs3d/issue/ECS-70/implement-application-contextstate-interface)
-Project: [MIDI Core and Control Architecture](https://linear.app/ecs3d/project/midi-core-and-control-architecture-f934a737de3b)
-Depends on: [docs/contracts/control-api.md](./control-api.md) (ECS-34/35/65)
 Source of truth: [`src/control-api/control.ts`](../../src/control-api/control.ts),
 [`src/control-api/action.ts`](../../src/control-api/action.ts),
 [`src/control-api/registry.ts`](../../src/control-api/registry.ts),
@@ -12,14 +9,11 @@ Source of truth: [`src/control-api/control.ts`](../../src/control-api/control.ts
 
 ## Scope
 
-`docs/contracts/control-api.md` defined `Control`/`Action`/
-`ControlRegistry`/`SurfaceContext`/`SurfaceEventSource` as pure
-contracts and said so explicitly: "no concrete `Control`... backed by
-real sequencer state." This ticket is that implementation — generic,
-in-memory, usable for the proof's own required examples (transport,
-track volume, step state, playhead) without any MIDI, device, or
-sequencer-specific knowledge, and independent of the Control Surface
-runtime (ECS-69): nothing here imports from `src/core/`, `src/mapping/`,
+This is a generic, in-memory implementation of `Control`, `Action`,
+`ControlRegistry`, `SurfaceContext`, and `SurfaceEventSource`. It supports
+transport, track volume, step state, and playhead examples without MIDI,
+device, or sequencer-specific knowledge. It is independent of the Control
+Surface runtime and imports nothing from `src/core/`, `src/mapping/`,
 `src/profile/`, or `src/surface/`.
 
 ## `createControl()`
@@ -37,14 +31,12 @@ transitions to itself" and `createSurfaceNavigation()`'s identical choice
 (`docs/contracts/surface-runtime.md`): nothing changed, so nothing to
 observe.
 
-**Several independent listeners, not one.** `onChange()` adds to a `Set`,
+**Several independent listeners.** `onChange()` adds to a `Set`,
 not a single slot — proven directly in `control.test.ts`: a surface-side
 listener and a UI-side listener both subscribed to the same `Control`
-both fire from one `setValue()` call. This is the concrete shape behind
-the ticket's "state changes from UI or other sources must be observable
-directly by the surface; the UI is not a feedback intermediary" —
-there's no step in `createControl()` where one subscriber's notification
-depends on another's having run first.
+both fire from one `setValue()` call. Surface and UI listeners can observe
+state changes directly; one subscriber's notification does not depend on
+another's having run first.
 
 ## `createAction()`
 
@@ -54,11 +46,11 @@ supplied. No state, nothing else to implement.
 ## `createControlRegistry()` / `createSurfaceContext()`: the mutation methods their contracts don't name
 
 `docs/contracts/control-api.md` specifies `ControlRegistry`'s and
-`SurfaceContext`'s *read* side only (`listControls`/`getControl`/
+`SurfaceContext`'s _read_ side only (`listControls`/`getControl`/
 `onChange`, `listSelections`/`getSelection`/`onChange`) — deliberately,
 since what adds a control or changes a selection is the owning
 application's concern, not this contract's. A concrete implementation
-still needs *something* to do that, so `MutableControlRegistry.add()`/
+still needs _something_ to do that, so `MutableControlRegistry.add()`/
 `.remove()` and `MutableSurfaceContext.setSelection()` exist as this
 implementation's own additions beyond their interfaces — the same way
 `MockMidiOutput.simulateSendFailures()` already adds test-only surface
@@ -70,9 +62,8 @@ longer has a selection," only ever a new one. A method that mutates state
 in a way its own contract's notification can't represent would be
 exactly the kind of invented behavior this project avoids elsewhere;
 `getSelection()` returning `undefined` already covers "nothing selected
-yet," it just can't be *returned to* once a scope has a selection. Left
-as a gap in `docs/contracts/control-api.md` (ECS-65) for a future ticket
-to close, not worked around here.
+yet," it just can't be _returned to_ once a scope has a selection. Left
+as a limitation of the current `SurfaceContext` contract.
 
 ## `createSurfaceEventSource()`, and a correction to `SurfaceEventSource`
 
@@ -82,29 +73,17 @@ retains nothing between calls: a listener added after an `emit()` never
 sees it, matching "reports each occurrence once instead of holding a
 value at all."
 
-**Correction found while implementing this (ECS-70):**
-`SurfaceEventSource.onEvent`'s listener was typed `(event: SurfaceEvent)
-=> void` — the bare `SurfaceEvent`, defaulting its `P` to `undefined`.
-That couldn't actually type either payload-bearing example
-`docs/contracts/control-api.md`'s own table names ("Step firing...
-payload `{ step: 3 }`", "Playhead advancing... payload `{ step: 3 }`")
-— writing `createSurfaceEventSource()` against the contract as shipped
-made this concrete rather than theoretical. Widened to `SurfaceEvent<unknown>`
-in both `src/control-api/types/event.ts` and the doc: a `SurfaceEventSource`
-was already understood to report more than one kind of event (a chase
-light and a tick share one source type but different `payload` shapes),
-so a listener narrowing on `event.id` to know what `payload` is was
-already the expected pattern — `unknown` just makes that narrowing
-required instead of silently impossible.
+`SurfaceEventSource.onEvent` listeners receive `SurfaceEvent<unknown>`
+so the source can report event kinds with different payload shapes. A
+listener narrows on `event.id` before using `payload`; this makes the
+narrowing required rather than silently treating payloads as a single
+type.
 
 ## What's deliberately not here
 
-- **No concrete `Transport`/`Track`/`Pattern` objects** — no application
-  specifically named "the transport" or "a track," wired together from
-  these factories. That's ECS-71 (generic mock device) and ECS-77/78
-  (validation against it, sequencer integration); this ticket only
-  proves the factories are *sufficient* for those examples
-  (`src/control-api/examples.test.ts`), not that it builds them for real.
+- **No concrete `Transport`/`Track`/`Pattern` objects** — these factories
+  do not wire application-specific objects together; they provide
+  primitives that can support examples (`src/control-api/examples.test.ts`).
 - **No automation model** — unchanged from `docs/contracts/control-api.md`'s
   own deferral; nothing here needs to know how a value changes over
   time, only that `setValue()` was called.
@@ -112,7 +91,6 @@ required instead of silently impossible.
   itself already states; these factories take an owner-supplied `def`,
   never assume one.
 - **No `ControlRegistry`/`SurfaceContext` wiring into the Control Surface
-  runtime** — `src/surface/bindings.ts` (ECS-69) already takes a
-  `ControlRegistry` and `SurfaceContext` as given; this ticket supplies
-  concrete ones that satisfy those parameter types, but nothing here
-  constructs a `ControlSurface` or calls into `src/surface/`.
+  runtime** — `src/surface/bindings.ts` takes a `ControlRegistry` and
+  `SurfaceContext` as given. Nothing here constructs a `ControlSurface`
+  or calls into `src/surface/`.

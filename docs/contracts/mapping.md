@@ -1,9 +1,8 @@
 # MIDI ↔ Control Mapping — Contract
 
 Status: Draft
-Linear: [ECS-36](https://linear.app/ecs3d/issue/ECS-36/define-midi-control-mapping-contract)
-Depends on: [docs/contracts/message-model.md](./message-model.md) (ECS-28),
-[docs/contracts/control-api.md](./control-api.md) (ECS-34/35)
+Depends on: [docs/contracts/message-model.md](./message-model.md),
+[docs/contracts/control-api.md](./control-api.md)
 Related: [docs/architecture.md](../architecture.md) (Mapping layer)
 Source of truth: [`src/mapping/`](../../src/mapping)
 
@@ -14,8 +13,8 @@ This defines the bidirectional translation between a normalized
 control (source), what control it drives (target), which channel(s) it
 listens on, how a MIDI message's native value range maps onto a control's
 declared range, and how a control's value is sent back out as MIDI
-(feedback). Like the contracts it depends on, this ticket produces **only
-the contract** — types and pure functions, no wiring to a live
+(feedback). This contract defines types and pure functions, with no wiring
+to a live
 `MidiInput`/`MidiOutput`/`Control`/`ControlRegistry`, and no device
 profiles.
 
@@ -82,11 +81,11 @@ with no per-mapping override.
 
 Not every `(source kind, control kind)` pairing is supported:
 
-| source          | number | boolean | enum |
-|-----------------|:------:|:-------:|:----:|
-| control-change  |   ✓    |    ✓    |  ✓   |
-| pitch-bend      |   ✓    |         |      |
-| note            |        |    ✓    |      |
+| source         | number | boolean | enum |
+| -------------- | :----: | :-----: | :--: |
+| control-change |   ✓    |    ✓    |  ✓   |
+| pitch-bend     |   ✓    |         |      |
+| note           |        |    ✓    |      |
 
 Control Change is MIDI's generic continuous-or-stepped controller message,
 general enough to reasonably drive any of the three control kinds (a knob
@@ -118,7 +117,7 @@ a mapping with none is input-only — turning the knob changes the control,
 nothing is sent back. Most controls don't need it; it's there, not
 assumed, for the ones that do (a motorized fader, an LED ring).
 
-`relativeEncoding` (ECS-137) is optional, and applies to a number, boolean
+`relativeEncoding` is optional, and applies to a number, boolean
 or enum control (scaling by the control's own metadata, see
 `docs/contracts/mapping-runtime.md`): omitted (still the common case), `source`'s raw value is
 normalized straight onto `control`'s range exactly as before. Present —
@@ -128,7 +127,7 @@ copied by `src/surface/generate.ts` from the originating
 deltas rather than a position: `decodeRelativeDelta(raw, encoding)`
 (`src/mapping/value.ts`) turns the raw byte into a signed delta, which
 `bindControlMapping()` (`docs/contracts/mapping-runtime.md`) accumulates
-onto the control's *current* value (stepped, clamped to its range), instead of
+onto the control's _current_ value (stepped, clamped to its range), instead of
 scaling the raw byte directly. `RelativeEncoding` is mapping's own type
 (`src/mapping/types/address.ts`), kept deliberately separate from the
 profile layer's own `RelativeEncoding` of the same name — the same
@@ -149,16 +148,16 @@ already draws for `ControlSurfaceAddress`/`MidiAddress`.
   `ControlMapping`, or on `MidiSource`/`MidiTarget`), left undesigned until
   a concrete mapping needs something other than linear/threshold/bucket.
 - **No conditions, still, inside `ControlMapping` itself** — e.g. "this
-  mapping only applies while a modifier button is held." ECS-137 resolved
-  this extension point one layer up, not here: `bindControlMapping()`
-  (`docs/contracts/mapping-runtime.md`) gained a generic `shouldApply()`
+  mapping only applies while a modifier button is held." This condition
+  belongs one layer up, not here: `bindControlMapping()`
+  (`docs/contracts/mapping-runtime.md`) provides a generic `shouldApply()`
   gate it knows nothing about the meaning of, and
   `src/surface/bindings.ts` (`docs/contracts/surface-bindings.md`) is what
   actually supplies a modifier-aware predicate. `ControlMapping` itself
   still carries no condition field.
 - **No device profiles** — nothing here knows about a specific
   controller's layout or names a collection of `ControlMapping`s as "the
-  mapping for a Launchpad." That's ECS-39.
+  mapping for a Launchpad."
 - **No many-to-one or one-to-many mappings** (e.g. two CCs combined into
   one control, or one CC driving two controls) — one `ControlMapping` is
   exactly one source driving exactly one control, optionally with one

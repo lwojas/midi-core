@@ -1,30 +1,23 @@
 # Control Surface — Runtime Foundation
 
 Status: Draft
-Linear: [ECS-69](https://linear.app/ecs3d/issue/ECS-69/implement-control-surface-runtime)
-Project: [MIDI Core and Control Architecture](https://linear.app/ecs3d/project/midi-core-and-control-architecture-f934a737de3b)
-Depends on: [docs/control-surface-architecture.md](../control-surface-architecture.md) (ECS-64),
-[docs/contracts/surface-navigation.md](./surface-navigation.md) (ECS-67),
-[docs/contracts/surface-bindings.md](./surface-bindings.md) (ECS-68),
-[docs/contracts/mapping-runtime.md](./mapping-runtime.md) (ECS-37/57, `bindControlMapping()`)
+Depends on: [docs/control-surface-architecture.md](../control-surface-architecture.md),
+[docs/contracts/surface-navigation.md](./surface-navigation.md),
+[docs/contracts/surface-bindings.md](./surface-bindings.md),
+[docs/contracts/mapping-runtime.md](./mapping-runtime.md) (`bindControlMapping()`)
 Source of truth: [`src/surface/navigation.ts`](../../src/surface/navigation.ts),
 [`src/surface/bindings.ts`](../../src/surface/bindings.ts)
 
 ## Scope
 
-Phase 1 (ECS-63–68) produced contracts only — types and pure functions,
-no code that resolves a profile against real ports, runs device setup, or binds a real `ControlMapping`. This is the first Phase 2
-ticket: "the small runtime connecting application contracts to
-profile-defined controls and MIDI Core." It deliberately does **not**
-implement everything Phase 2 eventually needs — two pieces it explicitly
-leaves to their own, already-scoped tickets (see "What's deliberately
-not here"). What it does implement is the foundation both of those build
-on: a concrete `SurfaceNavigation`, and the orchestration that installs/
-tears down one mode's bindings against live MIDI ports.
+This runtime connects application contracts to profile-defined controls
+and MIDI Core. It provides a concrete `SurfaceNavigation` and the
+orchestration that installs and tears down one mode's bindings against
+live MIDI ports; device setup and port lifecycle are handled separately.
 
 ## `createSurfaceNavigation()` — modes
 
-`docs/contracts/surface-navigation.md` (ECS-67) defined `SurfaceNavigation`
+`docs/contracts/surface-navigation.md` defines `SurfaceNavigation`
 as a contract with no reference implementation. `createSurfaceNavigation()`
 (`src/surface/navigation.ts`) is that implementation: plain in-memory
 state, `setMode()`/`pageBy()` applying a change and notifying listeners,
@@ -40,19 +33,16 @@ contract rather than new here:
   reasoning `isValidSurfaceTransition()`/`isValidTransition()` already
   apply elsewhere in this project.
 
-No mode-switching *policy* — deciding which mode a selection should arm —
-lives here; that's ECS-75, reading `SurfaceContext` and calling
+No mode-switching _policy_ — deciding which mode a selection should arm —
+lives here; a caller reads `SurfaceContext` and calls
 `setMode()`/`pageBy()` on the object this function returns.
 
 ## `bindSurfaceMode()` / `bindActiveMode()` — bindings, and the lifecycle hook-in
 
-`docs/contracts/surface-bindings.md` (ECS-68) named the generation
-step's declarative input (`SurfaceModeDefinition`) but left two things
-for whoever actually calls it: translating a `PhysicalControl`'s address
-into a live `MidiSource`/`MidiTarget` (ECS-72's scope, not this one's —
-see below), and the mechanical work of installing/tearing down whatever
-that produces. `bindSurfaceMode()` (`src/surface/bindings.ts`) is the
-second half:
+`docs/contracts/surface-bindings.md` defines the generation step's
+declarative input (`SurfaceModeDefinition`). `bindSurfaceMode()`
+(`src/surface/bindings.ts`) installs and tears down bindings produced by
+an injected address-generation function:
 
 1. Runs `modeDefinition.hooks?.onEnter?.()`.
 2. Resolves this mode's bindings — `hooks.resolveBindings(context)` if
@@ -88,7 +78,7 @@ misconfigured mapping already gets elsewhere in this project — not an
 error, since a surface isn't required to have every possible mode
 configured.
 
-### Why a teardown, not the project's usual `Unsubscribe`
+### Asynchronous teardown
 
 Every other binding in this project (`MidiInput.onMessage`,
 `Control.onChange`, `bindControlMapping()` itself) returns a plain,
@@ -100,10 +90,10 @@ bindings.md` already types as `Promise<void> | void`. Widening every
 wrong direction; a new, narrowly-scoped type local to this one operation
 is cheaper and doesn't touch anything already shipped.
 
-## `GeneratedBinding` / `GenerateControlMappings`: the seam ECS-72 fills in
+## `GeneratedBinding` / `GenerateControlMappings`
 
-`src/surface/types/generation.ts` defines the one new type this ticket
-needed in order to call a generation step that doesn't exist yet:
+`src/surface/types/generation.ts` defines the type used to call the
+injected generation step:
 
 ```ts
 interface GeneratedBinding {
@@ -127,48 +117,38 @@ but a `DeviceProfile` can expose more than one port
 has to say which connected `MidiInput`/`MidiOutput` a given generated
 mapping actually belongs to. `GeneratedBinding` is the minimum addition
 that answers that, following the same `portId`/`feedbackPortId`
-convention (ECS-62) `PhysicalControl` already uses.
+convention `PhysicalControl` already uses.
 
 **`generate` is injected, not implemented here.** Reading a
 `PhysicalControl`'s `input`/`feedback` (`ControlSurfaceAddress`) and
 translating it into a `MidiSource`/`MidiTarget` for the `ControlId`
-each `ControlBinding` resolves to is exactly ECS-72's scope ("Implement
-the agreed declarative relationships between profile-defined physical
-controls and application controls... Express track volume, transport
-and step bindings without hardcoded device note layouts"). `bindSurfaceMode()`
-only needs to agree on `generate`'s *signature* to be built and tested
-now, against a hand-written `generate` double (see
-`src/surface/bindings.test.ts`); ECS-72 supplies the real one later
-without this file changing.
+each `ControlBinding` resolves to belongs to the generation step.
+`bindSurfaceMode()` depends only on `generate`'s _signature_, tested
+with a hand-written `generate` double (`src/surface/bindings.test.ts`).
 
 ## What's deliberately not here
 
 - **No `ControlSurface` implementation** — no `attach()`/`detach()`
   connecting real ports or running device setup. That contract
-  (`docs/contracts/surface-lifecycle.md`) is fully specified already;
-  implementing it is ECS-76 ("Implement surface lifecycle/error
-  handling... after runtime foundation exists"), built on
-  `bindActiveMode()` as the function it calls at its two hook-in
-  moments. This ticket provides that foundation; it does not also build
-  what's meant to be built on top of it.
+  (`docs/contracts/surface-lifecycle.md`) is specified separately;
+  `bindActiveMode()` is the function it calls at its two hook-in moments.
 - **No generation step** — no code reading `PhysicalControl.input`/
   `feedback` or translating a `ControlSurfaceAddress` into a
-  `MidiSource`/`MidiTarget`. That's ECS-72; `GenerateControlMappings`
+  `MidiSource`/`MidiTarget`. `GenerateControlMappings`
   names the function signature it must satisfy, nothing more.
 - **No `NavigationBinding` wiring** — a hardware "next page"/mode button
   needs the same profile-address-to-live-MIDI translation `generate()`
   does for `ControlBinding`s, just driving `SurfaceNavigation` instead
   of a `Control`. `bindSurfaceMode()` filters `NavigationBinding`s out
-  rather than guessing at that translation itself; wiring them is left
-  for whichever ticket first needs a navigation control that isn't
-  exercised purely through test code (ECS-72 or ECS-75, not decided
-  here).
+  rather than guessing at that translation itself; navigation binding
+  requires a separate implementation.
 - **No mode-switching policy or rebind-on-context-change** — `createSurfaceNavigation()`
   and `bindActiveMode()` are both pure mechanism; nothing here subscribes
   to `navigation.onChange()` and automatically unbinds/rebinds when the
   active mode changes mid-attach. That reactive behavior, and the policy
-  deciding which mode a selection should arm, is ECS-75's scope.
+  deciding which mode a selection should arm belongs to the lifecycle owner.
+- **No `ControlRegistry`/`SurfaceContext`/mock-device implementation** —
 - **No `ControlRegistry`/`SurfaceContext`/mock-device implementation** —
   `bindSurfaceMode()` takes a `ControlRegistry` and a `SurfaceContext` as
-  given; building real ones is ECS-70 (application context/state) and
-  ECS-71 (generic mock device), both independent of this ticket.
+  given; their implementations are provided by the application and
+  device layers.

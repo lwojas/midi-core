@@ -1,20 +1,12 @@
 # MIDI Core — Mock/Test Device
 
 Status: Draft
-Linear: [ECS-32](https://linear.app/ecs3d/issue/ECS-32/create-midi-core-mocktest-device)
-Depends on: [ECS-27](https://linear.app/ecs3d/issue/ECS-27/define-midi-device-discovery-and-lifecycle-contract) ([docs/contracts/discovery-lifecycle.md](./discovery-lifecycle.md)), [ECS-29](https://linear.app/ecs3d/issue/ECS-29/implement-midi-input) ([docs/contracts/input.md](./input.md)), [ECS-30](https://linear.app/ecs3d/issue/ECS-30/implement-midi-output) ([docs/contracts/output.md](./output.md))
 Source of truth: [`src/adapters/mock/`](../../src/adapters/mock)
 
-## What this fills
+## Mock device
 
-The architecture doc (ECS-26) names a mock/test device as an extension
-point so higher layers and tests don't require real hardware. ECS-29/30's
-own tests each built a small, throwaway `RawMidiInput`/`RawMidiOutput`
-fake local to one test file, explicitly noting that a shared, reusable
-mock was a separate, later deliverable. This is that deliverable: a
-generic mock implementing Core's own contracts, usable across the rest of
-the project (and in this repo's tests going forward), with no
-device-specific profile or behavior.
+A generic mock implements Core's contracts so higher layers and tests do
+not require real hardware. It has no device-specific profile or behavior.
 
 ## A device is a paired input + output port
 
@@ -73,8 +65,7 @@ bytes in `sentMessages` instead of sending them anywhere. Wrapped in
 `createMidiOutput()`, a caller's `send(message)` can be asserted against
 the exact wire bytes `encodeMidiMessage` produced.
 `simulateSendFailures(true)` flips `sendRaw` to report a `send-failed`
-transport error through `onError` instead of recording bytes, exercising
-the ECS-30 error path without a real device to refuse the send.
+transport error through `onError` instead of recording bytes.
 
 Both directions can be exercised on one `createMockDevice()` pair by
 wiring the output's `sendRaw` to also feed the input's `emitRawMessage`
@@ -97,6 +88,6 @@ discovery flows can be exercised without any transport at all.
   grids, SysEx) — this is a generic test double, not a fake Launchpad.
 - No automatic echo/loopback between a device's input and output; a test
   that wants one wires it explicitly.
-- No replacement for the real Web MIDI adapter (ECS-31) — this proves
-  Core's contracts hold without hardware, not that they hold against real
+- No replacement for the real Web MIDI adapter — this exercises Core's
+  contracts without hardware, not that they hold against real
   hardware.

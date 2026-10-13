@@ -1,19 +1,13 @@
 # MIDI ↔ Control Mapping — Runtime
 
 Status: Draft
-Linear: [ECS-37](https://linear.app/ecs3d/issue/ECS-37/implement-basic-bidirectional-mappings) (initial implementation), [ECS-57](https://linear.app/ecs3d/issue/ECS-57/suppress-midi-feedback-echo-for-values-that-just-arrived-via-the-same) (echo suppression)
-Depends on: [ECS-29](https://linear.app/ecs3d/issue/ECS-29/implement-midi-input) ([docs/contracts/input.md](./input.md)), [ECS-30](https://linear.app/ecs3d/issue/ECS-30/implement-midi-output) ([docs/contracts/output.md](./output.md)), [ECS-36](https://linear.app/ecs3d/issue/ECS-36/define-midi-control-mapping-contract) ([docs/contracts/mapping.md](./mapping.md))
 Source of truth: [`src/mapping/bind.ts`](../../src/mapping/bind.ts)
 
 ## What this proves
 
-`docs/contracts/mapping.md` (ECS-36) defined `ControlMapping` and the pure
-conversion functions (`resolveIncomingValue()`, `buildFeedbackMessage()`)
-but deliberately stopped short of wiring them to anything live — no code
-reading a `MidiInput`, no code calling a `Control`'s `setValue()`. This
-ticket is that wiring: `bindControlMapping()` proves the full round trip —
-an incoming MIDI message updates an abstract `Control`, and a `Control`
-value change sends MIDI back out — using only pieces that already exist.
+`bindControlMapping()` wires `ControlMapping` conversion to live MIDI
+input and output: an incoming message updates a `Control`, and a control
+value change sends MIDI feedback when the mapping declares a target.
 
 ## `bindControlMapping()`
 
@@ -32,14 +26,14 @@ contract names:
 
 - **MIDI → Control**: every message `input` delivers is passed to
   `resolveIncomingValue(message, mapping.source, control.def)` — or, when
-  `mapping.relativeEncoding` is set (ECS-137), to the same function with a
+  `mapping.relativeEncoding` is set, to the same function with a
   `relative: { encoding, current: control.getValue() }` argument, so a
   relative encoder's delta accumulates onto the control's live value
   instead of being scaled directly. A defined result is pushed into
   `control` via `setValue()`. A message that doesn't match the source, or
   whose kind doesn't pair with the control's kind, is silently ignored —
   the same "not every caller's concern" stance `resolveIncomingValue()`
-  itself takes. `options.shouldApply` (ECS-137), when supplied, is checked
+  itself takes. `options.shouldApply`, when supplied, is checked
   first on every message: a `false` result is treated exactly like a
   non-matching message (ignored, nothing queued for echo suppression).
   Omitted — the default, and every call site before this option existed —
@@ -76,28 +70,22 @@ together.
 directions for a given `(mapping, control)` pair, so it's the one place
 that can tell "this change came from MIDI" apart from any other caller of
 `setValue()` (a UI, automation, another mapping): every resolved incoming
-value is pushed onto a small queue *before* being pushed into `control`;
+value is pushed onto a small queue _before_ being pushed into `control`;
 `onChange` is skipped exactly when it reports a value found anywhere in
 that queue, since that's the control confirming a change this function
 itself made (or several — see below), not a new one to echo. A match
 drops everything queued up to and including it; a change whose value
 isn't in the queue at all still sends feedback normally.
 
-This was originally scoped out (ECS-37) on the reasoning that "this runtime
-has no way to tell a MIDI-originated change apart from any other caller" —
-real hardware testing (a Launchpad Mini custom-mode fader bank, surfaced in
-webseq's ECS-38 integration) showed that reasoning was wrong for exactly
-the case that matters most: a continuous control whose device reflects
-incoming values as its own position/LED state (a touch fader, an LED ring)
-fought itself on every move, because every value it reported back was
-immediately echoed back to it. ECS-57 added the suppression above once
-that was a concrete, observed problem rather than a hypothetical one.
+Echo suppression is necessary for continuous controls whose device
+reflects incoming values as its own position or LED state. Without it,
+each reported value would be echoed back to the device.
 
 **Why a queue, searched in full, not a single remembered value or only the
 queue's front.** The first version of this suppression remembered only
-the *one* most recently pushed-in value — against webseq's real `Control`
+the _one_ most recently pushed-in value — against webseq's real `Control`
 (dispatch now, notify on a later render) that leaked feedback: several
-`setValue()` calls can happen before the *first* one's `onChange`
+`setValue()` calls can happen before the _first_ one's `onChange`
 confirmation fires, each overwriting the single remembered value, so the
 first confirmation no longer matches once it (eventually) arrives.
 
@@ -106,9 +94,9 @@ not a second, worse one: a direct capture of a Launchpad Mini's fader
 (bypassing the browser and webseq entirely, with real timestamps) showed
 it sends CC in **bursts** — roughly 8 messages ~1ms apart, then a
 200–450ms pause — not a steady stream. A UI's render cycle easily catches
-up during the pause but can't keep pace *within* a burst, so several
+up during the pause but can't keep pace _within_ a burst, so several
 `setValue()` calls land before a single render notifies `onChange` once,
-for the burst's *final* value only — the intermediate ones are never
+for the burst's _final_ value only — the intermediate ones are never
 individually confirmed. Matching only the queue's front left those
 skipped entries stuck at the front forever, so every later confirmation
 (including the next burst's) mismatched against a stale value and leaked
@@ -138,34 +126,30 @@ out-of-order matching, session windows, or control-reported transaction
 ids.
 
 Nothing here knows what a `Control` is backed by, or what kind of device
-`input`/`output` talk to. Proven against the mock device
-(`src/mapping/bind.test.ts`); a real round trip against hardware (e.g. the
-Launchpad Mini used to validate ECS-31) still only exercises the same
-generic path — Core and the mapping layer stay unaware a Launchpad is on
-the other end.
+`input`/`output` talk to. Mock and hardware round trips exercise the
+same generic path — Core and the mapping layer stay unaware of the device.
 
 ## What's deliberately not here
 
 - **No `ControlRegistry` wiring** — `bindControlMapping()` takes a
   `Control` directly, not a `ControlId` resolved through a registry. A
   caller that wants to resolve `mapping.control` dynamically (e.g. a
-  control appearing/disappearing) composes that itself; it isn't this
-  ticket's concern.
+  control appearing/disappearing) composes that itself.
 - **No device profiles** — nothing here names a collection of
   `ControlMapping`s as "the mapping for a Launchpad," or knows about any
-  specific controller. That's ECS-39.
+  specific controller.
 - **No curves** — still a deliberately undesigned extension point, per
   `docs/contracts/mapping.md`.
 - **No knowledge of what a condition means** — `options.shouldApply`
-  (ECS-137) is a bare predicate this runtime calls and nothing more; it
+  is a bare predicate this runtime calls and nothing more; it
   doesn't know "modifier," "soft takeover," or any other concrete
   condition. Supplying one is entirely the caller's (`src/surface/
-  bindings.ts`'s) job.
-- **No cross-mapping or session-level echo suppression** — ECS-57's
-  suppression is scoped to one `bindControlMapping()` call's own
+bindings.ts`'s) job.
+- **No cross-mapping or session-level echo suppression** — suppression
+  is scoped to one `bindControlMapping()` call's own
   just-made change; it has no notion of "soft takeover," a time window, or
   coordinating across multiple mappings/controls. A device-specific
-  takeover behavior is a profile-layer (ECS-39) concern, not this one.
+  takeover behavior belongs to the profile layer.
 
 ## Relative turns scale by the control's own metadata
 

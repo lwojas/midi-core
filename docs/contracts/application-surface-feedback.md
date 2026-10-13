@@ -1,34 +1,22 @@
 # Application → Surface Feedback
 
 Status: Draft
-Linear: [ECS-73](https://linear.app/ecs3d/issue/ECS-73/implement-application-surface-feedback)
-Project: [MIDI Core and Control Architecture](https://linear.app/ecs3d/project/midi-core-and-control-architecture-f934a737de3b)
-Depends on: [docs/contracts/surface-generation.md](./surface-generation.md) (ECS-72),
-[docs/contracts/surface-runtime.md](./surface-runtime.md) (ECS-69),
-[docs/contracts/mapping-runtime.md](./mapping-runtime.md) (ECS-37/57),
-[docs/contracts/mock-surface-device.md](./mock-surface-device.md) (ECS-71)
 Source of truth: [`src/surface/event-feedback.ts`](../../src/surface/event-feedback.ts),
 [`src/surface/application-feedback.test.ts`](../../src/surface/application-feedback.test.ts)
 
 ## Scope
 
-With ECS-69 (runtime) and ECS-72 (generation) in place, the Control →
-MIDI direction already works: `bindControlMapping()` (ECS-37/57) has
-subscribed to `Control.onChange()` since before Control Surface existed.
-This ticket is the demonstration the project's own description asks
-for — "demonstrate independent UI/application changes reaching physical
-feedback, including track volume, transport, active steps and
-playhead" — plus the one piece that direction was actually missing:
-nothing before this ticket turned a `SurfaceEventSource`'s occurrences
-(a step trigger, a playhead tick) into outgoing MIDI at all.
+`bindControlMapping()` sends feedback for `Control.onChange()` values.
+`bindEventFeedback()` converts `SurfaceEventSource` events into outgoing
+MIDI for momentary occurrences that are not represented by retained
+control values.
 
-## Track volume, transport status, active steps: already wired, now demonstrated
+## Control value feedback
 
 `src/surface/application-feedback.test.ts`'s first test binds three
 `Control`s — a numeric volume, an enum transport status, and a boolean
 step — to three feedback-capable `PhysicalControl`s on the generic mock
-surface device (ECS-71), via the same `bindSurfaceMode()` +
-`generateControlMappings()` path ECS-69/72 already built. Each is
+surface device, via `bindSurfaceMode()` and `generateControlMappings()`. Each is
 changed by calling `setValue()` directly — never through the mock
 device's input side — and feedback reaches the device regardless,
 because `bindControlMapping()` subscribes to `onChange()` directly: **the
@@ -45,79 +33,49 @@ transport indicator except this test's own binding.
 
 ### Correction found here: numeric/enum feedback needs a CC target, not a note one
 
-Demonstrating *numeric or enum* feedback surfaced a real gap:
+Demonstrating _numeric or enum_ feedback surfaced a real gap:
 `docs/contracts/mapping.md`'s own source/target table pairs a `"note"`
 address with a boolean control only — exactly what the mock device's
 pads already were, and exactly why track volume/transport status
-couldn't reach feedback through them. **Fix:** `MOCK_SURFACE_DEVICE_PROFILE`'s
-knobs (`docs/contracts/mock-surface-device.md`, ECS-71) now carry CC
-feedback on the same controller/channel as their input — modeling a
-motorized fader or LED-ring encoder, a real and common device
-convention — rather than this ticket inventing a workaround mapping or
-widening `mapping.md`'s table. Same "found a concrete gap, made the
-narrowest correction, documented it" pattern ECS-62 and ECS-70 already
-set.
+couldn't reach feedback through them. `MOCK_SURFACE_DEVICE_PROFILE`'s
+knobs (`docs/contracts/mock-surface-device.md`) carry CC feedback on the
+same controller/channel as their input, modeling a motorized fader or
+LED-ring encoder. Numeric and enum feedback therefore use a CC target;
+note addresses remain paired with boolean controls.
 
 ## `bindEventFeedback()`: the piece that was missing
 
 `docs/contracts/control-api.md`'s own "Feedback" section already said
-`Control.onChange()` and `SurfaceEventSource.onEvent()` are "both
-read-only subscriptions a mapping or Control Surface layer drives
-outgoing MIDI from" — but nothing before this ticket actually wired the
-second one. `bindEventFeedback(source, encode, output)`
+`Control.onChange()` and `SurfaceEventSource.onEvent()` are both
+read-only subscriptions a mapping or Control Surface layer can drive
+outgoing MIDI from. `bindEventFeedback(source, encode, output)`
 (`src/surface/event-feedback.ts`) is the minimal counterpart to
 `bindControlMapping()`'s Control → MIDI half: every event `source`
 reports is passed to `encode`, and a defined result is sent through
-`output`. No echo suppression — an event has no "value I just set" to
-echo back, so ECS-57's queue-matching problem simply doesn't exist for
-this direction.
+`output`. No echo suppression is needed: an event has no "value I just
+set" to echo back.
 
 `src/surface/application-feedback.test.ts`'s second test demonstrates
-the ticket's "playhead" requirement with it directly: a
+the playhead feedback path with it directly: a
 `SurfaceEventSource` emits `transport.tick` events; `encode` matches on
 `event.payload.step` and, for the step whose pad this binding lights,
 builds a note-on using `toMidiTarget()` (exported from
-`src/surface/generate.ts`, ECS-72 — the same address translation, not a
-second one) against that pad's declared feedback address.
+`src/surface/generate.ts`) against that pad's declared feedback address.
 
 ## What's deliberately not here
 
 - **No declarative event-feedback binding** — `bindEventFeedback()` is a
-  standalone primitive, not a new `ModeBinding` kind wired through
-  `SurfaceBindingTable`/`bindSurfaceMode()`. `docs/contracts/surface-
-  bindings.md` (ECS-68) scoped `ModeBinding` to `ControlBinding`/
-  `NavigationBinding`; adding a third, event-driven kind is a new
-  decision for whichever ticket first needs playhead feedback driven
-  declaratively (ECS-77 or later), not invented here to keep this
-  ticket's scope to what it was asked to demonstrate.
+  standalone primitive, not a `ModeBinding` kind wired through
+  `SurfaceBindingTable`/`bindSurfaceMode()`. Playhead state is represented
+  by a retained numeric control so bindings can paint its current value
+  on mode entry, clear it on exit, and resume from the actual position.
+  The sequencer composes playhead and duration-continuation feedback in
+  `bindStepFeedback()` so one owner determines each pad's final colour.
+  `bindEventFeedback()` remains appropriate for genuinely momentary
+  occurrences with nothing to read back, such as a one-shot trigger flash.
 
-  **Resolved by ECS-131, and not with this primitive.** The sequencer's
-  playhead ended up as an extension of `WindowedControlBinding`
-  (`durationTemplate`'s sibling fields `playheadControl`/
-  `playheadColour`, `src/surface/types/bindings.ts`) rather than a third,
-  event-driven `ModeBinding` kind built on `bindEventFeedback()`. Two
-  concrete requirements this ticket's one-hardcoded-step demo didn't have
-  to meet forced that: "leave a sensible stopped state" and "resume
-  reflecting the actual transport position on re-entry" both need a
-  *paintable* current value on mode entry, which a pure one-shot
-  `SurfaceEvent` (nothing retained, per `createSurfaceEventSource()`)
-  can't supply without a second, parallel "last known position" cache.
-  Modeling the playhead's column as a plain numeric application control
-  instead reuses the paint-on-enter/clear-on-exit machinery every other
-  feedback-bearing binding already has, for free. It also sidesteps a
-  real hazard `bindEventFeedback()` would have reintroduced here: ECS-127
-  (duration continuation pads) and the playhead both light the *same*
-  pad, and two independent feedback paths racing to send the last word to
-  one LED is exactly the kind of bug a single owner avoids — see
-  `bindStepFeedback()` in `src/surface/bindings.ts`, which composes both
-  into one colour per pad instead. `bindEventFeedback()` itself is
-  unchanged and still available for a genuinely momentary occurrence with
-  nothing to read back (a one-shot trigger flash); the playhead turned
-  out not to be that case.
-- **No transport button feedback** — buttons stay input-only; nothing
-  in this ticket's required proof set (track volume, transport
-  *status*, active steps, playhead) needed a button LED, so none was
-  added.
+- **No transport button feedback** — buttons stay input-only; the
+  feedback paths described here do not require button LEDs.
 - **No chase-light sequencing logic** (which step is "active," pattern
   length, loop wraparound) — `application-feedback.test.ts` proves the
   wiring with one hardcoded step; computing which step is current is

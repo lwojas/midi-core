@@ -1,6 +1,6 @@
 # Live Hardware Verification: Methodology
 
-Status: Draft (extracted from the ECS-136 Push mk1 gate verification, 2026-10-09)
+Status: Draft
 Companion to: [docs/device-integration-guide.md](./device-integration-guide.md) (architecture),
 [docs/hardware-validation.md](./hardware-validation.md),
 [docs/hardware-validation-push-mk1.md](./hardware-validation-push-mk1.md)
@@ -8,14 +8,10 @@ Example script: [`scripts/push-mk1-contract-probe.mjs`](../scripts/push-mk1-cont
 
 ## Purpose
 
-This project's device profiles are transcribed from offline research
-(midi-profiler), which has repeatedly turned out to contain real errors —
-not typos, but confidently wrong CC/label claims (see the Push mk1 Round 2
-correction in `hardware-validation-push-mk1.md`, and the doc's own erratum
-about Push 2 layout conflation). Resolving an open question against a real
-device is the only reliable source of truth this project has. This doc
-records the technique that worked, after an earlier attempt that didn't,
-so the next device-profile gap analysis doesn't repeat either mistake.
+Device profiles may be based on offline research that contains incorrect
+CC or control-label claims. Verify unresolved protocol questions against a
+real device before treating them as facts. The following method makes those
+checks repeatable and easier to interpret.
 
 ## What didn't work: fixed-timer, multi-phase scripts
 
@@ -46,9 +42,9 @@ feedback mechanism to show which physical control is under test:
   instruction directly to that segment instead of describing a position in
   words.
 
-This also doubles as a feedback-path regression check for free: if the
-light/text never appears, that's itself a finding (as it was for CC 34/35
-here — see F8), not a failure of the test.
+This also checks the feedback path: if the light or text never appears, that
+is itself a result to investigate, not a reason to guess which control was
+tested.
 
 **2. Wait for a quiet period, not a clock.** Each step should have no
 deadline until the first relevant MIDI event arrives, then resolve shortly
@@ -75,13 +71,9 @@ a settled fact, and when available, check a second independent source
 the resolution down as fact. Two independent sources agreeing is much
 stronger evidence than either alone.
 
-**5. When a profile's own doc comment says "see X for the real bytes,"
-actually go read X.** The LCD line-id bug in this pass (see F9's writeup
-in `hardware-validation-push-mk1.md`) came from trusting an abbreviated
-placeholder (`{line}`) in this repo's own code comment instead of opening
-the cited source document, which had the real byte table all along. An
-abbreviation in a comment is not the same thing as the fact it's
-summarizing.
+**5. Read cited source material in full.** An abbreviated placeholder in a
+code comment is not a substitute for the byte table or protocol detail in
+the cited source document.
 
 ## Applying this to a new device or a new open question
 
@@ -98,7 +90,5 @@ summarizing.
 4. Before writing a conclusion into a profile or a contract doc, check it
    against a second source if one exists (another research doc, an
    independent diagram, a different unit of the same device).
-5. Record the finding in that device's `docs/hardware-validation-*.md`,
-   numbered and dated, the same way `hardware-validation.md` and
-   `hardware-validation-push-mk1.md` already do — not just in this
-   methodology doc, which stays device-agnostic.
+5. Record confirmed device-specific results with the relevant hardware
+   documentation; keep this methodology device-agnostic.

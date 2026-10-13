@@ -1,18 +1,13 @@
 # MIDI Core — Bidirectional Device Communication
 
 Status: Draft
-Linear: [ECS-31](https://linear.app/ecs3d/issue/ECS-31/implement-bidirectional-device-communication)
-Depends on: [ECS-29](https://linear.app/ecs3d/issue/ECS-29/implement-midi-input) ([docs/contracts/input.md](./input.md)), [ECS-30](https://linear.app/ecs3d/issue/ECS-30/implement-midi-output) ([docs/contracts/output.md](./output.md))
 Source of truth: [`src/adapters/web-midi/`](../../src/adapters/web-midi/), [`demo/`](../../demo/)
 
-## What this proves
+## Web MIDI adapter
 
-ECS-29/30 built `RawMidiInput`/`RawMidiOutput`/`createMidiInput`/`createMidiOutput`
-but deliberately deferred a real transport, since the Web MIDI API needs a
-browser and our toolchain is Node/Vitest. This ticket is the first thing in
-the repo that actually needs a browser: it implements a Web MIDI adapter
-against those contracts and a small demo page to prove the full path —
-Device → Core → Client and Client → Core → Device — against real hardware
+The Web MIDI adapter implements the `RawMidiInput`/`RawMidiOutput`/
+`createMidiInput`/`createMidiOutput` contracts. A small demo exercises
+Device → Core → Client and Client → Core → Device against real hardware
 (a Launchpad Mini), with observable connection state.
 
 ## The adapter (`src/adapters/web-midi/`)
@@ -38,8 +33,8 @@ Four pieces, each implementing an existing Core contract against the real
   directly (Web MIDI already delivers one complete message per event, which
   is exactly what `decodeMidiMessage` expects). Output's `sendRaw` converts
   `Uint8Array` to `number[]` (what `MIDIOutput.send()` actually takes) and
-  catches any throw, reporting it through `onError` with code `send-failed`
-  — per the ECS-30 decision, `sendRaw` never throws.
+  catches any throw, reporting it through `onError` with code `send-failed`;
+  `sendRaw` never throws.
 - **`WebMidiDiscovery`** — Per spec, a disconnected port's entry stays in
   `MIDIAccess.inputs`/`outputs` (state flipped to `disconnected`) rather
   than being removed, so a reconnect can reuse the same port id. Discovery
@@ -58,7 +53,7 @@ added to `lib` — no `@types` package required.
 
 ## What's tested automatically vs. what needs your hardware
 
-13 new tests (74 total) exercise the adapter's logic — state derivation,
+13 tests exercise the adapter's logic — state derivation,
 discovery add/remove, message decoding/forwarding, send-failure handling,
 port lookup/caching — against fakes of `MIDIAccess`/`MIDIInput`/`MIDIOutput`
 (built by extending Node's global `EventTarget`, which satisfies
@@ -83,7 +78,7 @@ Nothing here knows the Launchpad's LED/SysEx feedback protocol, its pad
 grid, or its layout. The demo's "light a pad" button sends a generic Note
 On — the same message it would send to any device that lights pads that
 way. If lighting behavior ever needs to be driven deliberately, that's a
-device profile's job (future ECS-39 work), not Core's or this adapter's.
+device profile's job, not Core's or this adapter's.
 
 ## What's deliberately not here
 

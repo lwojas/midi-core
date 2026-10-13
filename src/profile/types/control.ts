@@ -21,7 +21,7 @@ import type { Channel } from "../../core/types/message.js";
  * device happens to use), a profile is describing one real device's actual
  * wiring, so `channel`, when present, is always a concrete `Channel` — never
  * `"any"`. It's optional only to let a profile record a *partially*
- * resolved fact (ECS-62): evidence sometimes documents a control's address
+ * resolved fact: evidence sometimes documents a control's address
  * — a note or CC number — without ever stating which channel plain
  * reporting uses. Omitting `channel` lets that address still be recorded
  * (with the missing channel named in the generation pipeline's own
@@ -73,12 +73,28 @@ export interface ControlAddress {
 }
 
 /** The kinds of physical control this schema models. Keyboard keybeds are out of scope — see docs/contracts/device-profile.md. */
-export type ControlKind = "button" | "pad" | "knob" | "encoder" | "fader" | "wheel";
+export type ControlKind =
+  | "button"
+  | "pad"
+  | "knob"
+  | "encoder"
+  | "fader"
+  | "wheel";
 
-export const CONTROL_KINDS: readonly ControlKind[] = ["button", "pad", "knob", "encoder", "fader", "wheel"];
+export const CONTROL_KINDS: readonly ControlKind[] = [
+  "button",
+  "pad",
+  "knob",
+  "encoder",
+  "fader",
+  "wheel",
+];
 
 export function isControlKind(value: unknown): value is ControlKind {
-  return typeof value === "string" && (CONTROL_KINDS as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (CONTROL_KINDS as readonly string[]).includes(value)
+  );
 }
 
 /**
@@ -91,14 +107,20 @@ export function isControlKind(value: unknown): value is ControlKind {
  */
 export type ControlValueMode = "absolute" | "relative";
 
-export const CONTROL_VALUE_MODES: readonly ControlValueMode[] = ["absolute", "relative"];
+export const CONTROL_VALUE_MODES: readonly ControlValueMode[] = [
+  "absolute",
+  "relative",
+];
 
 export function isControlValueMode(value: unknown): value is ControlValueMode {
-  return typeof value === "string" && (CONTROL_VALUE_MODES as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (CONTROL_VALUE_MODES as readonly string[]).includes(value)
+  );
 }
 
 /**
- * How a `"relative"` control's raw CC byte decodes to a signed delta (ECS-137) — a device fact, exactly like
+ * How a `"relative"` control's raw CC byte decodes to a signed delta — a device fact, exactly like
  * `ControlValueMode` itself, describing the encoder's wire behavior and nothing about how a delta is applied to an
  * application control (that's `src/mapping/`'s `decodeRelativeDelta()`/`resolveIncomingValue()` concern). A separate
  * type from mapping's own `RelativeEncoding` (`src/mapping/types/address.ts`) rather than an import of it — this
@@ -107,14 +129,19 @@ export function isControlValueMode(value: unknown): value is ControlValueMode {
  * `MidiAddress`. `src/surface/generate.ts` translates one into the other.
  *
  * Only one value is modeled: `"twos-complement-7bit"`, the only relative scheme any profile has hardware evidence
- * for today (the Ableton Push mk1's encoders, ECS-136 gate).
+ * for today (the Ableton Push mk1's encoders).
  */
 export type RelativeEncoding = "twos-complement-7bit";
 
-export const RELATIVE_ENCODINGS: readonly RelativeEncoding[] = ["twos-complement-7bit"];
+export const RELATIVE_ENCODINGS: readonly RelativeEncoding[] = [
+  "twos-complement-7bit",
+];
 
 export function isRelativeEncoding(value: unknown): value is RelativeEncoding {
-  return typeof value === "string" && (RELATIVE_ENCODINGS as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (RELATIVE_ENCODINGS as readonly string[]).includes(value)
+  );
 }
 
 /**
@@ -124,7 +151,11 @@ export function isRelativeEncoding(value: unknown): value is RelativeEncoding {
  * ring") for the application-level feedback concept this describes the
  * device side of.
  */
-export type FeedbackKind = "monochrome-led" | "velocity-color-led" | "rgb-led" | "motorized";
+export type FeedbackKind =
+  | "monochrome-led"
+  | "velocity-color-led"
+  | "rgb-led"
+  | "motorized";
 
 export const FEEDBACK_KINDS: readonly FeedbackKind[] = [
   "monochrome-led",
@@ -134,7 +165,10 @@ export const FEEDBACK_KINDS: readonly FeedbackKind[] = [
 ];
 
 export function isFeedbackKind(value: unknown): value is FeedbackKind {
-  return typeof value === "string" && (FEEDBACK_KINDS as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (FEEDBACK_KINDS as readonly string[]).includes(value)
+  );
 }
 
 export interface ControlFeedback {
@@ -144,22 +178,22 @@ export interface ControlFeedback {
   /** For "velocity-color-led": the number of distinct palette entries the device's value byte selects from (e.g. 128). Not meaningful for other kinds. */
   readonly paletteSize?: number;
   /**
-   * For "rgb-led" (ECS-95): the SysEx bytes before the LED index, without the leading F0. The device's LED message is
+   * For "rgb-led": the SysEx bytes before the LED index, without the leading F0. The device's LED message is
    * F0, these bytes, the LED index (the control's note or controller), red, green, blue, F7.
    */
   readonly rgbSysExPrefix?: readonly number[];
   /**
    * The raw native value (0-127) that produces a distinct, dim-but-visible LED level, below full (127) and above
-   * off (0) — a device fact, hands-on confirmed, never guessed (ECS-145). Meaningful for "monochrome-led" (and, in
+   * off (0) — a device fact, hands-on confirmed, never guessed. Meaningful for "monochrome-led" (and, in
    * principle, any boolean-paired feedback kind addressed by a note or control-change) — a generic, additive
-   * extension point, not a Push-specific field: a profile that omits it (every profile before ECS-145, and any
-   * control on this device not individually confirmed) keeps today's exact on/off behavior, unchanged. See
+   * extension point, not a Push-specific field: a profile that omits it, or a control not individually confirmed,
+   * keeps today's exact on/off behavior, unchanged. See
    * `push-mk1.ts`'s own doc comment for the Push mk1's confirmed value and which controls it was actually checked
    * on versus merely assumed from the same component family.
    */
   readonly dimValue?: number;
   /**
-   * For "velocity-color-led" (ECS-150): known (colour, raw velocity) correspondences, each hands-on confirmed on
+   * For "velocity-color-led": known (colour, raw velocity) correspondences, each hands-on confirmed on
    * real hardware one value at a time — not a general RGB-to-velocity encoding, since no continuous scheme is
    * confirmed for this feedback kind (same "declare only the confirmed fact" stance `dimValue` already takes). A
    * colour with no matching entry here renders exactly as before this field existed: the boolean on/off native
@@ -167,7 +201,14 @@ export interface ControlFeedback {
    * `RgbColour` — the same "profile and mapping don't depend on each other" boundary `RelativeEncoding` above
    * already keeps; `src/surface/generate.ts` carries this across to `MidiTarget.colourPalette`.
    */
-  readonly colourPalette?: readonly { readonly colour: { readonly red: number; readonly green: number; readonly blue: number }; readonly velocity: number }[];
+  readonly colourPalette?: readonly {
+    readonly colour: {
+      readonly red: number;
+      readonly green: number;
+      readonly blue: number;
+    };
+    readonly velocity: number;
+  }[];
 }
 
 /**
@@ -176,12 +217,12 @@ export interface ControlFeedback {
  * feedback-only (a pure indicator LED with no actuation), or both (a pad
  * whose press also lights its own LED). A profile with neither on some
  * control isn't a case this schema rules out here — see
- * docs/contracts/device-profile.md for why that's left to ECS-42.
+ * docs/contracts/device-profile.md for why that validation is handled separately.
  *
  * `portId` and `feedbackPortId` exist because a device's ports are split
  * by direction (`DevicePortProfile`/`PortType`), so one physical
  * bidirectional control can genuinely span two port entries. By
- * convention (ECS-62), `portId` always names the control's *input*-
+ * convention, `portId` always names the control's *input*-
  * direction port; `feedbackPortId` names `feedback`'s own port only when
  * it's a different port than `portId` and worth stating explicitly. Omit
  * `feedbackPortId` when the control has no `feedback`, or when which port
@@ -200,7 +241,7 @@ export interface PhysicalControl {
   readonly feedbackPortId?: string;
   readonly valueMode?: ControlValueMode;
   /**
-   * Required (ECS-137) whenever `valueMode` is `"relative"` and `input` is set — a relative control's raw byte is
+   * Required whenever `valueMode` is `"relative"` and `input` is set — a relative control's raw byte is
    * meaningless to decode without knowing its encoding, so leaving this unset for a declared-relative, addressed
    * control is a profile error (`validateDeviceProfile()`), not a silently-ignored gap.
    */

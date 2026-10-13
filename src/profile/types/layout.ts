@@ -1,7 +1,7 @@
 import type { RgbColour } from "../../mapping/types/address.js";
 
 /**
- * Which of a device's controls play which sequencer role (ECS-90). A profile says what a device has (controls,
+ * Which of a device's controls play which sequencer role. A profile says what a device has (controls,
  * grids); its layout says which of those controls the application's surface uses for what. Every id here names a
  * `PhysicalControl` on the same profile. A device with no layout still works: the configuration reports that and
  * builds the rest of its surface.
@@ -25,7 +25,7 @@ export interface ModeButtonRole {
    */
   readonly recoveryControlId?: string;
   /**
-   * Light this button's own LED while `mode` is the surface's active mode (ECS-138), using the feedback the profile
+   * Light this button's own LED while `mode` is the surface's active mode, using the feedback the profile
    * already declares for it. Omitted (the default) sends no new feedback for this button at all, reproducing the
    * exact prior behavior for every profile authored before this field existed -- a device opts in explicitly,
    * since lighting a mode button is new outgoing traffic no profile declaring it has necessarily had re-verified on
@@ -42,7 +42,7 @@ export interface TransportRoles {
 }
 
 /**
- * Bank buttons (ECS-114). `previous` and `next` step through the banks; `select` has one button per bank, keyed by the
+ * Bank buttons. `previous` and `next` step through the banks; `select` has one button per bank, keyed by the
  * bank's index (0 = A). A button left out has no binding. A device sends these as a note or a CC; the profile's own
  * `input` says which, and the application never sees the difference.
  */
@@ -82,17 +82,17 @@ export interface DeviceLayout {
   readonly pageDown?: string;
   /** Transport buttons. A button left out has no binding. */
   readonly transport?: TransportRoles;
-  /** Bank buttons (ECS-114). A device with none has no bank binding. */
+  /** A device with no bank buttons has no bank binding. */
   readonly bank?: BankRoles;
   /**
-   * The button that gates a `ModeBinding.when` (ECS-137) — a device fact, the same way the rest of this layout
+   * The button that gates a `ModeBinding.when` — a device fact, the same way the rest of this layout
    * names which control plays which role. Omitted means the device has no modifier button, so every `when` on this
    * profile's bindings is simply never satisfied (a conditional binding configured for a device with no modifier is
    * reported as unreachable, not guessed at).
    */
   readonly modifier?: string;
   /**
-   * A profile grid (ECS-138) whose cells mirror track mute state without taking over the step grid, the way the
+   * A profile grid whose cells mirror track mute state without taking over the step grid, the way the
    * step grid's own top row otherwise would -- so mute stays visible and controllable in every mode at once, not
    * only in a dedicated mode that replaces the pad grid. Built and bound the same "horizontal window" way the step
    * grid's top-row mute cells already are, so it shares the same page offset the step grid's own up/down paging
@@ -101,7 +101,7 @@ export interface DeviceLayout {
    */
   readonly dedicatedMuteGridId?: string;
   /**
-   * A profile grid (ECS-155) whose cells are a page of a generic, ordered collection of selectable items — the
+   * A profile grid whose cells are a page of a generic, ordered collection of selectable items — the
    * Push's contextual selection buttons, for instance. Built and bound the same "horizontal window, sharing the
    * step grid's own page offset" way `dedicatedMuteGridId` already is, so it pages with exactly the same up/down
    * controls, no separate paging control needed. What "selectable" means (a track, a bus, ...) is never named
@@ -111,13 +111,13 @@ export interface DeviceLayout {
   readonly selectionGridId?: string;
   /**
    * The button that clears the current item selection and switches the surface's generic selection state to its
-   * "no item" context (ECS-155) — the Push's Master button, for instance. Omitted, the device has no such button:
+   * "no item" context — the Push's Master button, for instance. Omitted, the device has no such button:
    * item selection can still be set from `selectionGridId`'s own buttons, or by the application directly, but
    * never cleared from the device.
    */
   readonly selectionClear?: string;
   /**
-   * A device's generic, always-available continuous controls (ECS-140), keyed by an application-defined role (e.g.
+   * A device's generic, always-available continuous controls, keyed by an application-defined role (e.g.
    * `"volume"`, `"send"`, `"effects"`) rather than a fixed field per role — the same "owner-defined, no invented
    * fixed set" reasoning `ControlRole`/`Selection.scope` already apply. Each value is a `PhysicalControl.id`, not
    * necessarily an `"encoder"`-kind control (a fader or knob can fill the same role). Unlike `dedicatedMuteGridId`/
@@ -148,13 +148,24 @@ export interface DeviceLayout {
      * is a second line of the same display carrying each control's name beneath its value. The display must declare
      * `segments` and `meter`. While the category isn't live, the line shows whatever `displayLines` names for it.
      */
-    readonly meterLines?: Readonly<Record<string, { readonly displayId: string; readonly lineId: string; readonly labelLineId?: string }>>;
+    readonly meterLines?: Readonly<
+      Record<
+        string,
+        {
+          readonly displayId: string;
+          readonly lineId: string;
+          readonly labelLineId?: string;
+        }
+      >
+    >;
   };
   /**
-   * Which `DeviceDisplayDefinition` line (ECS-137) plays each application-defined text role (e.g. `"track"`,
+   * Which `DeviceDisplayDefinition` line plays each application-defined text role (e.g. `"track"`,
    * `"parameter"`) — the display counterpart to `encoders`: the device says which line a role lands on, the
    * application (`SequencerContract.displayLines`) says which control's text fills it. A role the application
    * doesn't name has no binding. Omitted, the device shows no application text.
    */
-  readonly displayLines?: Readonly<Record<string, { readonly displayId: string; readonly lineId: string }>>;
+  readonly displayLines?: Readonly<
+    Record<string, { readonly displayId: string; readonly lineId: string }>
+  >;
 }

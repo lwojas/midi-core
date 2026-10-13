@@ -4,8 +4,8 @@
  * already declared on the profile (`GridCell.controlId` references one by
  * id); it carries no address or feedback info of its own, since each cell's
  * control already has both. Whether every cell resolves to a real control,
- * and whether the grid's declared size matches its cells, is left to
- * ECS-42 — this schema only names the shape.
+ * and whether the grid's declared size matches its cells, is checked
+ * separately — this schema only names the shape.
  */
 
 export interface GridCell {
@@ -16,7 +16,7 @@ export interface GridCell {
 }
 
 /**
- * How far one page turn moves a window onto a larger virtual space (ECS-89), in cells: one press of a
+ * How far one page turn moves a window onto a larger virtual space, in cells: one press of a
  * "page" navigation binding moves the window by `paging`, so the device, not the application, decides the
  * page size (eight columns on a Launchpad's 8x8 grid).
  */

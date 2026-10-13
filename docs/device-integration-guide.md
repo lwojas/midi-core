@@ -1,7 +1,6 @@
 # End-to-End Device Integration Guide
 
 Status: Draft
-Linear: [ECS-93](https://linear.app/ecs3d/issue/ECS-93/use-the-launchpad-profile-as-the-gold-standard-reference-for-new)
 Gold-standard example: Novation Launchpad Mini MK3 — the only device verified end to end on
 real hardware (`docs/hardware-validation.md`).
 Source of truth for this walkthrough's code: [`src/profile/devices/launchpad-mini-mk3.ts`](../src/profile/devices/launchpad-mini-mk3.ts),
@@ -64,7 +63,7 @@ Launchpad:
 - **`setup`** — Device Inquiry (with wildcarded revision bytes), the Programmer-mode switch.
   See [`docs/contracts/device-setup.md`](contracts/device-setup.md); the surface runs these on
   every `attach()`, you never run them by hand.
-- **`layout`** — the sequencer's *default* roles for this device: which controls are mode
+- **`layout`** — the sequencer's _default_ roles for this device: which controls are mode
   buttons, page arrows, transport, bank select. See
   [`docs/contracts/sequencer-configuration.md`](contracts/sequencer-configuration.md). This is
   a usage default living in the profile, not a hardware fact — an application is free to
@@ -103,7 +102,7 @@ with a `ControlId` a `ModeBinding` names:
 
 `bindSurfaceMode()` (`src/surface/bindings.ts`) takes one mode's bindings plus live ports and a
 `ControlRegistry`, generates `ControlMapping`s, and binds them with the mapping layer's own
-`bindControlMapping()` (unchanged since ECS-37 — Control Surface composes it, never
+`bindControlMapping()` (Control Surface composes it, never
 reimplements the wire-level round trip). It returns one teardown that unbinds everything and
 restores LEDs to a rest state on mode exit (motorized controls are left alone).
 
@@ -115,18 +114,18 @@ Writing a `SurfaceBindingTable` by hand, per device, would mean re-deriving "whi
 3 of track 2" every time. `createSequencerBindings(input, profile, contract, devices?)`
 (`src/configurations/sequencer.ts`) does that once, generically: it reads the profile's
 `layout`/`modes` and produces the binding table automatically, naming controls with a
-`SequencerContract` the *sequencer* owns (not the device):
+`SequencerContract` the _sequencer_ owns (not the device):
 
-| Contract field | Shape | Meaning |
-|---|---|---|
-| `stepTemplate` | `"step.{row}.{column}"` | one boolean control per grid cell |
-| `stepDurationTemplate` | `"step.{row}.{column}.duration"` | feedback-only, how many steps a note spans |
-| `stepCoverageTemplate` | `"step.{row}.{column}.covered"` | feedback-only, opt-in fast path (ECS-153): a boolean already saying whether this position is covered, in place of `stepDurationTemplate`'s backward scan |
-| `muteTemplate` | `"mute.{track}"` | one boolean per track row |
-| `playheadControl` | `"transport.playhead"` | which virtual column is currently playing |
-| `bankControl` / `bankActions` | `"bank.active"` + actions | the app's own A–D track banks (device-agnostic) |
-| `faderTemplates` | `{ volume: "mixer.volume.{index}" }` | one numeric control per fader, per bank |
-| `colours` | `Partial<SequencerColours>` | overrides `DEFAULT_SEQUENCER_COLOURS` (steps blue, mutes red, banks green, playhead greenish-blue/teal — ECS-150) |
+| Contract field                | Shape                                | Meaning                                                                                                                                        |
+| ----------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stepTemplate`                | `"step.{row}.{column}"`              | one boolean control per grid cell                                                                                                              |
+| `stepDurationTemplate`        | `"step.{row}.{column}.duration"`     | feedback-only, how many steps a note spans                                                                                                     |
+| `stepCoverageTemplate`        | `"step.{row}.{column}.covered"`      | feedback-only, opt-in fast path: a boolean already saying whether this position is covered, in place of `stepDurationTemplate`'s backward scan |
+| `muteTemplate`                | `"mute.{track}"`                     | one boolean per track row                                                                                                                      |
+| `playheadControl`             | `"transport.playhead"`               | which virtual column is currently playing                                                                                                      |
+| `bankControl` / `bankActions` | `"bank.active"` + actions            | the app's own A–D track banks (device-agnostic)                                                                                                |
+| `faderTemplates`              | `{ volume: "mixer.volume.{index}" }` | one numeric control per fader, per bank                                                                                                        |
+| `colours`                     | `Partial<SequencerColours>`          | overrides `DEFAULT_SEQUENCER_COLOURS` (steps blue, mutes red, banks green, playhead greenish-blue/teal)                                        |
 
 This is the key decoupling point: **the sequencer never sees pads, CCs, notes or SysEx** — it
 only ever names `step.2.5` or `transport.play`. Swap the Launchpad for any other profile with an
@@ -138,13 +137,13 @@ changes.
 **Doc:** [`docs/sequencer-integration.md`](sequencer-integration.md) (the integration report;
 the live code has moved on since — see the real files below).
 
-`webseq/src/midi/` is the *only* place in the sequencer app allowed to import midi-core or know
+`webseq/src/midi/` is the _only_ place in the sequencer app allowed to import midi-core or know
 MIDI exists (confirmed by grep across `src/model/`, `src/components/`, `src/App.tsx` — zero
 hits). Three files:
 
 - **`controlAdapter.ts`** — bridges webseq's immutable `Project` snapshot + `dispatch()` to
   midi-core's live `Control` shape (`getValue`/`setValue`/`onChange`). `setValue()` dispatches
-  a reducer action; `syncFromProject()` — called once per `Project` change from *any* source,
+  a reducer action; `syncFromProject()` — called once per `Project` change from _any_ source,
   not just MIDI — fires `onChange()` listeners when the derived value moved.
 - **`sequencerContract.ts`** — implements `ControlRegistry` by resolving ids like
   `step.3.5`, `mute.2`, `mixer.volume.0`, `transport.playhead`, `bank.active` against the live
@@ -152,20 +151,19 @@ hits). Three files:
   This is where the sequencer's own concepts (a note starting at a beat, a track's volume, the
   transport's playhead) get turned into the plain `Control`s Step 3's templates name.
 - **`useMidiControls.ts`** — the React hook that does the actual wiring: picks up the connected
-  device via `resolveDevice()` (`midi-core/devices`), calls `createSequencerBindings()` (Step
-  3) to get a binding table, then `createControlSurface({ profile, ports, bindingTable,
-  registry, generate: generateControlMappings, ... })` and `surface.attach()`/`detach()`.
+  device via `resolveDevice()` (`midi-core/devices`), calls `createSequencerBindings()` (Step 3) to get a binding table, then `createControlSurface({ profile, ports, bindingTable,
+registry, generate: generateControlMappings, ... })` and `surface.attach()`/`detach()`.
   `MidiPanel.tsx`, `App.tsx`, and the model package needed **zero changes** across every rewrite
   of this adapter — that boundary is the whole point.
 
 ## Visual feedback: how a `Control` ends up lighting an LED
 
-This is the piece worth understanding on its own, since it's how webseq's sequencer *view* (not
+This is the piece worth understanding on its own, since it's how webseq's sequencer _view_ (not
 just its audio state) ends up painted on the Launchpad's grid. Three independent signals are
 composited onto one pad, in `bindStepFeedback()` (`src/surface/bindings.ts`), evaluated in this
 priority order on every repaint:
 
-1. **Playhead** (`binding.playheadColour`, greenish-blue/teal by default — ECS-150) — if this pad's virtual column
+1. **Playhead** (`binding.playheadColour`, greenish-blue/teal by default) — if this pad's virtual column
    equals the sequencer's `transport.playhead` control's current value, this always wins,
    regardless of the step underneath it. webseq computes `transport.playhead` by polling the
    same `Transport` clock the on-screen playhead already reads (`requestAnimationFrame`, not a
@@ -177,10 +175,10 @@ priority order on every repaint:
 3. **Duration continuation** (`binding.continuationColour`, a quarter-intensity dim of `colour`)
    — if an earlier step on this row is active and its `step.{row}.{column}.duration` control's
    value reaches this column, this pad is lit dim, reading as "still part of that earlier note."
-   This is a backward scan, bounded by the duration control's own `max` (ECS-147) — proportional
+   This is a backward scan, bounded by the duration control's own `max` — proportional
    to how far back the covering note started, not to the sequence length, but still a scan.
 
-   **ECS-153 fast path:** a sequencer that already holds its notes as a small, indexed list
+   **Fast path:** a sequencer that already holds its notes as a small, indexed list
    (webseq's `pattern.notes`) can skip that scan entirely by setting `stepCoverageTemplate`
    instead of (or alongside) `stepDurationTemplate`. It computes "is this position covered"
    itself, once per relevant change, directly from `pattern.notes`, and exposes the answer as a
@@ -209,11 +207,10 @@ that don't need a step grid's extra signals:
   app's `bankActions` instead of writing a control.
 - **Plain `Control` feedback (`painterFor()`)** — mixer faders: any feedback-capable
   `PhysicalControl` bound through an ordinary `ControlBinding` (not a toggle window) to a
-  numeric `Control` repaints on `onChange()`, the same mechanism track volume has used since
-  ECS-73 ("the UI is not a mediating intermediary — it's just another direct caller of
-  `setValue()`").
+  numeric `Control` repaints on `onChange()`. The UI is another direct caller of `setValue()`;
+  feedback is not mediated by a special UI path.
 
-All of this fires from the *application* side — a UI mixer-fader drag, a project load, a MIDI
+All of this fires from the _application_ side — a UI mixer-fader drag, a project load, a MIDI
 pad press elsewhere, or the playhead's own clock — because feedback is wired to `Control.
 onChange()`, not to "was this value just set via MIDI." That symmetry (any state change reaches
 the hardware, regardless of its source) is `docs/contracts/application-surface-feedback.md`'s
@@ -267,20 +264,20 @@ No step of this path knows a Launchpad exists past step 2; no step before step 2
 
 ## Where the detail actually lives
 
-| Topic | Doc |
-|---|---|
-| Device profile schema | `docs/contracts/device-profile.md` |
-| The Launchpad profile itself | `docs/contracts/launchpad-mini-mk3-profile.md` |
-| Device setup / handshake | `docs/contracts/device-setup.md` |
-| MIDI ↔ control mapping contract | `docs/contracts/mapping.md`, `docs/contracts/mapping-runtime.md` |
-| Application Control API | `docs/contracts/control-api.md`, `docs/contracts/control-api-runtime.md` |
-| Why Control Surface exists, its boundaries | `docs/control-surface-architecture.md` |
-| Binding-table shape (`ModeBinding`, etc.) | `docs/contracts/surface-bindings.md` |
-| Profile → `ControlMapping` generation | `docs/contracts/surface-generation.md` |
-| Surface lifecycle / `attach()`/`detach()` | `docs/contracts/surface-lifecycle-runtime.md` |
-| Modes and navigation | `docs/contracts/surface-navigation.md`, `docs/contracts/mode-switching.md` |
-| Application → surface feedback primitives | `docs/contracts/application-surface-feedback.md` |
-| Surface → application (buttons/actions) | `docs/contracts/surface-application-control.md` |
-| Device-independent sequencer roles | `docs/contracts/sequencer-configuration.md` |
-| The webseq integration itself | `docs/sequencer-integration.md` |
-| Hardware verification notes | `docs/hardware-validation.md` |
+| Topic                                      | Doc                                                                        |
+| ------------------------------------------ | -------------------------------------------------------------------------- |
+| Device profile schema                      | `docs/contracts/device-profile.md`                                         |
+| The Launchpad profile itself               | `docs/contracts/launchpad-mini-mk3-profile.md`                             |
+| Device setup / handshake                   | `docs/contracts/device-setup.md`                                           |
+| MIDI ↔ control mapping contract            | `docs/contracts/mapping.md`, `docs/contracts/mapping-runtime.md`           |
+| Application Control API                    | `docs/contracts/control-api.md`, `docs/contracts/control-api-runtime.md`   |
+| Why Control Surface exists, its boundaries | `docs/control-surface-architecture.md`                                     |
+| Binding-table shape (`ModeBinding`, etc.)  | `docs/contracts/surface-bindings.md`                                       |
+| Profile → `ControlMapping` generation      | `docs/contracts/surface-generation.md`                                     |
+| Surface lifecycle / `attach()`/`detach()`  | `docs/contracts/surface-lifecycle-runtime.md`                              |
+| Modes and navigation                       | `docs/contracts/surface-navigation.md`, `docs/contracts/mode-switching.md` |
+| Application → surface feedback primitives  | `docs/contracts/application-surface-feedback.md`                           |
+| Surface → application (buttons/actions)    | `docs/contracts/surface-application-control.md`                            |
+| Device-independent sequencer roles         | `docs/contracts/sequencer-configuration.md`                                |
+| The webseq integration itself              | `docs/sequencer-integration.md`                                            |
+| Hardware verification notes                | `docs/hardware-validation.md`                                              |

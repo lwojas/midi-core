@@ -6,15 +6,15 @@ the grid or the mute buttons.
 
 ## What can be styled
 
-| Entry | Where it shows |
-| --- | --- |
-| `GRID_COLOURS.stepEven` | A note start (an active step) on an **even track row** (rows 1, 3, 5... on screen, 0-based 0, 2, 4...) |
-| `GRID_COLOURS.stepOdd` | A note start on an **odd track row** |
-| `GRID_COLOURS.stepLengthEven` | The continuation cells of a longer note on an even track row |
-| `GRID_COLOURS.stepLengthOdd` | The continuation cells of a longer note on an odd track row |
-| `GRID_COLOURS.playhead` | The pad under the playhead; overrides every other colour on that pad |
-| `MUTE_COLOURS.muted` | A track's mute button while the track is muted |
-| `MUTE_COLOURS.unmuted` | A track's mute button while the track is not muted |
+| Entry                         | Where it shows                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `GRID_COLOURS.stepEven`       | A note start (an active step) on an **even track row** (rows 1, 3, 5... on screen, 0-based 0, 2, 4...) |
+| `GRID_COLOURS.stepOdd`        | A note start on an **odd track row**                                                                   |
+| `GRID_COLOURS.stepLengthEven` | The continuation cells of a longer note on an even track row                                           |
+| `GRID_COLOURS.stepLengthOdd`  | The continuation cells of a longer note on an odd track row                                            |
+| `GRID_COLOURS.playhead`       | The pad under the playhead; overrides every other colour on that pad                                   |
+| `MUTE_COLOURS.muted`          | A track's mute button while the track is muted                                                         |
+| `MUTE_COLOURS.unmuted`        | A track's mute button while the track is not muted                                                     |
 
 Rule: **the track row's parity picks Even/Odd; whether the cell starts a note or continues one picks
 Step/StepLength.** The column never matters. The row is the track's own index, so the pattern holds across track paging.
@@ -50,14 +50,14 @@ Edit the entry in place: the layout and the palette are both built from it, so t
 The Push has no documented velocity-to-colour table. These are the bytes that have been confirmed or tried here (see
 [`hardware-validation-push-mk1.md`](hardware-validation-push-mk1.md)):
 
-| Byte | Shows | Status |
-| --- | --- | --- |
+| Byte  | Shows                         | Status                                                                    |
+| ----- | ----------------------------- | ------------------------------------------------------------------------- |
 | `127` | Full-on / default step colour | In use before this scheme; as a pad colour it is what steps always showed |
-| `36` | Teal | Confirmed on a pad (ECS-150) |
-| `22` | Green | Confirmed on the selection buttons (ECS-155); not yet checked on pads in this role |
-| `6` | Red | Confirmed on the upper control row (ECS-145); not yet checked on pads in this role |
-| `2` | Brighter white | From the hands-on ramp; unverified on pads |
-| `1` | Dim white | From the hands-on ramp; unverified on pads |
+| `36`  | Teal                          | Confirmed on a pad                                                        |
+| `22`  | Green                         | Confirmed on the selection buttons; not yet checked on pads in this role  |
+| `6`   | Red                           | Confirmed on the upper control row; not yet checked on pads in this role  |
+| `2`   | Brighter white                | From the hands-on ramp; unverified on pads                                |
+| `1`   | Dim white                     | From the hands-on ramp; unverified on pads                                |
 
 To try another colour, set a different `velocity` (0-127), rebuild, and look at the real device.
 `scripts/push-mk1-pad-color-probe.mjs` steps a single pad through raw velocities by hand, which is the quickest way

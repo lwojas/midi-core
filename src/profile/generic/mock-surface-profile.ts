@@ -2,41 +2,27 @@ import type { PhysicalControl } from "../types/control.js";
 import type { ControlGrid } from "../types/grid.js";
 import type { DeviceIdentity } from "../types/identity.js";
 import type { DevicePortProfile } from "../types/port.js";
-import { DEVICE_PROFILE_SCHEMA_VERSION, type DeviceProfile } from "../types/profile.js";
+import {
+  DEVICE_PROFILE_SCHEMA_VERSION,
+  type DeviceProfile,
+} from "../types/profile.js";
 
 /**
  * A fictional, non-vendor-specific device profile built the same way a
  * real one would be (`PhysicalControl`/`ControlGrid`, nothing invented
- * beyond this schema) — unlike `GENERIC_MIDI_DEVICE_PROFILE` (ECS-41),
- * which deliberately has *no* physical controls, this one exists
- * specifically to exercise the Control Surface layer end to end (ECS-77)
- * without needing a real controller or Launchpad-specific knowledge.
+ * beyond this schema) — unlike `GENERIC_MIDI_DEVICE_PROFILE`, which
+ * deliberately has no physical controls, this one exercises the Control
+ * Surface layer end to end without needing a real controller.
  *
- * Shape, per the ticket: eight continuous controls (`knob-1`..`knob-8`,
- * CC input *and* CC feedback — the "eight controls -> eight track
- * volumes" Mixer proof needs a physical target for volume feedback to
- * reach, same as a real motorized fader or LED-ring encoder reports
- * position and accepts a position-set on the same CC), four buttons
- * (`button-1`..`button-4`, note input only — Transport), and an
- * eight-pad row (`pad-1`..`pad-8`, note input *and* note feedback — the
- * "eight feedback outputs" the ticket names, and the Step Grid's cells).
- * No `sysex`/`setup`: nothing about this device needs either, and
- * inventing one here would be exactly the kind of profile this ticket's
- * "do not expand into general device profiling" warns against.
+ * Shape: eight continuous controls (`knob-1`..`knob-8`, CC input and
+ * feedback), four buttons (`button-1`..`button-4`, note input only), and an
+ * eight-pad row (`pad-1`..`pad-8`, note input and feedback, and the Step
+ * Grid's cells). Knob feedback supports numeric values such as track
+ * volume; pad feedback supports note-addressed LED colors. No `sysex` or
+ * `setup` is needed.
  *
- * Every control resolves a concrete `channel` (`0`) — unlike a profile
- * assembled from partial real-world evidence (ECS-62's `unresolved`
- * case), nothing here is partially known, so there's no reason to leave
- * it unresolved.
- *
- * **Revised for ECS-73.** Knobs originally shipped input-only (ECS-71).
- * `docs/contracts/mapping.md`'s own source/target table only pairs a
- * `"note"` address with a boolean control — exactly what the pads
- * already are — so demonstrating *numeric or enum* feedback (track
- * volume, transport status) needs a CC-addressed feedback target, which
- * nothing on this device had until this ticket added it to the knobs.
- * Narrow, concrete-need-driven revision to an already-shipped profile,
- * the same pattern ECS-62 and ECS-70 already set.
+ * Every control resolves a concrete `channel` (`0`); nothing here is
+ * partially known, so no address fields are left unresolved.
  */
 
 export const MOCK_SURFACE_DEVICE_IDENTITY: DeviceIdentity = {
@@ -47,8 +33,20 @@ export const MOCK_SURFACE_DEVICE_IDENTITY: DeviceIdentity = {
 
 /** One full-duplex port pair, matching `createMockSurfaceDevice()`'s real mock ports by id. Feedback is a nice-to-have, not required to operate the device, so only the input port is `required`. */
 export const MOCK_SURFACE_DEVICE_PORTS: readonly DevicePortProfile[] = [
-  { id: "main-in", type: "input", role: "main", required: true, messageTypes: ["note-on", "note-off", "control-change"] },
-  { id: "main-out", type: "output", role: "main", required: false, messageTypes: ["note-on", "note-off", "control-change"] },
+  {
+    id: "main-in",
+    type: "input",
+    role: "main",
+    required: true,
+    messageTypes: ["note-on", "note-off", "control-change"],
+  },
+  {
+    id: "main-out",
+    type: "output",
+    role: "main",
+    required: false,
+    messageTypes: ["note-on", "note-off", "control-change"],
+  },
 ];
 
 function knobControl(index: number): PhysicalControl {
@@ -59,7 +57,10 @@ function knobControl(index: number): PhysicalControl {
     kind: "knob",
     portId: "main-in",
     input: { address: { type: "control-change", controller }, channel: 0 },
-    feedback: { kind: "motorized", address: { address: { type: "control-change", controller }, channel: 0 } },
+    feedback: {
+      kind: "motorized",
+      address: { address: { type: "control-change", controller }, channel: 0 },
+    },
     feedbackPortId: "main-out",
   };
 }
@@ -82,19 +83,32 @@ function padControl(index: number): PhysicalControl {
     kind: "pad",
     portId: "main-in",
     input: { address: { type: "note", note }, channel: 0 },
-    feedback: { kind: "velocity-color-led", address: { address: { type: "note", note }, channel: 0 }, paletteSize: 128 },
+    feedback: {
+      kind: "velocity-color-led",
+      address: { address: { type: "note", note }, channel: 0 },
+      paletteSize: 128,
+    },
     feedbackPortId: "main-out",
   };
 }
 
 /** `knob-1`..`knob-8` — CC 11-18, channel 0. Input and feedback share the same CC/channel (the same number reports position and accepts a position-set, a real and common motorized-fader/LED-ring-encoder convention), feedback going out on `main-out`. */
-export const MOCK_SURFACE_KNOBS: readonly PhysicalControl[] = Array.from({ length: 8 }, (_, i) => knobControl(i + 1));
+export const MOCK_SURFACE_KNOBS: readonly PhysicalControl[] = Array.from(
+  { length: 8 },
+  (_, i) => knobControl(i + 1),
+);
 
 /** `button-1`..`button-4` — note 101-104, channel 0. Input only. */
-export const MOCK_SURFACE_BUTTONS: readonly PhysicalControl[] = Array.from({ length: 4 }, (_, i) => buttonControl(i + 1));
+export const MOCK_SURFACE_BUTTONS: readonly PhysicalControl[] = Array.from(
+  { length: 4 },
+  (_, i) => buttonControl(i + 1),
+);
 
 /** `pad-1`..`pad-8` — note 37-44, channel 0. Input and feedback share the same note/channel (the same address reports a press and accepts an LED-color write, a real and common drum-pad convention), feedback going out on `main-out` instead of `main-in`. */
-export const MOCK_SURFACE_PADS: readonly PhysicalControl[] = Array.from({ length: 8 }, (_, i) => padControl(i + 1));
+export const MOCK_SURFACE_PADS: readonly PhysicalControl[] = Array.from(
+  { length: 8 },
+  (_, i) => padControl(i + 1),
+);
 
 export const MOCK_SURFACE_CONTROLS: readonly PhysicalControl[] = [
   ...MOCK_SURFACE_KNOBS,
@@ -108,7 +122,11 @@ export const MOCK_SURFACE_STEP_GRID: ControlGrid = {
   label: "Step Grid",
   rows: 1,
   columns: MOCK_SURFACE_PADS.length,
-  cells: MOCK_SURFACE_PADS.map((pad, column) => ({ row: 0, column, controlId: pad.id })),
+  cells: MOCK_SURFACE_PADS.map((pad, column) => ({
+    row: 0,
+    column,
+    controlId: pad.id,
+  })),
 };
 
 export const MOCK_SURFACE_DEVICE_PROFILE: DeviceProfile = {

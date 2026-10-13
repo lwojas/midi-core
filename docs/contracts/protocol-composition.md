@@ -1,30 +1,15 @@
 # Protocol/Profile Composition Model
 
 Status: Draft
-Linear: [ECS-40](https://linear.app/ecs3d/issue/ECS-40/define-protocolprofile-composition-model)
-Depends on: [docs/contracts/device-profile.md](./device-profile.md) (ECS-39), [docs/architecture.md](../architecture.md) (ECS-26)
 Source of truth: [`src/profile/composition/`](../../src/profile/composition)
 
 ## Scope
 
-`docs/contracts/device-profile.md` defined `DeviceProfile` as a flat
-document: one `controls` list, authored whole. That's fine for a one-off
-device, but many real controllers partly or wholly implement a **reusable
-protocol** — Mackie Control (MCU), MIDI Clock/transport, MIDI Machine
-Control (MMC), or a vendor protocol shared across a product line — and
-hand-authoring the same fader/encoder/transport-button layout into every
-device that speaks MCU duplicates it per device. This ticket defines how
-a profile's controls and message-level behavior can instead be **composed**
-from reusable protocol definitions plus whatever's actually
-device-specific, investigating the question the ticket asks without
-implementing any protocol: no MCU, MMC, or Clock `ProtocolFamily` ships
-here. The first one (a generic MIDI baseline) is ECS-41, built *against*
-this model; a real vendor protocol is further out still.
-
-Like `docs/contracts/device-profile.md`, this produces **only the
-composition machinery** — types and pure functions. `DeviceProfile` itself
-(the shape ECS-39 defined) is unchanged; composition is an additive way to
-*produce* one, not a new target shape consumers need to know about.
+Many controllers implement reusable protocols such as Mackie Control,
+MIDI Clock/transport, MIDI Machine Control, or a vendor protocol shared
+across a product line. Composition combines reusable protocol
+definitions with device-specific controls to produce a `DeviceProfile`;
+the profile shape remains unchanged.
 
 ## Shape
 
@@ -54,7 +39,10 @@ composition machinery** — types and pure functions. `DeviceProfile` itself
 ## Composition functions
 
 ```ts
-function composeProtocolControls(binding: ProtocolBinding, protocol: ProtocolFamily): readonly PhysicalControl[];
+function composeProtocolControls(
+  binding: ProtocolBinding,
+  protocol: ProtocolFamily,
+): readonly PhysicalControl[];
 
 function composeDeviceControls(
   bindings: readonly ProtocolBinding[],
@@ -82,8 +70,7 @@ function composeDeviceProfile(args: {
 
 `composeDeviceControls` concatenates every bound protocol's controls
 (via `composeProtocolControls`) with `extensions` — the device's own
-controls not covered by any protocol, named directly after the ticket's
-own phrase ("reusable protocol families... with device extensions").
+controls not covered by any protocol.
 `composePortMessageTypes` unions a port's own declared `messageTypes`
 with whatever message types are contributed by protocols bound to that
 port, deduplicated — the mechanism that lets a purely message-level
@@ -98,26 +85,20 @@ it — rather than throwing. That's the same "not this function's concern"
 choice `resolveIncomingValue`/`buildFeedbackMessage` make for input they
 can't resolve (`docs/contracts/mapping.md`): a profile authored with a
 typo'd or not-yet-registered protocol id shouldn't crash composition.
-Catching that case as an actionable diagnostic is exactly what ECS-42
-("profile validation and diagnostics... depends on schema and composition
-model") exists to add next.
+Profile validation reports unresolved protocol ids as actionable
+diagnostics.
 
 ## What's deliberately not here
 
 - **No concrete protocols** — no `ProtocolFamily` for MCU, MIDI
-  Clock/transport, MMC, or any vendor protocol. ECS-41 defines the first
-  one (a generic MIDI baseline, "without manufacturer assumptions"); a
-  real vendor protocol is further out still. This ticket only has to prove
-  the composition shape works, which `src/profile/composition/compose.test.ts`
-  does with fictional protocol fixtures.
+  Clock/transport, MMC, or any vendor protocol. The generic MIDI baseline
+  is defined separately. Composition tests use protocol fixtures.
 - **No protocol registry/storage** — `protocols` is a `ReadonlyMap` the
   caller supplies to every composition function; nothing here loads,
   caches, or discovers protocol definitions from anywhere.
-- **No validation** — an unresolved `protocolId`, a `portId` that doesn't
-  name a declared port, or two bindings whose composed control ids
-  collide are all left unchecked here, for the same reason
-  `device-profile.md` leaves dangling references unchecked: that's
-  ECS-42's job, which depends on this model existing first.
+- **No validation** — unresolved `protocolId` values, undeclared
+  `portId` values, and colliding composed control ids are reported by the
+  profile validation functions, not by composition.
 - **No parameterized/templated control addresses** — a protocol's
   `ProtocolControlTemplate.input`/`feedback` addresses are fixed, exactly
   as the real protocols they'd model define them (e.g. MCU's channel-strip

@@ -1,4 +1,4 @@
-# Sequencer Configuration — Contract (ECS-95, ECS-96)
+# Sequencer Configuration — Contract
 
 ## Purpose
 
@@ -7,8 +7,8 @@ binding table for a sequencer on a device. The sequencer names its controls and 
 `SequencerContract`. The configuration maps the device's roles (from the profile's `layout` and `modes`) onto
 those names. The sequencer never sees pads, CCs, notes or SysEx.
 
-This document covers the fader parts (ECS-96). The step and track parts are in the `SequencerContract` type's own
-doc comments.
+The step, track, and fader fields are described here and in the
+`SequencerContract` type's own doc comments.
 
 ## SequencerContract: fader fields
 
@@ -19,10 +19,10 @@ doc comments.
   `{index}` is the fader's position in its bank, 0 to 7, left to right. A bank with no template has no fader mode,
   and its mode button is not shown on that device. The key is a fader mode's bank id (`volume`, `pan`, `send`), a
   group of CCs on the device. It is not an application bank: the application's own banks A-D are `bankActions` and
-  `bankControl` (ECS-114).
-- **`colours`** — `Partial<{ steps, mutes, banks }>` (ECS-95, ECS-114). Left out, each takes `DEFAULT_SEQUENCER_COLOURS`. Also `stepEven`/`stepOdd` (a lit step by its 0-based virtual track row's parity), `stepLengthEven`/`stepLengthOdd` (a duration-continuation cell, by the same row parity; default a dimmed step colour) and `unmuted` (an unmuted track's mute button; default dark). Precedence: the contract's own, then the device profile's `layout.colours` (the Push sets its whole scheme in `GRID_COLOURS`/`MUTE_COLOURS` at the top of `push-mk1.ts`), then the defaults. How to edit the Push's colours: [`docs/push-colours.md`](../push-colours.md).
+  `bankControl`.
+- **`colours`** — `Partial<{ steps, mutes, banks }>` . Left out, each takes `DEFAULT_SEQUENCER_COLOURS`. Also `stepEven`/`stepOdd` (a lit step by its 0-based virtual track row's parity), `stepLengthEven`/`stepLengthOdd` (a duration-continuation cell, by the same row parity; default a dimmed step colour) and `unmuted` (an unmuted track's mute button; default dark). Precedence: the contract's own, then the device profile's `layout.colours` (the Push sets its whole scheme in `GRID_COLOURS`/`MUTE_COLOURS` at the top of `push-mk1.ts`), then the defaults. How to edit the Push's colours: [`docs/push-colours.md`](../push-colours.md).
 
-## Bank buttons (ECS-114)
+## Bank buttons
 
 The application's banks (A-D, 16 tracks each) are chosen with buttons the device maps itself. Each profile says which
 of its controls is which, in `layout.bank`, and midi-core binds them whatever the wire format: a note on one device, a
@@ -43,7 +43,7 @@ A button's profile control must have `feedback` to be lit.
 
 The Launchpad's `select` buttons are the top-row buttons CC 95-98 (banks A-D). They are free in every layout.
 
-## Fader count (ECS-102)
+## Fader count
 
 `sequencerFaderCount(profile)` is the number of faders one page of the mixer shows: the smallest fader count among
 the profile's fader banks, or 0 when there are none. The application sizes its fader pages with it, so a page
@@ -65,7 +65,7 @@ A fader mode is built for a profile mode and a bank when all of these hold:
 1. `devices.outputs` has the mode's `sendPortId`.
 2. Every id in the mode's `requiredPortIds` is in `devices.outputs` or `devices.inputs`.
 
-## Connection (ECS-104)
+## Connection
 
 Whether a supplied port connects is decided when the surface attaches. A port that fails to connect is left closed.
 Each fader mode carries its `requiredPortIds` into the surface's mode definition. The surface refuses to enter the

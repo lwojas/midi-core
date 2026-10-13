@@ -1,40 +1,31 @@
 # Control Surface — Bindings
 
 Status: Draft
-Linear: [ECS-68](https://linear.app/ecs3d/issue/ECS-68/resolve-declarative-mapping-vs-scripthook-architecture)
-Project: [MIDI Core and Control Architecture](https://linear.app/ecs3d/project/midi-core-and-control-architecture-f934a737de3b)
-Depends on: [docs/control-surface-architecture.md](../control-surface-architecture.md) (ECS-64),
-[docs/contracts/device-profile.md](./device-profile.md) (ECS-39, `PhysicalControl`),
-[docs/contracts/control-api.md](./control-api.md) (ECS-65, `Selection`/`SurfaceContext`),
-[docs/contracts/surface-navigation.md](./surface-navigation.md) (ECS-67, `SurfaceModeId`/`GridOffset`),
-[docs/contracts/mapping.md](./mapping.md) (ECS-36, `ControlMapping` — the generation step's output)
+Depends on: [docs/control-surface-architecture.md](../control-surface-architecture.md),
+[docs/contracts/device-profile.md](./device-profile.md) (`PhysicalControl`),
+[docs/contracts/control-api.md](./control-api.md) (`Selection`/`SurfaceContext`),
+[docs/contracts/surface-navigation.md](./surface-navigation.md) (`SurfaceModeId`/`GridOffset`),
+[docs/contracts/mapping.md](./mapping.md) (`ControlMapping` — the generation step's output)
 Source of truth: [`src/surface/types/bindings.ts`](../../src/surface/types/bindings.ts)
 
 ## Scope
 
-`docs/control-surface-architecture.md` (ECS-64) named the generation
-step's shape — `(DeviceProfile, binding table) -> ControlMapping[]` — and
-deliberately left "what 'binding table' means precisely" open, pointing
-here. `docs/contracts/surface-navigation.md` (ECS-67) repeated the same
-deferral ("what controls a mode binds and how is ECS-68's... decision").
-This ticket is that decision: the shape of a mode's binding table, and
-how far declarative data goes before a hook is needed. Like the contracts
-it depends on, this produces **only the contract**
-(`src/surface/types/bindings.ts`) plus one pure resolution function — no
-implementation of the generation step itself (that's ECS-72), no wiring
-into `ControlSurface`'s `attach()`/`detach()` (that's ECS-69), and no
+`docs/control-surface-architecture.md` defines the generation step's
+shape — `(DeviceProfile, binding table) -> ControlMapping[]` — and this
+contract specifies the binding table and how far declarative data goes
+before a hook is needed. It defines types
+(`src/surface/types/bindings.ts`) and pure resolution functions; it does
+not implement generation or wire into `ControlSurface`'s
+`attach()`/`detach()`, and has no
 runtime LLM dependency anywhere in this or any live control path.
 
 ## The decision: declarative bindings, two narrow hooks, nothing else
 
-The ticket frames four options — declarative configurations, state
-machines, scripts, or declarative bindings plus controlled lifecycle/
-event hooks — and names a preference for the last. This contract adopts
-it outright, for the same reason the rest of this project's contracts
-stay data-first:
+Declarative bindings plus controlled lifecycle/event hooks keep this
+contract data-first:
 
 - **Rejected: state machines.** A mode's binding set has no transitions
-  of its own to model — mode *switching* is already fully specified by
+  of its own to model — mode _switching_ is already fully specified by
   `docs/control-surface-architecture.md` (batch unbind/rebind around a
   lifecycle event) and `docs/contracts/surface-navigation.md`
   (`setMode()`/`pageBy()`). Wrapping that in a second, generic state-machine
@@ -57,7 +48,7 @@ stay data-first:
   `SurfaceModeHooks` below. Each is a plain, narrowly-typed function
   (this is a TypeScript library; its consumers already write TypeScript),
   not a stringified expression or a sandboxed script — "no arbitrary
-  JavaScript required" describes the *default* authoring path, not a ban
+  JavaScript required" describes the _default_ authoring path, not a ban
   on a hook ever being a function.
 
 ## No MIDI address data, ever
@@ -65,7 +56,7 @@ stay data-first:
 A binding names a `PhysicalControl.id` to look up — never a note number,
 CC number, or channel. `docs/contracts/device-profile.md` already owns
 that data on the `PhysicalControl` it belongs to; the generation step
-(ECS-72) reads a binding's `physicalControlId`, looks up that
+reads a binding's `physicalControlId`, looks up that
 `PhysicalControl`, and translates its `input`/`feedback`
 (`ControlAddress`) into a `MidiSource`/`MidiTarget` itself. Re-authoring
 any of that here would be exactly the duplication webseq's
@@ -94,7 +85,7 @@ substitutes its `id` for every `"{id}"` in `template`, producing
 
 One placeholder, no further expression syntax. A role needing more than
 one selection's id, or any actual computation (e.g. picking a `ControlId`
-based on *two* selections at once), is exactly what
+based on _two_ selections at once), is exactly what
 `SurfaceModeHooks.resolveBindings` is for — adding a second placeholder
 or a mini-expression language here would be designing for a case no
 concrete mode has yet, the project's standing rule against speculative
@@ -106,15 +97,15 @@ currently selected, mirroring `docs/contracts/mapping.md`'s own
 resolution functions returning `undefined` for an unsupported pairing
 rather than taking down a live caller.
 
-**ECS-140 addendum: `"from-selection"` is now live, not just resolved once.**
-This type was designed, but nothing before ECS-140 actually *reacted* to a
-later `SurfaceContext` change for a bound `ControlBinding`/`DisplayBinding` —
+**`"from-selection"` follows selection changes.**
+A bound `ControlBinding` or `DisplayBinding` responds to later
+`SurfaceContext` changes —
 `resolveControlId()` ran once, at bind time, via `generateControlMappings()`,
 the same way a `"static"` resolution does. That's correct for `"static"`
 (nothing about its target ever changes), but silently wrong for
 `"from-selection"`: a role like "track fader" is specifically supposed to
-follow a *later* selection change without its mode being re-entered.
-`bindSurfaceMode()` (`src/surface/bindings.ts`) now special-cases
+follow a _later_ selection change without its mode being re-entered.
+`bindSurfaceMode()` (`src/surface/bindings.ts`) special-cases
 `resolve.kind === "from-selection"` for both binding kinds, building a
 `createContextBoundControl()` (`src/surface/context-bound-control.ts`)
 wrapper instead of going through the one-shot generate-then-bind path — it
@@ -131,22 +122,20 @@ export type NavigationAction =
   | { kind: "page-by"; delta: GridOffset };
 ```
 
-The ticket names "navigation" as one of the four cases a hook might be
-needed for. It isn't, here: a hardware "next page" or mode button is
+Navigation needs no hook: a hardware "next page" or mode button is
 already fully describable as data — `pageBy()`/`setMode()`
 (`docs/contracts/surface-navigation.md`) are the complete, fixed set of
 surface-local navigation gestures, so a `NavigationBinding` just names
 which one a `PhysicalControl` triggers. No resolution, no context lookup,
-no hook — this is the one of the ticket's four categories a purely
-declarative shape already covers.
+no hook; the declarative shape covers it directly.
 
 ## `ModeBinding`: one `PhysicalControl`'s assigned meaning
 
 ```ts
 interface ModeBindingBase {
   physicalControlId: string; // PhysicalControl.id
-  role: ControlRole;         // "pad grid", "transport play" — documentation only
-  when?: ModifierCondition;  // ECS-137, see below
+  role: ControlRole; // "pad grid", "transport play" — documentation only
+  when?: ModifierCondition; // see below
 }
 
 interface ControlBinding extends ModeBindingBase {
@@ -170,14 +159,11 @@ type ModeBinding =
   | DisplayBinding;
 ```
 
-(`WindowedControlBinding` and `IndicatorBinding` — a grid window onto an
-application control, and a feedback-only lit-while-equal indicator — were
-added after this ticket by ECS-89/ECS-95/ECS-114; both still extend
-`ModeBindingBase` exactly as above. `DisplayBinding` is new in ECS-137,
-below. `ModeIndicatorBinding` is new in ECS-138, below. `SelectionWindowBinding`/
-`SelectionClearBinding` are new in ECS-155, below.)
+`WindowedControlBinding`, `SelectionWindowBinding`,
+`SelectionClearBinding`, and `IndicatorBinding` extend `ModeBindingBase`.
+`DisplayBinding` has no physical input semantics and does not extend it.
 
-## Conditional (modifier) bindings (ECS-137)
+## Conditional (modifier) bindings
 
 ```ts
 type ModifierCondition = "modifier-held" | "modifier-released";
@@ -185,9 +171,8 @@ type ModifierCondition = "modifier-held" | "modifier-released";
 
 `when`, on every `ModeBindingBase`, gates a binding on the mode's
 `DeviceLayout.modifier` button (`docs/contracts/device-profile.md`).
-Omitted — the case for every binding before this field existed —
-reproduces the exact previous behavior, unconditionally; this is the hard
-compatibility requirement. Present, two bindings may target the same
+Omitted, the binding is unconditional; this is the compatibility
+requirement. Present, two bindings may target the same
 `physicalControlId` within one mode, each with a different `when`:
 `src/surface/bindings.ts`'s `bindSurfaceMode()` tracks the modifier
 button's live held/released state once per mode-bind and dispatches each
@@ -203,13 +188,13 @@ any device with a shift-style button. The MIDI-mapping runtime itself
 `bindSurfaceMode()` supplies it a bare `shouldApply()` predicate through
 `bindControlMapping()`'s own generic gate.
 
-## Display bindings (ECS-137)
+## Display bindings
 
 ```ts
 interface DisplayBinding {
   kind: "display";
   displayId: string; // DeviceDisplayDefinition.id
-  lineId: string;     // DisplayLineTemplate.id within that display
+  lineId: string; // DisplayLineTemplate.id within that display
   resolve: ControlIdResolution;
 }
 ```
@@ -250,12 +235,12 @@ interface DisplayMeterBinding {
   kind: "display-meter";
   displayId: string;
   lineId: string;
-  gridId: string;   // the cells whose positions map to display segments
+  gridId: string; // the cells whose positions map to display segments
   template: string; // as EncoderWindowBinding.template
   orientation?: "vertical" | "horizontal";
   enabledWhen?: { controlId: string; equals: number };
   fallback?: ControlIdResolution; // text shown while the gate doesn't hold
-  labelLineId?: string;           // a second line naming each segment's control
+  labelLineId?: string; // a second line naming each segment's control
   labelFallback?: ControlIdResolution;
 }
 ```
@@ -268,13 +253,13 @@ and page offset); there is no display-only state. A segment's value form
 and name come from the control's own `ControlDef`
 (`describeSegmentValue()`, `describeSegmentLabel()`):
 
-| control | value |
-| --- | --- |
-| number, continuous | level bar, normalized against live `min`/`max` |
-| number with one `step` across its range, or boolean | `ON` / `OFF` in the brackets |
-| number with few steps (at most the bar's half-cell count) | its value in the brackets |
-| enum | the current option's label in the brackets |
-| string | blank |
+| control                                                   | value                                          |
+| --------------------------------------------------------- | ---------------------------------------------- |
+| number, continuous                                        | level bar, normalized against live `min`/`max` |
+| number with one `step` across its range, or boolean       | `ON` / `OFF` in the brackets                   |
+| number with few steps (at most the bar's half-cell count) | its value in the brackets                      |
+| enum                                                      | the current option's label in the brackets     |
+| string                                                    | blank                                          |
 
 The label is `def.label` uppercased and cut to one column short of the
 segment (neighbouring segments sit flush). Each line has its own writer
@@ -293,14 +278,14 @@ bar is `[=== ]` (`=` full, `-` half). The segment offsets assume the known
 4 x 17-character cell structure; where the spare column of each cell sits
 has not been confirmed on hardware.
 
-## Mode indicator bindings (ECS-138)
+## Mode indicator bindings
 
 ```ts
 interface ModeIndicatorBinding {
   kind: "mode-indicator";
   physicalControlId: string; // PhysicalControl.id
   role: ControlRole;
-  mode: SurfaceModeId;       // lit while SurfaceNavigation.state.mode equals this
+  mode: SurfaceModeId; // lit while SurfaceNavigation.state.mode equals this
   colour?: RgbColour;
 }
 ```
@@ -331,20 +316,20 @@ explicitly, since lighting it is new outgoing traffic no profile authored
 before this field existed has had reproduced. `src/configurations/sequencer.ts`
 builds one `ModeIndicatorBinding` per opted-in mode button and includes it,
 unconditionally, in every mode's own binding list — the same "available
-everywhere" treatment bank indicators (ECS-114) already get.
+everywhere" treatment bank indicators already get.
 
-## Selection window and clear bindings (ECS-155)
+## Selection window and clear bindings
 
 ```ts
 interface SelectionWindowBinding {
   kind: "selection";
   physicalControlId: string; // PhysicalControl.id
   role: ControlRole;
-  gridId: string;           // ControlGrid.id, the device's selection-button row
-  indexControl: string;     // ControlId of a shared number Control every cell reads AND writes
+  gridId: string; // ControlGrid.id, the device's selection-button row
+  indexControl: string; // ControlId of a shared number Control every cell reads AND writes
   orientation?: "vertical" | "horizontal";
   colour?: RgbColour;
-  countControl?: string;    // ControlId of a number Control: how many items exist; past it, a cell renders off
+  countControl?: string; // ControlId of a number Control: how many items exist; past it, a cell renders off
 }
 
 interface SelectionClearBinding {
@@ -352,14 +337,14 @@ interface SelectionClearBinding {
   physicalControlId: string;
   role: ControlRole;
   indexControl: string; // the same control a SelectionWindowBinding on this table reads and writes
-  clearValue: number;   // the sentinel this button writes on press
+  clearValue: number; // the sentinel this button writes on press
 }
 ```
 
-A generic page of selectable items — e.g. the Push's contextual selection buttons
-(ECS-155). `WindowedControlBinding` doesn't fit: there, every cell drives its *own*
+A generic page of selectable items — e.g. the Push's contextual selection buttons.
+`WindowedControlBinding` doesn't fit: there, every cell drives its _own_
 distinct application control, found by filling a template with the cell's virtual
-position. Here, every cell reads and writes the *same* `indexControl` — pressing a cell
+position. Here, every cell reads and writes the _same_ `indexControl` — pressing a cell
 sets it to that cell's own virtual index (the page offset plus its position along the
 grid's windowed axis, exactly `WindowedControlBinding`'s own `orientation` arithmetic);
 the LED compares the control's live value against the cell's own index to light
@@ -380,7 +365,7 @@ what it's currently bound to) falls out with no new mechanism.
 that writes one fixed `clearValue` to the same `indexControl` on press. It sends no
 feedback of its own: pairing an `IndicatorBinding` on the same `physicalControlId`
 (`resolve` naming `indexControl`, `lit: clearValue`) already shows "is this the active
-context," reusing ECS-114's own mechanism rather than inventing a second one.
+context," reusing the existing mechanism rather than inventing a second one.
 
 ## `SurfaceModeDefinition` and `SurfaceBindingTable`
 
@@ -411,8 +396,7 @@ interface SurfaceModeHooks {
 }
 ```
 
-Both optional; most modes need neither. Each answers exactly one of the
-ticket's remaining named categories:
+Both optional; most modes need neither. Each covers a distinct need:
 
 - **Unusual initialization and protocol quirks collapse into one hook.**
   Both are, concretely, "something imperative has to happen around a mode
@@ -438,7 +422,7 @@ Per `docs/control-surface-architecture.md`'s bidirectional flow and
 already fully covered: a bound `ControlMapping`'s `feedback` target
 (derived from the matched `PhysicalControl.feedback`, exactly as today)
 drives `buildFeedbackMessage()` whenever the application `Control`'s
-`onChange()` fires. A `ControlBinding` names *which* control a
+`onChange()` fires. A `ControlBinding` names _which_ control a
 `PhysicalControl` is paired with; once the generation step produces its
 `ControlMapping`, feedback is the existing mechanism, unchanged. No
 declarative "state → feedback" language is invented here because one
@@ -448,12 +432,11 @@ already exists and fully covers it.
 
 - **No generation step implementation** — no code reading a
   `SurfaceBindingTable` and a `DeviceProfile` to actually produce
-  `ControlMapping[]`. That's ECS-72, built against the shapes defined
-  here.
+  `ControlMapping[]`.
 - **No wiring into `ControlSurface`** — `attach()`/`detach()`
   (`docs/contracts/surface-lifecycle.md`) still don't know a
-  `SurfaceBindingTable` exists; hooking mode binding into the lifecycle
-  and into `SurfaceNavigation.onChange()` is ECS-69.
+  `SurfaceBindingTable` exists; mode binding is not wired into the lifecycle
+  or `SurfaceNavigation.onChange()`.
 - **No validation** — a dangling `physicalControlId`, a
   `SurfaceModeDefinition` with neither `bindings` nor
   `hooks.resolveBindings`, a `ControlBinding.resolve` naming a `scope`
@@ -463,8 +446,8 @@ already exists and fully covers it.
   where that belongs, not this schema.
 - **No curves or transforms** on a `ControlMapping` produced from a
   binding — unchanged from `docs/contracts/mapping.md`'s own deferral.
-- **Conditions**, unlike curves/transforms, are no longer undesigned —
-  see "Conditional (modifier) bindings" above (ECS-137). `ControlMapping`
+- **Conditions**, unlike curves/transforms, are designed in
+  "Conditional (modifier) bindings" above. `ControlMapping`
   itself still carries no condition field; the condition lives on the
   binding (`when`) and is applied as a generic runtime predicate, not as
   new data on the mapping shape `mapping.md` defines.

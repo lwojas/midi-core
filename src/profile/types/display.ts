@@ -1,10 +1,10 @@
 /**
- * A text display's SysEx template (ECS-137) — declarative byte layout, describing a device's LCD/text-line protocol
- * the same way `DeviceModeProfile.bankPrefix`/`bankEntry` (ECS-96) already describe a fader bank message: a fixed
+ * A text display's SysEx template — declarative byte layout, describing a device's LCD/text-line protocol
+ * the same way `DeviceModeProfile.bankPrefix`/`bankEntry` describe a fader bank message: a fixed
  * prefix, a per-line id byte, a fixed byte sequence, then a fixed-width text payload the application fills in. This
  * is the shape `push-mk1.ts`'s own comment named as missing ("this profile doesn't model text-display feedback as a
- * `PhysicalControl` — there's no control kind for a multi-line text display") and the ECS-136 gate's architecture
- * proposal designed from scratch, since neither `sysex` nor `setup` modeled a byte template with a variable payload.
+ * `PhysicalControl` — there's no control kind for a multi-line text display") since neither `sysex` nor `setup`
+ * models a byte template with a variable payload.
  *
  * Deliberately not a `PhysicalControl`: a display has no input semantics (nothing to press, no address to read from)
  * — it only ever drives a new `StringControlDef` `Control` outward, via a `DisplayBinding`

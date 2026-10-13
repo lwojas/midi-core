@@ -19,9 +19,9 @@ import type { DeviceSysExProfile } from "../types/sysex.js";
 // roles apart, and just has to differ between roles) and the `velocity` byte that actually lights the LED.
 // To try a different colour, change the `velocity`.
 //
-// Hardware status of each byte (see docs/hardware-validation-push-mk1.md): 36 (teal) confirmed on a real pad
-// (ECS-150); 22 (green) confirmed on the selection buttons (CC 36-43, ECS-155); 6 (red) confirmed on the upper
-// control row (CC 102, ECS-145); 1 and 2 (dim/brighter white) from the same hands-on ramp. 127 is the plain
+// Hardware status of each byte (see docs/hardware-validation-push-mk1.md): 36 (teal) confirmed on a real pad;
+// 22 (green) confirmed on the selection buttons (CC 36-43); 6 (red) confirmed on the upper control row (CC 102);
+// 1 and 2 (dim/brighter white) from the same hands-on ramp. 127 is the plain
 // full-on byte steps already used. Everything but 36 is hardware-unverified *on the pads in this role*; the pads
 // follow the same ramp as the CC buttons, so expect it to be right but tune on a real Push.
 // ---------------------------------------------------------------------------------------------------------------
@@ -60,143 +60,14 @@ const PUSH_SEQUENCER_COLOURS: DeviceLayoutColours = {
 };
 
 /**
- * ECS-91: this project's second real-device `DeviceProfile` — the Ableton
- * Push 1 (Mk1), chosen per ECS-79's own criteria against the Launchpad Mini
- * MK3: it differs in periphery (encoders, a touch strip, an LCD, utility
- * buttons laid out around an 8x8 grid rather than a top row/side column),
- * not grid size, which is enough to exercise the role-based configuration
- * path (ECS-90) against controls the Launchpad doesn't have.
+ * The Push 1 (Mk1) profile describes its controls, grids, display and User Mode MIDI ports.
  *
- * Transcribed, not hand-authored: every id/address/label below reproduces
- * midi-profiler's generated document exactly (`profiles/push-mk1/generate-
- * input.json` in that repo, `profiles/push-mk1/report.json` — zero
- * validation diagnostics), re-expressed as generator functions the same
- * way `launchpad-mini-mk3.ts` already does. The canonical reference for
- * this device is `research/push-mk1/midi-usermode-mapping-verified.md`
- * (midi-profiler repo), which explicitly supersedes the original
- * `midi-usermode-mapping.md`'s button-label claims and is itself checked
- * against `AbletonPushUserModeHack.png`, an independent, named-author
- * diagram — read the verified doc and the diagram, not the original, when
- * extending this profile.
+ * User Mode must already be active before connecting. It is selected by the physical User button; this profile has
+ * no setup handshake or mode profile, and only models the `user-port-in`/`user-port-out` pair.
  *
- * **Round 2 correction**: about half the "Bottom & Layout Selection
- * Blocks"/"Right Column" button labels in midi-profiler's original research
- * doc turned out to be wrong (it looks conflated with Push 2's layout in
- * places) — caught when this profile's first `layout` used CC 58/59 for
- * "Note"/"Session" and a live hardware check (`scripts/push-mk1-live.mjs`)
- * showed CC 58 actually printed "Scales". Every label in that doc section
- * was re-checked by lighting one CC at a time and reading what's actually
- * printed on it; see `research/push-mk1/verification/VERIFICATION.md`'s
- * "Round 2" section (midi-profiler repo) for the full table. The real
- * Note/Session pair is CC 50/51, not 58/59 — CC 59 is the hardcoded
- * Live/User mode toggle, not a normal button.
- *
- * **Two things this profile deliberately does not model, both from
- * midi-profiler's own `unresolved` list**:
- * - **No `setup`.** Unlike the Launchpad, there's no verified Device
- *   Inquiry reply for this device, and User Mode itself is a physical
- *   toggle (the User button), not a SysEx switch this profile can safely
- *   automate — the one documented SysEx that forces it (`sysex-mapping.md`
- *   section 3) was deliberately never sent during verification, to avoid
- *   dropping the port mid-session. Automating an unverified mode-forcing
- *   command on every `attach()` would be inventing a handshake this
- *   project has no evidence actually works, so it's left out; the device
- *   must already be in User Mode (User button held) before connecting.
- * - **No `modes`.** No DAW Fader-style layout is documented for Push 1's
- *   User Mode the way the Launchpad's DAW port has one — only the single
- *   `user-port-in`/`user-port-out` pair this profile addresses.
- *
- * **`layout` is a usage default, not a hardware fact** (same disclaimer
- * `launchpad-mini-mk3.ts` makes about its own): Push 1 doesn't have
- * dedicated "mode" buttons the way the Launchpad's side column does, so
- * `Note`/`Session` (CC 50/51, confirmed by hands-on reading, not the doc's
- * original wrong CC 58/59) — real buttons, functionally generic to this
- * surface — were chosen to stand in for the sequencer's `steps`/`mixer`
- * modes, and the
- * dedicated `Arrow` buttons for paging. `transport.stop`/`transport.clear`
- * have no assigned button: nothing in either research doc documents a
- * dedicated Stop or Clear button, so those roles are left unresolved
- * rather than guessed at.
- *
- * **ECS-136 gate verification (2026-10-09)**: the doc's "Select"/"Shift"
- * pair (CC 34/35, "Right Side Navigation Pad" section) was never re-checked
- * in Round 2 and is now confirmed absent from this unit — lighting both
- * CCs (`scripts/push-mk1-contract-probe.mjs shift34`/`shift35`) produced no
- * visible LED anywhere on the device, across three independent runs, and
- * midi-profiler's own independent cross-check diagram
- * (`AbletonPushUserModeHack.png`) shows the nav-pad diamond as only four
- * buttons (CC 44/45/46/47) with no Select/Shift pair beside it — consistent
- * with the doc's own admission of Push 2 layout conflation. Both ids are
- * removed below rather than kept as unmappable placeholders. `button-shift`
- * (CC 49) is the one real Shift/modifier button: lit and pressed back
- * correctly, twice, in the same session — see
- * `docs/hardware-validation-push-mk1.md`'s "ECS-136 gate verification"
- * section for the full verification record.
- *
- * **ECS-137**: the ECS-136 gate's reviewed contract extensions, applied to this profile where they have a concrete
- * case here. `relativeEncoding` is now declared on every encoder (the gate's §1 hardware finding). `PUSH_MK1_DISPLAY`
- * declares the LCD's SysEx template as data (the gate's extension 3) in place of `PUSH_MK1_SYSEX.notes`' free-text
- * description of the same bytes -- actually driving a string `Control` through it is ECS-139's job, not this one's.
- *
- * **Full Push-2-contamination audit (2026-10-09)**: every control below was
- * re-checked by hand against `AbletonPushUserModeHack.png` (the one source
- * in this chain independently authored, not derived from the original
- * doc). Every encoder, the touch strip, all 64 pads, both utility-button
- * rows (CC 20-27, CC 102-109), the left-column utility and modes/
- * sequencing buttons, Master/Stop (CC 28/29), Note/Session (CC 50/51) and
- * the nav diamond (CC 44-47) all match the diagram's own numbering. CC
- * 34/35 (removed above) was the only contaminated entry still present;
- * nothing else in this profile needed to change. One pre-existing, already
- * -flagged gap the diagram reiterates: the paired-button block beside the
- * pad grid (diagram shows CC 48-57/60-63 unlabeled) includes CC 48, right
- * next to the confirmed-real CC 49 Shift — never tested on hardware, not
- * in this profile, not newly discovered here but worth re-surfacing since
- * it sits directly beside a control this pass did re-verify.
- *
- * **ECS-138**: Phase 2's mode refinement. `Session` (CC 51) no longer selects a `mixer` mode -- see
- * `PUSH_MK1_LAYOUT`'s own doc comment for the full decision and its reasoning. `button-note`/`button-stop-clip`
- * (steps/transport) now light while their own mode is active (`indicator: true`), and the upper control row
- * (CC 102-109, `PUSH_MK1_MUTE_STRIP_GRID`) is a dedicated, always-available mute strip in place of the removed
- * mode's grid takeover. Both confirmed hands-on -- see `PUSH_MK1_LAYOUT`'s own comment and
- * `docs/hardware-validation-push-mk1.md`.
- *
- * **ECS-145**: Phase 3's dim/full LED tiers. Every `UTILITY_BUTTONS` control now declares a `feedback.dimValue`
- * (see `PUSH_MK1_DIM_VALUE`'s own doc comment for the hands-on byte-level finding), and `PUSH_MK1_LAYOUT` names
- * `button-shift` as `modifier` for the first time, which also gives Shift real LED feedback it never had. One
- * real research correction came out of this: the upper control row (CC 102-109) turned out not to be a monochrome
- * button family at all -- see `MUTE_STRIP_BUTTONS`'s own doc comment -- so it's a separate export now,
- * `velocity-color-led` like the pads, with no `dimValue`. See `docs/hardware-validation-push-mk1.md`'s ECS-145
- * section for the full probe results and what's still only assumed, not individually confirmed.
- *
- * **ECS-150**: the sequencer's playhead (ECS-131) now reaches this device's real colour, not just a plain on/off.
- * `PUSH_MK1_PAD_COLOUR_PALETTE`'s own doc comment has the hands-on finding -- one raw velocity, hands-on confirmed
- * to show greenish-blue/teal on a real pad, declared on `PUSH_MK1_PADS`' `feedback.colourPalette`
- * (`ControlFeedback.colourPalette`, new this ticket). No other colour is covered: steps/mutes/banks still render
- * as plain on/off here exactly as before, since this ticket's own scope is the playhead only, not the pads' full
- * bright/standard/dim RGB tiers (still ECS-135's gap, not reopened here).
- *
- * **ECS-155**: CC 36-43, this ticket's own "contextual selection buttons," per the ticket's own explicit mapping,
- * now hands-on confirmed real and distinct (the CCs themselves were right first try; neither research doc
- * documents a control here, so this profile's CCs were the only source). Two things declared alongside them were
- * wrong, both corrected post-verification: the *feedback* family (not the monochrome on/off/dim `UTILITY_BUTTONS`
- * family, but a `velocity-color-led` one with its own raw range, 1-26, confirmed white-ish starting at 1 and green
- * in the low 20s -- see `PUSH_MK1_SELECTION_COLOUR_PALETTE`'s own doc comment), and the *layout* (these are side
- * buttons, a vertical column running CC 43, the topmost, down to CC 36, the bottommost -- see `SELECTION_BUTTONS`'
- * and `PUSH_MK1_SELECTION_GRID`'s own doc comments).
- *
- * **ECS-140** (superseded for encoder-1..8 by the generic encoder bank, which now owns them -- `layout.encoders`
- * is empty here so no cell has a second, selection-bound target): `PUSH_MK1_LAYOUT.encoders` named three of the 8 generic parameter encoders (`encoder-1`/`encoder-2`/
- * `encoder-3`, hands-on confirmed real and relative on this unit already by the ECS-136 gate) for the application's
- * `"volume"`/`"send"`/`"effects"` roles -- representative-first, per this ticket's own instructions: one continuous
- * mapping proven end to end (`encoder-1`/`"volume"`), then the same contract reused unchanged for two more
- * representative roles, not all 8. `encoder-4` through `encoder-8` are left out of `encoders` entirely rather than
- * assigned a guessed role -- real, relative, addressed controls (same component family, same ECS-136 gate), just
- * without an application role yet; a future ticket adding more parameter roles only needs to extend this map, not
- * reopen the hardware question. `encoder-master`/`encoder-swing`/`encoder-tempo` are left out for a different
- * reason: they're dedicated, not generic-parameter, controls (master volume, swing amount, tempo), each a candidate
- * for its own `"static"` role rather than a `"from-selection"` one -- no concrete use for them yet, so none is
- * invented here. See `docs/hardware-validation-push-mk1.md`'s ECS-140 section for the live encoder-direction/
- * range/selection-retargeting verification this mapping was checked against.
+ * `layout` is a usage default, not a hardware fact. `Note`/`Session` (CC 50/51) stand in for the sequencer's
+ * `steps`/`mixer` roles, and the dedicated Arrow buttons page. `transport.stop`/`transport.clear` have no assigned
+ * button because no dedicated Stop or Clear control is documented.
  */
 
 export const PUSH_MK1_IDENTITY: DeviceIdentity = {
@@ -266,7 +137,7 @@ export const PUSH_MK1_ENCODERS: readonly PhysicalControl[] = ENCODERS.flatMap(
         channel: 0,
       },
       valueMode: "relative",
-      // ECS-136 gate: hands-on confirmed signed 7-bit two's-complement delta encoding on Encoder 1 and the Tempo
+      // Hands-on checks confirmed signed 7-bit two's-complement delta encoding on Encoder 1 and the Tempo
       // encoder, independently re-confirmed on a second MIDI monitor; the other 9 are the same component family,
       // assumed but not individually turned -- same "declare the fact, flag the unconfirmed extent" stance this
       // profile already takes for its other partially-verified controls.
@@ -301,11 +172,10 @@ export const PUSH_MK1_TOUCH_STRIP: readonly PhysicalControl[] = [
 ];
 
 /**
- * ECS-150: the one confirmed (colour, velocity) correspondence on this device's pad LEDs, hands-on probed with
- * `scripts/push-mk1-pad-color-probe.mjs` (new for this ticket -- the note-addressed sibling of ECS-145's
- * `push-mk1-led-level-probe.mjs`, needed because the pads are note- not CC-addressed): raw velocity 36 shows a
+ * The one confirmed (colour, velocity) correspondence on this device's pad LEDs: raw velocity 36 shows a
  * clear greenish-blue/teal on a real pad, following the same white-then-reds-then-rest-of-the-palette ramp
  * ECS-145 already found on the mute strip (CC 102) -- not independently re-probed on the mute strip itself, only
+ * the same white-then-reds-then-rest-of-the-palette ramp observed on the mute strip (CC 102) -- not independently
  * the pads. The colour below must match `DEFAULT_SEQUENCER_COLOURS.playhead` (`src/configurations/sequencer.ts`)
  * exactly, byte for byte -- that's the app-level colour this entry exists to recognise, kept as a literal here
  * rather than an import to keep this device-facing profile independent of that app-level configuration module, the
@@ -349,7 +219,7 @@ export const PUSH_MK1_PADS: readonly PhysicalControl[] = Array.from(
 );
 
 /**
- * Utility, navigation and mode-select buttons: all CC-addressed, monochrome LED feedback (ECS-145: off/dim/full,
+ * Utility, navigation and mode-select buttons: all CC-addressed, monochrome LED feedback (off/dim/full,
  * not a colour palette -- that's the upper control row's own `MUTE_STRIP_BUTTONS` below, a different control
  * family entirely, see that constant's doc comment).
  */
@@ -365,10 +235,10 @@ const UTILITY_BUTTONS = [
   ["tap-tempo", "Tap Tempo", 3],
   ["metronome", "Metronome", 9],
   ["master", "Master", 28],
-  ["stop-clip", "Stop", 29], // doc said "Stop Clip"; actually prints "Stop" (round 2)
-  ["shift", "Shift", 49], // doc said "Mute" (wrong); actually "Shift" (round 2); the real/only Shift -- see ECS-136 gate note above
-  ["note", "Note", 50], // doc said "Solo" (wrong); actually the REAL "Note" button (round 2)
-  ["session", "Session", 51], // doc said "Record Arm" (wrong); actually the REAL "Session" button (round 2)
+  ["stop-clip", "Stop", 29],
+  ["shift", "Shift", 49],
+  ["note", "Note", 50],
+  ["session", "Session", 51],
   ["arrow-up", "Arrow Up", 46],
   ["arrow-down", "Arrow Down", 47],
   ["arrow-left", "Arrow Left", 44],
@@ -381,10 +251,10 @@ const UTILITY_BUTTONS = [
   ["fixed-length", "Fixed Length", 90],
   ["volume", "Volume", 114],
   ["pan-send", "Pan / Send", 115],
-  ["devices", "Devices", 110], // doc said "Device"; actually "Devices" (round 2)
+  ["devices", "Devices", 110],
   ["browse", "Browse", 111],
-  ["track", "Track", 112], // doc said "Clip" (wrong); actually the REAL "Track" button (round 2)
-  ["scales", "Scales", 58], // doc said "Note" (wrong); actually "Scales" (round 2)
+  ["track", "Track", 112],
+  ["scales", "Scales", 58],
   // REMOVED: the doc's CC 116 "Track" claim -- unconfirmed, and redundant with the real Track at CC 112.
   // REMOVED: the doc's CC 59 "Session" claim -- that's the hardcoded User-mode toggle (round 2), not a normal
   // mappable button; same control the doc separately (and correctly) called "hardcoded, unmappable".
@@ -394,11 +264,11 @@ const UTILITY_BUTTONS = [
 ] as const;
 
 /**
- * ECS-145: the lowest raw CC value that renders a dim-but-visible, non-full LED level on this unit's monochrome
+ * The lowest raw CC value that renders a dim-but-visible, non-full LED level on this unit's monochrome
  * utility buttons -- hands-on confirmed on two independent physical buttons, Play (CC 85) and Shift (CC 49):
  * `0` = off, `1` = dim/steady, `2`-`3` = dim/blinking (increasingly fast), `4` = full/steady, `5`-`6` =
  * full/blinking, `7` and up = full/steady (clamped -- 40/50/127 all read identically to `4`). Only the two steady
- * states (`1`, `4`/`127`) are modeled here; the blink states are a real device capability this ticket has no use
+ * states (`1`, `4`/`127`) are modeled here; the blink states are a real device capability, but this contract has no
  * for (no "blinking" feedback level exists in this contract) and are left unused, not un-discovered.
  */
 const PUSH_MK1_DIM_VALUE = 1;
@@ -422,14 +292,14 @@ export const PUSH_MK1_UTILITY_BUTTONS: readonly PhysicalControl[] =
   }));
 
 /**
- * ECS-145 finding, correcting a previously-unverified assumption: the upper control row (CC 102-109), used as the
+ * The upper control row (CC 102-109), used as the dedicated mute strip, is not a monochrome on/off/dim button like
  * dedicated mute strip since ECS-138, is NOT a monochrome on/off/dim button like the rest of `UTILITY_BUTTONS` --
  * it was only ever lumped in with them because the original `UTILITY_BUTTONS` loop blanket-applied monochrome
  * feedback to every CC-addressed button, never individually hands-on-checked. Probing CC 102 by hand (same method
  * as the dim-value probe above) showed a value-selected *colour* palette -- white, orange, red, yellow, green,
  * pink, turquoise at different raw values -- the same `velocity-color-led` family the 64 pads already declare, not
  * a brightness scale at all. Giving this row a `dimValue` the way the other utility buttons get one would be
- * inventing a brightness tier where the device actually changes hue; per the ticket's own scoping, this is exactly
+ * inventing a brightness tier where the device actually changes hue. No per-colour palette mapping is modeled here;
  * the pads' "own bright/standard/dim RGB tiers... a separate, already-flagged gap (ECS-135), not this ticket's" --
  * the mute strip turns out to belong to that excluded family instead of the one this ticket extends. No per-colour
  * palette mapping is modeled here, same "declare the fact, leave the unresolved extent unresolved" stance this
@@ -466,13 +336,13 @@ export const PUSH_MK1_MUTE_STRIP_BUTTONS: readonly PhysicalControl[] =
   }));
 
 /**
- * ECS-155 hardware correction (confirmed hands-on): CC 36-43 are NOT the same monochrome on/off/dim family
+ * CC 36-43 are not the same monochrome on/off/dim family
  * `UTILITY_BUTTONS` uses. The device's actual LED byte is a raw value 1-26 selecting a distinct hue per sub-range,
  * each with its own dim-steady/dim-flashing/bright-steady/bright-flashing tiers (the same four-state shape
  * `PUSH_MK1_DIM_VALUE`'s own doc comment already found for the monochrome family, just per-colour here instead of
  * once overall) -- raw value 1 reads white-ish, the low 20s read green. Modeled as `velocity-color-led`
  * (`PUSH_MK1_SELECTION_COLOUR_PALETTE`), the same family `PUSH_MK1_PAD_COLOUR_PALETTE` already uses for the pads'
- * confirmed playhead colour, with `dimValue` (ECS-145's own field, whose doc comment already anticipates "any
+ * confirmed playhead colour, with `dimValue` layered on top for the "available, not selected"
  * boolean-paired feedback kind addressed by... control-change") layered on top for the "available, not selected"
  * resting state -- the mapping layer's `buildFeedbackMessage()` was extended (ECS-155) to resolve `colourPalette`
  * for a control-change address the same way it already did for a note one, rather than this profile needing a
@@ -491,7 +361,7 @@ const PUSH_MK1_SELECTION_COLOUR_PALETTE = [
 ] as const;
 
 /**
- * ECS-155 hardware correction: these are side buttons, a vertical column, not a horizontal row -- confirmed
+ * These are side buttons, a vertical column, not a horizontal row -- confirmed
  * hands-on to run CC 43 (topmost) down to CC 36 (bottommost), descending top to bottom. `select-1` (the
  * physically topmost button, so the first slot/track on a page) is therefore CC 43, not CC 36; `select-8`
  * (bottommost, the last slot/track) is CC 36. `PUSH_MK1_SELECTION_GRID` lays these out as a single column with
@@ -551,7 +421,7 @@ export const PUSH_MK1_PAD_GRID: ControlGrid = {
 };
 
 /**
- * ECS-138: the upper control row (CC 102-109), directly above the pad grid, as a dedicated mute strip -- the
+ * The upper control row (CC 102-109), directly above the pad grid, is a dedicated mute strip instead of the
  * "dedicated labelled controls above the grid" the ticket asks this profile to evaluate moving mute onto, instead
  * of the dedicated `mixer` mode's grid takeover. One row, 8 columns, left to right, matching the row-0 orientation
  * `PUSH_MK1_PAD_GRID`'s own top row already uses. No `paging` of its own: `layout.dedicatedMuteGridId` (see
@@ -571,7 +441,7 @@ export const PUSH_MK1_MUTE_STRIP_GRID: ControlGrid = {
 };
 
 /**
- * ECS-155 hardware correction: a vertical column (one per row, not one per column), confirmed hands-on -- these
+ * A vertical column (one per row, not one per column), confirmed hands-on -- these
  * are side buttons, not a row like `PUSH_MK1_MUTE_STRIP_GRID`. `select-1` (CC 43, the physically topmost button)
  * is row 0, matching the pad grid's own "row 0 is the top" convention; `select-8` (CC 36, bottommost) is row 7.
  * Still shares the step grid's own page offset and needs no paging of its own, same as the mute strip -- just
@@ -627,9 +497,9 @@ export const PUSH_MK1_SYSEX: DeviceSysExProfile = {
 };
 
 /**
- * The 4-line LCD (ECS-137), confirmed hands-on and independently re-confirmed at the ECS-136 gate:
+ * The 4-line LCD, confirmed hands-on:
  * `F0 47 7F 15 {lineId} 00 45 00 [68 ASCII bytes] F7` rewrites one line. `lineId` is 0x18-0x1b for lines 1-4 --
- * see `PUSH_MK1_SYSEX.notes` above, now re-expressed as a declarative `DeviceDisplayDefinition` (ECS-137's contract
+ * see `PUSH_MK1_SYSEX.notes` above. `PUSH_MK1_LAYOUT.displayLines` names which line plays
  * extension) instead of free text only. ECS-139 wires it: `PUSH_MK1_LAYOUT.displayLines` names which line plays
  * each application text role, and `createSequencerBindings()` emits a `DisplayBinding` per role the application
  * fills. This template and its byte layout are unchanged by that wiring.
@@ -662,11 +532,11 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
 };
 
 /**
- * ECS-90: the sequencer's roles on this device. `Note` (CC 50, round-2-corrected -- see the file doc comment above)
+ * The sequencer's roles on this device. `Note` (CC 50)
  * stands in for steps mode; the dedicated Arrow buttons page. No bank roles: nothing documented on this device
  * groups buttons into bank select A-D the way the Launchpad's top row does.
  *
- * **ECS-138: no `mixer` mode button, by deliberate decision, not an oversight.** `Session` (CC 51) switched to
+ * No `mixer` mode button. `Session` (CC 51) does not switch to `mixer`, so the button remains free.
  * `mixer` before this ticket; that entry is removed, not merely left unindicated, so `Session` is now free (same
  * "left unresolved rather than guessed at" treatment `transport.clear` already got above).
  * **Why**: the dedicated `mixer` mode made every mute reachable only by giving up the entire pad grid (steps
@@ -677,12 +547,12 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
  * devices (the Launchpad still reaches it from `side-79`) -- this is a profile-level routing choice, not a change
  * to shared code, and it costs nothing: with no button naming `mixer`, that mode is simply never reachable on this
  * device, the same way an unresolved mode/page/transport role already works elsewhere in this layout.
- * **Confirmed hands-on (2026-10-09)**: the new LED traffic this decision adds -- `indicator: true` below lights
+ * `indicator: true` below lights
  * `Note` according to the surface's actual active mode, and the mute strip (CC 102-109) lights and toggles mute
- * correctly, live in `steps` with no mode switch. See `docs/hardware-validation-push-mk1.md`'s ECS-138 section for
+ * correctly, live in `steps` with no mode switch. See `docs/hardware-validation-push-mk1.md` for
  * the full record.
  *
- * **ECS-146: no `transport` mode button either, for the same reason.** `Stop` (CC 29) used to be the only way to
+ * No `transport` mode button. `button-stop-clip` is `layout.transport.stop`: a plain
  * *reach* `transport` mode -- the sole mode where Play/Record's bindings actually existed -- so leaving the steps
  * or mixer grid was the price of pressing Play. `button-stop-clip` is now `layout.transport.stop` instead: a plain
  * transport control, like `button-play`/`button-record`, that `createSequencerBindings` binds in every mode this
@@ -690,7 +560,7 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
  * built (unreachable here, the same way `mixer` already is); any device that still wants a dedicated transport mode
  * keeps that option.
  *
- * **ECS-145: `modifier: "button-shift"`, declared for the first time on this profile.** Nothing here uses a
+ * `modifier: "button-shift"`. Nothing here uses a
  * `when`-conditional binding yet, `modifier`'s original (ECS-137) purpose -- but `bindSurfaceMode()` now also
  * lights whichever control this names (dim while released, full while held) whenever that control declares a
  * `feedback` with a `dimValue`, which `button-shift` (CC 49) now does, hands-on confirmed above. Declaring this
@@ -698,7 +568,7 @@ export const PUSH_MK1_DISPLAY: DeviceDisplayDefinition = {
  * unused as before) and gives Shift a real, lit state it never had -- the one `button-shift` was always missing
  * despite having `feedback` declared on its `PhysicalControl` since this profile's very first version.
  *
- * **ECS-155**: `selectionGridId` names the new CC 36-43 side-button column (`PUSH_MK1_SELECTION_GRID`), and
+ * `selectionGridId` names the CC 36-43 side-button column (`PUSH_MK1_SELECTION_GRID`), and
  * `selectionClear` names the existing Master button (CC 28, already declared in `UTILITY_BUTTONS`) as the control
  * that clears item selection and enters the master/context state. Both are device facts only -- what a selected
  * index means, and what "master" switches to, is entirely the integration layer's
@@ -727,7 +597,7 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
    * `encoder-master`/`encoder-swing`/`encoder-tempo` are not bank cells and remain free for fixed roles.
    */
   /**
-   * ECS-139: the 4-line LCD, one line per semantic role the application may fill -- the selected track, its
+   * The 4-line LCD, one line per semantic role the application may fill -- the selected track, its
    * selected effect, that effect's lead parameter (name and value) and the transport. Which control feeds each role
    * is the application's own (`SequencerContract.displayLines`); which physical line it lands on is this profile's.
    */
@@ -739,7 +609,7 @@ export const PUSH_MK1_LAYOUT: DeviceLayout = {
   },
   /**
    * Phase 2: the generic encoder bank (`PUSH_MK1_ENCODER_BANK_GRID`). `Volume` (CC114) selects the application's
-   * "volume" category -- the one with a window in this phase, driving the bank's own per-track volumes. `Devices`
+   * "volume" category -- the one with a window, driving the bank's own per-track volumes. `Devices`
    * (CC110) is declared as the future "Device/FX parameter" category's own entry point, per this ticket's explicit
    * scope -- it gets a button and (once the application names a mode value for it) an indicator, but no window
    * bindings exist for it yet, the same "entry point, not an implementation" treatment `transport.clear` gets on a

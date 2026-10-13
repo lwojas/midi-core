@@ -1,8 +1,6 @@
 # MIDI Core — Discovery and Lifecycle Contract
 
 Status: Draft
-Linear: [ECS-27](https://linear.app/ecs3d/issue/ECS-27/define-midi-device-discovery-and-lifecycle-contract)
-Depends on: [ECS-26](https://linear.app/ecs3d/issue/ECS-26/define-midi-core-architecture-and-boundaries) ([docs/architecture.md](../architecture.md))
 Source of truth: [`src/core/types/`](../../src/core/types)
 
 ## Scope
@@ -15,9 +13,9 @@ This defines the generic, device-agnostic contract for:
 - **Transport errors** — failures in talking to a port (`errors.ts`).
 
 It does not cover sending/receiving MIDI messages once connected — that's the
-input/output contract (ECS-28/29/30) — and it says nothing about any specific
-device's controls. Per the architecture boundaries, this stays independent of
-device profiles.
+It does not cover sending or receiving MIDI messages once connected; those
+are defined by the input/output contracts. It says nothing about any specific
+device's controls and stays independent of device profiles.
 
 ## Identity: ports, not "devices"
 
@@ -44,7 +42,7 @@ Web MIDI's `state`/`connection` fields. Clients should not need to know which
 transport is underneath.
 
 `isValidTransition(from, to)` encodes the allowed transitions as part of the
-contract, so implementations (starting with the mock device in ECS-32) and
+contract, so implementations and
 their tests share one definition of "valid" instead of each re-deriving it:
 
 ```
@@ -66,7 +64,6 @@ and are reported by higher layers in their own terms.
 
 ## What's deliberately not here
 
-- No implementation against real Web MIDI or a mock transport — that's
-  ECS-29/30 (input/output) and ECS-32 (mock/test device).
+- No implementation against real Web MIDI or a mock transport.
 - No device grouping, no profile awareness.
 - No message send/receive — only the connection that would carry them.

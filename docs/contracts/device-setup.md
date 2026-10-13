@@ -1,7 +1,7 @@
 # Device Setup
 
 Status: Draft
-Linear: [ECS-89](https://linear.app/ecs3d/issue/ECS-89) (device setup decision), resolves [ECS-79](https://linear.app/ecs3d/issue/ECS-79/select-and-validate-one-real-device-with-the-surface-runtime) F3
+Status: Draft
 Replaces: the `DeviceHandshake` / `HandshakeExecutor` design in `device-profile.md` and `surface-lifecycle.md`
 Source of truth: [`src/profile/types/setup.ts`](../../src/profile/types/setup.ts),
 [`src/surface/setup.ts`](../../src/surface/setup.ts)
@@ -22,16 +22,16 @@ is one kind of step, among others.
 
 ```ts
 interface DeviceSetup {
-  inputPortId: string;   // input port replies arrive on
-  outputPortId: string;  // output port send steps go out on
-  timeoutMs?: number;    // how long an expect step waits; default 2000 ms
+  inputPortId: string; // input port replies arrive on
+  outputPortId: string; // output port send steps go out on
+  timeoutMs?: number; // how long an expect step waits; default 2000 ms
   steps: DeviceSetupStep[];
 }
 
 interface DeviceSetupStep {
   id: string;
-  description: string;   // warning if empty
-  send?: number[];       // bytes to send verbatim (SysEx includes F0 and F7)
+  description: string; // warning if empty
+  send?: number[]; // bytes to send verbatim (SysEx includes F0 and F7)
   expect?: (number | null)[]; // bytes a reply must match; null matches any byte
 }
 ```
@@ -67,12 +67,6 @@ the wrong direction (`setup-port-wrong-type`), or not `required`
 `setup-step-missing-description`).
 
 ## What this replaces
-
-- `DeviceHandshake` (`required`, `steps` with `direction` and no bytes) is removed.
-- `HandshakeExecutor` is removed. The surface sends and matches bytes itself,
-  because the bytes are now in the profile.
-- The `required` gate is removed. Declared setup always runs, which is why a
-  profile can't silently skip the mode switch its addressing depends on.
 
 ## Not in this contract
 

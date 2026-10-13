@@ -1,9 +1,6 @@
 # MIDI Core — Normalized Message Model
 
 Status: Draft
-Linear: [ECS-28](https://linear.app/ecs3d/issue/ECS-28/define-normalised-midi-message-model)
-Depends on: [ECS-26](https://linear.app/ecs3d/issue/ECS-26/define-midi-core-architecture-and-boundaries) ([docs/architecture.md](../architecture.md))
-Related: [ECS-27](https://linear.app/ecs3d/issue/ECS-27/define-midi-device-discovery-and-lifecycle-contract) ([docs/contracts/discovery-lifecycle.md](./discovery-lifecycle.md))
 Source of truth: [`src/core/types/message.ts`](../../src/core/types/message.ts), [`src/core/message/codec.ts`](../../src/core/message/codec.ts)
 
 ## Scope
@@ -15,9 +12,8 @@ transport sync (clock/start/continue/stop), and SysEx kept opaque. Everything
 else Core doesn't model — other system common messages, Active Sensing,
 System Reset, malformed input — decodes to `UnknownMessage`.
 
-This does not cover discovery/lifecycle (ECS-27) or actually wiring a
-transport (ECS-29/30) — just the shape of a message and how it converts to
-and from wire bytes.
+This defines the shape of a message and how it converts to and from wire
+bytes; discovery, lifecycle, and transport wiring are separate contracts.
 
 ## What "normalized" means here
 
@@ -31,7 +27,7 @@ with `velocity: 0`, not to `NoteOffMessage`. Many MIDI implementations treat
 the two as equivalent (it saves a byte under running status), but that's a
 convention applications may choose to apply, not a structural fact about the
 message. Rewriting it in Core would be Core making an application-level
-judgment call — exactly what the architecture boundary (ECS-26) excludes.
+judgment call, outside the message model's responsibility.
 
 ## Channel is 0-15, not 1-16
 
@@ -54,7 +50,7 @@ was decoded from.
   diverge from the fields you actually set. One rule, no "which one wins"
   ambiguity.
 - For **`SysExMessage`** and **`UnknownMessage`**, `raw` is required, because
-  Core has no fields to derive bytes from — `raw` *is* the message. This is
+  Core has no fields to derive bytes from — `raw` _is_ the message. This is
   what makes a receive-then-resend round-trip faithful even for the things
   Core doesn't understand.
 
@@ -76,7 +72,7 @@ wire bytes.
 `decodeMidiMessage` assumes it's given one complete message's bytes (as Web
 MIDI's `MIDIMessageEvent.data` already provides) — it does not parse a
 multi-message stream or handle running status. That's a transport-level
-framing concern for ECS-29, not a message-model concern.
+framing concern for the transport, not a message-model concern.
 
 ## What's deliberately not here
 
@@ -85,4 +81,4 @@ framing concern for ECS-29, not a message-model concern.
   mapping/application concerns.
 - No running-status decoding or multi-message stream parsing.
 - No SysEx content interpretation (manufacturer ID parsing, etc.).
-- No wiring to a real or mock transport — that's ECS-29/30/32.
+- No wiring to a real or mock transport.
